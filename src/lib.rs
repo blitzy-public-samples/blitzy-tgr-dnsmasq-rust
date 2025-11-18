@@ -39,6 +39,7 @@
 // Public API modules
 pub mod constants;
 pub mod error;
+pub mod radv;
 
 // Re-export commonly used types
 pub use error::{DnsmasqError, Result};
