@@ -54,6 +54,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"
 bitflags = { version = "2.6", features = ["serde"] }
+hex = "0.4"
 
 # Command-line interface - replaces getopt_long()
 clap = { version = "4.5", features = ["derive", "env", "wrap_help"] }
@@ -132,10 +133,13 @@ tokio-test = "0.4"
 
 # Feature flags matching C HAVE_* compile-time options
 [features]
-default = ["dnssec", "idn"]
+default = ["dnssec", "idn", "dumpfile", "dhcp6"]
 
 # HAVE_DNSSEC - DNSSEC validation support
 dnssec = ["ring"]
+
+# HAVE_DUMPFILE - Packet capture to libpcap format for debugging
+dumpfile = []
 
 # HAVE_DBUS - D-Bus IPC interface
 dbus = ["zbus"]
@@ -151,6 +155,9 @@ idn = ["idna"]
 
 # HAVE_TFTP - TFTP server support
 tftp = []
+
+# HAVE_DHCP6 - DHCPv6 server support
+dhcp6 = []
 
 # HAVE_CONNTRACK - Linux connection tracking
 conntrack = ["rtnetlink", "netlink-packet-route"]
@@ -178,10 +185,12 @@ all-features = [
     "lua-scripts",
     "idn",
     "tftp",
+    "dhcp6",
     "conntrack",
     "nftset",
     "ipset",
     "inotify",
+    "dumpfile",
     "dot",
     "doh"
 ]
