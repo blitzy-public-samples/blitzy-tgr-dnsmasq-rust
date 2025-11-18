@@ -17,5 +17,7 @@
 //!
 //! This module provides various utility functions and services:
 //! - `metrics`: Performance metrics collection and reporting
+//! - `patterns`: Domain name pattern matching and validation
 
 pub mod metrics;
+pub mod patterns;
