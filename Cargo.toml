@@ -42,6 +42,9 @@ hickory-resolver = "0.25"
 # Cryptography for DNSSEC - replaces Nettle library
 ring = { version = "0.17", optional = true }
 
+# Random number generation - SURF RNG implementation
+getrandom = "0.2"
+
 # Parsing and serialization
 nom = "7.1"
 bytes = "1.9"

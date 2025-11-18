@@ -633,6 +633,7 @@ dependencies = [
  "clap_complete",
  "criterion",
  "futures",
+ "getrandom 0.2.16",
  "hickory-client",
  "hickory-proto",
  "hickory-resolver",
