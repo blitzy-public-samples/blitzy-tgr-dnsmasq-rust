@@ -46,11 +46,11 @@
 
 use crate::error::{DnsmasqError, PlatformError, Result};
 use std::env;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::{FromRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
-use std::net::{SocketAddr, TcpListener as StdTcpListener, UdpSocket as StdUdpSocket};
+use std::net::{TcpListener as StdTcpListener, UdpSocket as StdUdpSocket};
 use tokio::net::{TcpListener, UdpSocket};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// SD_LISTEN_FDS_START is the first file descriptor number that systemd passes
 /// File descriptors are numbered starting from 3 (after stdin=0, stdout=1, stderr=2)
@@ -423,8 +423,9 @@ pub fn sd_notify_stopping() -> Result<()> {
 /// # }
 /// ```
 pub fn sd_is_socket(fd: RawFd, socket_type: Option<SystemdSocket>) -> Result<bool> {
-    use nix::sys::socket::{getsockopt, sockopt, AddressFamily, SockType};
+    use nix::sys::socket::{getsockname, getsockopt, sockopt, AddressFamily, SockaddrLike, SockaddrStorage, SockType};
     use nix::sys::stat::{fstat, SFlag};
+    use std::os::unix::io::BorrowedFd;
 
     // First check if the FD is a socket using fstat
     let stat = fstat(fd).map_err(|e| {
@@ -445,15 +446,22 @@ pub fn sd_is_socket(fd: RawFd, socket_type: Option<SystemdSocket>) -> Result<boo
     };
 
     // Get the socket type
-    let sock_type = getsockopt(fd, sockopt::SockType).map_err(|e| {
+    // SAFETY: We assume the file descriptor is valid as it was passed by systemd
+    let borrowed_fd = unsafe { BorrowedFd::borrow_raw(fd) };
+    let sock_type = getsockopt(&borrowed_fd, sockopt::SockType).map_err(|e| {
         error!("Failed to get socket type for fd {}: {}", fd, e);
         PlatformError::SystemdProtocol(format!("Failed to get socket type for fd {}: {}", fd, e))
     })?;
 
-    // Get the address family
-    let domain = getsockopt(fd, sockopt::Domain).map_err(|e| {
-        error!("Failed to get socket domain for fd {}: {}", fd, e);
-        PlatformError::SystemdProtocol(format!("Failed to get socket domain for fd {}: {}", fd, e))
+    // Get the address family by querying the socket address
+    let addr: SockaddrStorage = getsockname(fd).map_err(|e| {
+        error!("Failed to get socket address for fd {}: {}", fd, e);
+        PlatformError::SystemdProtocol(format!("Failed to get socket address for fd {}: {}", fd, e))
+    })?;
+    
+    let domain = addr.family().ok_or_else(|| {
+        error!("Failed to get address family for fd {}", fd);
+        PlatformError::SystemdProtocol(format!("Failed to get address family for fd {}", fd))
     })?;
 
     // Check if the address family is IPv4 or IPv6
