@@ -42,20 +42,25 @@
 //!
 //! # Example Usage
 //!
-//! ```rust,no_run
+//! ```rust
 //! use dnsmasq::dhcp::v4::constants::*;
+//! use std::net::Ipv4Addr;
 //!
 //! // Check message type
+//! let msg_type = MSG_TYPE_DISCOVER;
 //! if msg_type == MSG_TYPE_DISCOVER {
 //!     // Handle DHCPDISCOVER
 //! }
 //!
 //! // Build option list
+//! let server_ip = Ipv4Addr::new(192, 168, 1, 1);
+//! let lease_time: u32 = 86400; // 24 hours in seconds
 //! let options = vec![
 //!     (OPTION_MESSAGE_TYPE, vec![MSG_TYPE_OFFER]),
 //!     (OPTION_SERVER_IDENTIFIER, server_ip.octets().to_vec()),
 //!     (OPTION_LEASE_TIME, lease_time.to_be_bytes().to_vec()),
 //! ];
+//! # assert_eq!(options.len(), 3);
 //! ```
 
 // ================================================================================================
@@ -419,6 +424,10 @@ pub const OPTION_ROUTER: u8 = 3;
 /// RFC 2132 Section 3.8
 pub const OPTION_DNS_SERVER: u8 = 6;
 
+/// Alias for OPTION_DNS_SERVER for C compatibility.
+/// The C implementation uses OPTION_DNSSERVER naming.
+pub const OPTION_DNSSERVER: u8 = OPTION_DNS_SERVER;
+
 /// Option 12: Host Name (variable length string)
 ///
 /// Specifies the client's hostname per RFC 1123, without domain suffix.
@@ -445,6 +454,10 @@ pub const OPTION_HOSTNAME: u8 = 12;
 /// # RFC Reference
 /// RFC 2132 Section 3.17
 pub const OPTION_DOMAIN_NAME: u8 = 15;
+
+/// Alias for OPTION_DOMAIN_NAME for C compatibility.
+/// The C implementation uses OPTION_DOMAINNAME naming.
+pub const OPTION_DOMAINNAME: u8 = OPTION_DOMAIN_NAME;
 
 /// Option 28: Broadcast Address (4 bytes)
 ///
@@ -541,6 +554,11 @@ pub const OPTION_SERVER_IDENTIFIER: u8 = 54;
 /// # RFC Reference
 /// RFC 2132 Section 9.8
 pub const OPTION_PARAMETER_LIST: u8 = 55;
+
+/// Alias for OPTION_PARAMETER_LIST for C compatibility.
+/// The C implementation uses OPTION_REQUESTED_OPTIONS naming.
+/// RFC 2132 calls this "Parameter Request List".
+pub const OPTION_REQUESTED_OPTIONS: u8 = OPTION_PARAMETER_LIST;
 
 /// Option 56: Message (variable length string)
 ///
@@ -668,6 +686,31 @@ pub const OPTION_CLIENT_FQDN: u8 = 81;
 /// RFC 3046
 pub const OPTION_AGENT_ID: u8 = 82;
 
+/// Option 91: Client Last Transaction Time (4 bytes, seconds)
+///
+/// Used in DHCPLEASEQUERY responses to indicate seconds since client's last
+/// transaction with server. Part of leasequery protocol for external lease queries.
+///
+/// # Usage
+/// Enables external systems to query DHCP server about client lease status
+/// and determine how long ago client last communicated with server.
+///
+/// # RFC Reference
+/// RFC 4388 Section 6.1
+pub const OPTION_LAST_TRANSACTION: u8 = 91;
+
+/// Option 92: Associated IP (4+ bytes, multiple of 4)
+///
+/// Used in DHCPLEASEQUERY to query leases associated with specific IP addresses.
+/// Contains one or more IPv4 addresses for bulk lease status queries.
+///
+/// # Format
+/// Multiple of 4 bytes, each 4-byte block represents one IPv4 address.
+///
+/// # RFC Reference
+/// RFC 4388 Section 6.2
+pub const OPTION_ASSOCIATED_IP: u8 = 92;
+
 /// Option 93: Client System Architecture (2 bytes)
 ///
 /// Identifies client CPU architecture for PXE network boot.
@@ -704,6 +747,91 @@ pub const OPTION_PXE_UUID: u8 = 97;
 /// # RFC Reference
 /// RFC 3011
 pub const OPTION_SUBNET_SELECT: u8 = 118;
+
+/// Option 119: Domain Search (variable length, DNS search list)
+///
+/// List of domain suffixes for DNS hostname resolution search. Encoded as
+/// DNS wire format compressed domain names. Alternative to single OPTION_DOMAIN_NAME.
+///
+/// # Example
+/// ["example.com", "internal.example.com"] for multi-level domain searching
+///
+/// # Usage
+/// Modern alternative to OPTION_DOMAIN_NAME (15) supporting multiple search domains.
+/// Client tries each domain suffix in order when resolving unqualified hostnames.
+///
+/// # RFC Reference
+/// RFC 3397
+pub const OPTION_DOMAIN_SEARCH: u8 = 119;
+
+/// Option 120: SIP Servers (variable length)
+///
+/// Session Initiation Protocol (SIP) server addresses for VoIP configuration.
+/// Can contain IPv4 addresses or DNS names for SIP proxy servers.
+///
+/// # Format
+/// Can be encoded as IPv4 addresses (4 bytes each) or DNS names.
+///
+/// # Usage
+/// Enables automatic VoIP phone configuration by providing SIP server locations.
+///
+/// # RFC Reference
+/// RFC 3361
+pub const OPTION_SIP_SERVER: u8 = 120;
+
+/// Option 124: Vendor-Identifying Vendor Class (variable length)
+///
+/// Extended vendor identification with enterprise number and vendor-specific data.
+/// Format: 4-byte enterprise number + opaque vendor data. Uses IANA enterprise numbers.
+///
+/// # Format
+/// 4-byte IANA enterprise number followed by vendor-specific class information.
+///
+/// # Usage
+/// Allows vendors to provide detailed device classification information
+/// beyond simple vendor ID string in OPTION_VENDOR_ID (60).
+///
+/// # RFC Reference
+/// RFC 3925 Section 3
+pub const OPTION_VENDOR_IDENT: u8 = 124;
+
+/// Option 125: Vendor-Identifying Vendor-Specific Information (variable length)
+///
+/// Vendor-specific data tagged with IANA enterprise number. Multiple vendors
+/// can coexist with unique enterprise numbers distinguishing data ownership.
+///
+/// # Format
+/// Each vendor's data prefixed with 4-byte IANA enterprise number,
+/// allowing multiple vendors' data in single option.
+///
+/// # Usage
+/// Used in OPTION_VENDOR_IDENT (124) and OPTION_VENDOR_IDENT_OPT (125) to
+/// enable vendor-specific configuration while maintaining interoperability.
+///
+/// # RFC Reference
+/// RFC 3925 Section 4
+pub const OPTION_VENDOR_IDENT_OPT: u8 = 125;
+
+/// Option 161: Manufacturer Usage Description (MUD) URL (variable length)
+///
+/// URL pointing to manufacturer's device security profile for IoT device policy.
+/// Enables automated network access control based on manufacturer specifications.
+///
+/// # Format
+/// URL string pointing to MUD file (JSON format) describing device capabilities
+/// and required network access patterns.
+///
+/// # Usage
+/// IoT devices provide MUD URL during DHCP discovery. Network infrastructure
+/// fetches MUD file and applies appropriate security policies automatically.
+///
+/// # Security
+/// MUD files must be served over HTTPS with valid certificates. Network
+/// must validate signatures to prevent policy manipulation.
+///
+/// # RFC Reference
+/// RFC 8520
+pub const OPTION_MUD_URL_V4: u8 = 161;
 
 /// Option 255: End option (no length or data)
 ///
@@ -752,6 +880,41 @@ pub const SUBOPT_REMOTE_ID: u8 = 2;
 /// # RFC Reference
 /// RFC 3527
 pub const SUBOPT_SUBNET_SELECT: u8 = 5;
+
+/// Relay Agent Suboption 6: Subscriber ID
+///
+/// Stable subscriber identifier independent of physical location or hardware.
+/// Used by access providers for subscriber policy and billing.
+///
+/// # Format
+/// Provider-specific (typically account number or subscriber name)
+///
+/// # RFC Reference
+/// RFC 3993
+pub const SUBOPT_SUBSCR_ID: u8 = 6;
+
+/// Relay Agent Suboption 10: Relay Agent Flags (1 byte, bit flags)
+///
+/// Bit flags indicating relay agent capabilities and request handling.
+///
+/// # Bit Flags
+/// - Bit 0: Unicast flag (server should unicast replies to relay)
+///
+/// # RFC Reference
+/// RFC 5010
+pub const SUBOPT_FLAGS: u8 = 10;
+
+/// Relay Agent Suboption 11: Server Identifier Override
+///
+/// Instructs server to use a different Server Identifier (Option 54) value in
+/// response than the server's actual IP. Used in load balancing and failover.
+///
+/// # Format
+/// 4-byte IPv4 address to use as Server Identifier
+///
+/// # RFC Reference
+/// RFC 5107
+pub const SUBOPT_SERVER_OR: u8 = 11;
 
 // ================================================================================================
 // PXE Vendor-Specific Suboptions (Option 43)
