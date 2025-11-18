@@ -677,50 +677,47 @@ mod tests {
     #[test]
     fn test_rand16_produces_values() {
         let rng = rand_init().expect("Failed to initialize RNG");
-        let val1 = rng.rand16();
-        let val2 = rng.rand16();
+        let _val1 = rng.rand16();
+        let _val2 = rng.rand16();
         // Values should be different (probabilistically)
         // (could be same with 1/65536 probability, but extremely unlikely)
-        assert!(val1 != val2 || true); // Always passes but documents expectation
+        // Just verifying the calls don't panic
     }
 
     #[test]
     fn test_rand32_produces_values() {
         let rng = rand_init().expect("Failed to initialize RNG");
-        let val1 = rng.rand32();
-        let val2 = rng.rand32();
-        // Document that we expect different values
-        assert!(val1 != val2 || true);
+        let _val1 = rng.rand32();
+        let _val2 = rng.rand32();
+        // Document that we expect different values (probabilistically)
+        // Just verifying the calls don't panic
     }
 
     #[test]
     fn test_rand64_produces_values() {
         let rng = rand_init().expect("Failed to initialize RNG");
-        let val1 = rng.rand64();
-        let val2 = rng.rand64();
-        // Document that we expect different values
-        assert!(val1 != val2 || true);
+        let _val1 = rng.rand64();
+        let _val2 = rng.rand64();
+        // Document that we expect different values (probabilistically)
+        // Just verifying the calls don't panic
     }
 
     #[test]
     fn test_global_rand16() {
-        let val = rand16();
+        let _val = rand16();
         // Should produce a value without panicking
-        assert!(val <= u16::MAX);
     }
 
     #[test]
     fn test_global_rand32() {
-        let val = rand32();
+        let _val = rand32();
         // Should produce a value without panicking
-        assert!(val <= u32::MAX);
     }
 
     #[test]
     fn test_global_rand64() {
-        let val = rand64();
+        let _val = rand64();
         // Should produce a value without panicking
-        assert!(val <= u64::MAX);
     }
 
     #[test]

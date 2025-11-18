@@ -1181,7 +1181,7 @@ mod tests {
         
         // Invalid names
         assert!(DomainName::new("").is_err());  // Empty
-        assert!(DomainName::new(&"a".repeat(256)).is_err());  // Too long
+        assert!(DomainName::new("a".repeat(256)).is_err());  // Too long
         assert!(DomainName::new("invalid..domain").is_err());  // Double dot
         assert!(DomainName::new("-invalid").is_err());  // Leading hyphen
     }
