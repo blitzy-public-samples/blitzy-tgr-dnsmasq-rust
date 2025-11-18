@@ -1,1 +1,41 @@
+# Clippy Configuration for dnsmasq Rust Implementation
+# This configuration balances code quality enforcement with the inherent
+# complexity of network protocol handling (DNS, DHCP, TFTP, Router Advertisement)
+
+# Cognitive Complexity Threshold
+# Set to 30 to accommodate complex protocol state machines ported from C
+# DNS/DHCP protocol parsing involves inherent complexity that cannot be
+# easily simplified without sacrificing clarity or correctness
 cognitive-complexity-threshold = 30
+
+# Type Complexity Threshold
+# Allow moderately complex types for protocol message structures
+type-complexity-threshold = 250
+
+# Too Many Arguments Threshold
+# Protocol handlers often need multiple parameters for packet fields
+too-many-arguments-threshold = 8
+
+# Too Many Lines Threshold
+# Protocol parsing functions can be lengthy due to packet field handling
+too-many-lines-threshold = 150
+
+# Large Enum Variant Size Threshold
+# Network protocol enums may have large variants for different message types
+enum-variant-size-threshold = 200
+
+# Vector Box Size Threshold
+# Protocol buffers and packet data structures
+vec-box-size-threshold = 4096
+
+# Struct Field Naming
+# Enforce consistent field naming for protocol structures
+# (snake_case is Rust convention, enforced by default)
+
+# Single Char Binding Names
+# Allow single-char names in protocol parsing contexts (e.g., 'n' for name length)
+single-char-binding-names-threshold = 5
+
+# Array Size Threshold
+# Network protocols use fixed-size arrays for packet fields
+array-size-threshold = 512000
