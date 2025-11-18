@@ -60,6 +60,7 @@
 //! # Example Usage
 //!
 //! ```no_run
+//! use dnsmasq::tftp::TransferState;
 //! use std::time::Duration;
 //! use std::path::PathBuf;
 //! use tokio::fs::File;
@@ -259,6 +260,7 @@ impl TransferState {
     /// # Example
     ///
     /// ```no_run
+    /// use dnsmasq::tftp::TransferState;
     /// use std::time::Duration;
     /// use std::path::PathBuf;
     /// use tokio::fs::File;
@@ -355,6 +357,7 @@ impl TransferState {
     /// # Example
     ///
     /// ```no_run
+    /// # use dnsmasq::tftp::TransferState;
     /// # use std::time::Duration;
     /// # use std::path::PathBuf;
     /// # use tokio::fs::File;
@@ -388,8 +391,16 @@ impl TransferState {
         }
 
         // Calculate file position for this block (1-based block numbering)
-        // Block 1 → offset 0, Block 2 → offset blocksize, etc.
-        let position = ((block as u64).wrapping_sub(1)).wrapping_mul(self.blocksize as u64);
+        // For netascii mode, we use the tracked file_offset instead of calculating
+        // from block number, because netascii conversion can expand data (LF → CR-LF)
+        // causing misalignment between input and output positions.
+        let position = if self.netascii && self.block_current > 0 {
+            // Use tracked position from previous block
+            self.file_offset
+        } else {
+            // Binary mode or first block: calculate from block number
+            ((block as u64).wrapping_sub(1)).wrapping_mul(self.blocksize as u64)
+        };
 
         // Seek to the appropriate file position
         // This allows retransmission of earlier blocks without maintaining a cache
@@ -402,9 +413,17 @@ impl TransferState {
             })?;
 
         // Allocate buffer for reading block data
-        let mut buffer = vec![0u8; self.blocksize as usize];
+        // In netascii mode, read extra bytes to account for potential expansion
+        let read_size = if self.netascii {
+            // Read more than blocksize to ensure we have enough input bytes
+            // even if many are expanded (LF → CR-LF)
+            self.blocksize as usize * 2
+        } else {
+            self.blocksize as usize
+        };
+        let mut buffer = vec![0u8; read_size];
 
-        // Read up to blocksize bytes from file
+        // Read up to read_size bytes from file
         let n = self
             .file
             .read(&mut buffer)
@@ -417,21 +436,27 @@ impl TransferState {
         // Truncate buffer to actual bytes read
         buffer.truncate(n);
 
-        // Set EOF flag if we read fewer bytes than blocksize (last block)
-        if n < self.blocksize as usize {
-            self.eof = true;
-        }
-
         // Apply netascii conversion if enabled (LF → CR-LF)
-        let final_data = if self.netascii {
-            self.netascii_convert(buffer)?
+        let (final_data, input_consumed) = if self.netascii {
+            let (data, consumed) = self.netascii_convert(buffer)?;
+            // Set EOF if we consumed all available input and it was less than blocksize
+            if consumed < self.blocksize as usize && n < read_size {
+                self.eof = true;
+            }
+            (data, consumed)
         } else {
-            Bytes::from(buffer)
+            // Binary mode: output size equals input size
+            // Set EOF flag if we read fewer bytes than blocksize (last block)
+            if n < self.blocksize as usize {
+                self.eof = true;
+            }
+            (Bytes::from(buffer), n)
         };
 
         // Update transfer state
         self.block_current = block;
-        self.file_offset = position.wrapping_add(n as u64);
+        // Track actual input file position for netascii mode
+        self.file_offset = position.wrapping_add(input_consumed as u64);
 
         Ok(final_data)
     }
@@ -485,15 +510,15 @@ impl TransferState {
     ///
     /// # Returns
     ///
-    /// - `Ok(Bytes)`: Converted netascii data with CR-LF line endings.
-    /// - `Err(TftpError)`: Should never occur for valid input (infallible in practice).
+    /// - `Ok((Bytes, usize))`: Tuple of (converted netascii data, number of input bytes consumed).
     ///
     /// # Performance
     ///
     /// Allocates a new `BytesMut` buffer and copies data with conversions. For binary transfers,
     /// set `netascii = false` to avoid this overhead.
-    fn netascii_convert(&mut self, data: Vec<u8>) -> Result<Bytes> {
+    fn netascii_convert(&mut self, data: Vec<u8>) -> Result<(Bytes, usize)> {
         let mut output = BytesMut::new();
+        let mut input_consumed = 0;
 
         // If we had a trailing LF from the previous block, insert the deferred CR now
         if self.carrylf {
@@ -510,19 +535,21 @@ impl TransferState {
                     self.carrylf = true;
                     // Insert just the LF now; CR will be inserted at start of next block
                     output.put_u8(b'\n');
+                    input_consumed += 1;
                     break;
                 }
                 // Convert LF → CR-LF
                 output.put_u8(b'\r');
                 output.put_u8(b'\n');
+                input_consumed += 1;
             } else {
+                // Check if adding this byte would exceed blocksize
+                if output.len() >= self.blocksize as usize {
+                    break;
+                }
                 // Copy other bytes as-is (including existing CR characters)
                 output.put_u8(byte);
-            }
-
-            // Stop if we've reached blocksize limit
-            if output.len() >= self.blocksize as usize {
-                break;
+                input_consumed += 1;
             }
         }
 
@@ -531,7 +558,7 @@ impl TransferState {
             output.truncate(self.blocksize as usize);
         }
 
-        Ok(output.freeze())
+        Ok((output.freeze(), input_consumed))
     }
 
     /// Check if the transfer has reached end-of-file.
@@ -547,6 +574,7 @@ impl TransferState {
     /// # Example
     ///
     /// ```no_run
+    /// # use dnsmasq::tftp::TransferState;
     /// # use std::time::Duration;
     /// # use std::path::PathBuf;
     /// # use tokio::fs::File;
@@ -592,6 +620,7 @@ impl TransferState {
     /// # Example
     ///
     /// ```no_run
+    /// # use dnsmasq::tftp::TransferState;
     /// # use std::time::Duration;
     /// # use std::path::PathBuf;
     /// # use tokio::fs::File;
@@ -637,6 +666,7 @@ impl TransferState {
     /// # Example
     ///
     /// ```no_run
+    /// # use dnsmasq::tftp::TransferState;
     /// # use std::time::Duration;
     /// # use std::path::PathBuf;
     /// # use tokio::fs::File;
@@ -695,6 +725,7 @@ impl TransferState {
     /// # Example
     ///
     /// ```no_run
+    /// # use dnsmasq::tftp::TransferState;
     /// # use std::time::Duration;
     /// # use std::path::PathBuf;
     /// # use tokio::fs::File;
@@ -726,12 +757,14 @@ impl TransferState {
     pub fn handle_ack(&mut self, ack_block: u16) -> Result<()> {
         // Validate ACK block number (must not exceed blocks we've sent)
         if ack_block > self.block_current {
-            return Err(crate::error::TftpError::IllegalOperation {
-                reason: format!(
-                    "ACK block {} exceeds current block {}",
-                    ack_block, self.block_current
-                ),
-            });
+            return Err(crate::error::DnsmasqError::Tftp(
+                crate::error::TftpError::IllegalOperation {
+                    reason: format!(
+                        "ACK block {} exceeds current block {}",
+                        ack_block, self.block_current
+                    ),
+                },
+            ));
         }
 
         // Advance window and reset timeout
