@@ -23,14 +23,26 @@ pub mod protocol;
 
 // Re-export commonly used types for convenience
 pub use protocol::{
+    NeighPacket,
     // Packet structures
-    PingPacket, RaPacket, NeighPacket, PrefixOpt,
+    PingPacket,
+    PrefixOpt,
+    RaPacket,
     // Multicast addresses
-    ALL_NODES, ALL_ROUTERS,
+    ALL_NODES,
+    ALL_ROUTERS,
+    DNSSL_OPT,
+    ICMP6_ECHO_REPLY,
     // ICMPv6 type constants
-    ICMP6_ECHO_REQUEST, ICMP6_ECHO_REPLY,
-    ICMP6_ROUTER_ADVERT, ICMP6_NEIGH_SOLICIT, ICMP6_NEIGH_ADVERT,
+    ICMP6_ECHO_REQUEST,
+    ICMP6_NEIGH_ADVERT,
+    ICMP6_NEIGH_SOLICIT,
+    ICMP6_ROUTER_ADVERT,
+    INTERVAL_OPT,
+    MTU_OPT,
+    PREFIX_OPT,
+    RDNSS_OPT,
+    ROUTE_OPT,
     // Neighbor Discovery option types
-    SOURCE_MAC_OPT, PREFIX_OPT, MTU_OPT, INTERVAL_OPT,
-    ROUTE_OPT, RDNSS_OPT, DNSSL_OPT,
+    SOURCE_MAC_OPT,
 };

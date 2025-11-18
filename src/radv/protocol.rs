@@ -1,5 +1,5 @@
 // Copyright (c) 2000-2025 Simon Kelley
-// 
+//
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation; version 2 dated June, 1991, or
@@ -521,13 +521,7 @@ pub struct NeighPacket {
 
 impl Default for NeighPacket {
     fn default() -> Self {
-        Self {
-            type_: 0,
-            code: 0,
-            checksum: 0,
-            flags: 0,
-            target: Ipv6Addr::UNSPECIFIED,
-        }
+        Self { type_: 0, code: 0, checksum: 0, flags: 0, target: Ipv6Addr::UNSPECIFIED }
     }
 }
 
