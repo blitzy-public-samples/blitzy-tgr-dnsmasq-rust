@@ -46,11 +46,43 @@
 
 use crate::error::{DnsmasqError, PlatformError, Result};
 use std::env;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::net::UnixDatagram;
+use std::net::{SocketAddr, TcpListener as StdTcpListener, UdpSocket as StdUdpSocket};
+use tokio::net::{TcpListener, UdpSocket};
+use tracing::{debug, error, info, warn};
 
 /// SD_LISTEN_FDS_START is the first file descriptor number that systemd passes
 /// File descriptors are numbered starting from 3 (after stdin=0, stdout=1, stderr=2)
 const SD_LISTEN_FDS_START: RawFd = 3;
+
+/// Type of systemd socket for type validation
+///
+/// This enum represents the different types of sockets that can be passed
+/// through systemd socket activation. Used by validation functions to ensure
+/// the socket type matches expectations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemdSocket {
+    /// TCP stream socket (SOCK_STREAM + AF_INET or AF_INET6)
+    Tcp,
+    /// UDP datagram socket (SOCK_DGRAM + AF_INET or AF_INET6)
+    Udp,
+}
+
+/// Watchdog state information from systemd
+///
+/// Contains the watchdog configuration parsed from systemd environment variables.
+/// The watchdog mechanism allows systemd to monitor service health and restart
+/// it if watchdog pings are not received within the configured interval.
+#[derive(Debug, Clone)]
+pub struct WatchdogState {
+    /// Whether watchdog is enabled for this service
+    pub enabled: bool,
+    /// Watchdog interval in microseconds (from WATCHDOG_USEC)
+    pub interval_usec: u64,
+    /// Process ID that watchdog applies to (from WATCHDOG_PID)
+    pub pid: u32,
+}
 
 /// Retrieve file descriptors passed by systemd for socket activation
 ///
@@ -105,9 +137,13 @@ pub fn sd_listen_fds(unset_environment: bool) -> Result<Vec<RawFd>> {
     let listen_pid = match env::var("LISTEN_PID") {
         Ok(pid_str) => pid_str
             .parse::<u32>()
-            .map_err(|e| PlatformError::SystemdProtocol(format!("Invalid LISTEN_PID: {}", e)))?,
+            .map_err(|e| {
+                error!("Invalid LISTEN_PID environment variable: {}", e);
+                PlatformError::SystemdProtocol(format!("Invalid LISTEN_PID: {}", e))
+            })?,
         Err(_) => {
             // Not started by systemd with socket activation
+            debug!("LISTEN_PID not set - not started with systemd socket activation");
             return Ok(Vec::new());
         }
     };
@@ -116,6 +152,10 @@ pub fn sd_listen_fds(unset_environment: bool) -> Result<Vec<RawFd>> {
     let our_pid = std::process::id();
     if listen_pid != our_pid {
         // File descriptors are intended for a different process
+        debug!(
+            "LISTEN_PID ({}) does not match our PID ({}) - ignoring file descriptors",
+            listen_pid, our_pid
+        );
         return Ok(Vec::new());
     }
 
@@ -123,17 +163,29 @@ pub fn sd_listen_fds(unset_environment: bool) -> Result<Vec<RawFd>> {
     let listen_fds = match env::var("LISTEN_FDS") {
         Ok(fds_str) => fds_str
             .parse::<u32>()
-            .map_err(|e| PlatformError::SystemdProtocol(format!("Invalid LISTEN_FDS: {}", e)))?,
+            .map_err(|e| {
+                error!("Invalid LISTEN_FDS environment variable: {}", e);
+                PlatformError::SystemdProtocol(format!("Invalid LISTEN_FDS: {}", e))
+            })?,
         Err(_) => {
             // LISTEN_PID was set but LISTEN_FDS wasn't - this is an error
+            error!("LISTEN_PID set but LISTEN_FDS not set");
             return Err(DnsmasqError::Platform(PlatformError::SystemdProtocol(
                 "LISTEN_PID set but LISTEN_FDS not set".to_string(),
             )));
         }
     };
 
+    info!(
+        "Received {} file descriptors from systemd (FDs {}-{})",
+        listen_fds,
+        SD_LISTEN_FDS_START,
+        SD_LISTEN_FDS_START + listen_fds as RawFd - 1
+    );
+
     // Unset environment variables if requested to prevent inheritance by children
     if unset_environment {
+        debug!("Unsetting systemd socket activation environment variables");
         env::remove_var("LISTEN_PID");
         env::remove_var("LISTEN_FDS");
         env::remove_var("LISTEN_FDNAMES");
@@ -202,19 +254,21 @@ pub fn sd_listen_fds(unset_environment: bool) -> Result<Vec<RawFd>> {
 /// specified in the NOTIFY_SOCKET environment variable. The message is sent as
 /// a datagram with the status string as the payload.
 pub fn sd_notify(unset_environment: bool, state: &str) -> Result<()> {
-    use std::os::unix::net::UnixDatagram;
-
     // Get the notification socket path from environment
     let notify_socket = match env::var("NOTIFY_SOCKET") {
         Ok(socket) => socket,
         Err(_) => {
             // Not running under systemd with notification support - this is OK
+            debug!("NOTIFY_SOCKET not set - not running under systemd with notification support");
             return Ok(());
         }
     };
 
+    debug!("Sending systemd notification: {}", state);
+
     // Unset environment variable if requested
     if unset_environment {
+        debug!("Unsetting NOTIFY_SOCKET environment variable");
         env::remove_var("NOTIFY_SOCKET");
     }
 
@@ -223,22 +277,28 @@ pub fn sd_notify(unset_environment: bool, state: &str) -> Result<()> {
         // Abstract socket - replace @ with null byte
         format!("\0{}", stripped)
     } else {
-        notify_socket
+        notify_socket.clone()
     };
 
     // Create a UNIX datagram socket
     let socket = UnixDatagram::unbound().map_err(|e| {
+        error!("Failed to create UNIX datagram socket for systemd notification: {}", e);
         PlatformError::SystemdNotify(format!("Failed to create UNIX datagram socket: {}", e))
     })?;
 
     // Send the notification message
     socket.send_to(state.as_bytes(), &socket_path).map_err(|e| {
+        error!(
+            "Failed to send systemd notification to {}: {}",
+            notify_socket, e
+        );
         PlatformError::SystemdNotify(format!(
             "Failed to send notification to {}: {}",
             socket_path, e
         ))
     })?;
 
+    info!("Systemd notification sent: {}", state);
     Ok(())
 }
 
@@ -324,6 +384,373 @@ pub fn sd_notify_reloading() -> Result<()> {
 /// ```
 pub fn sd_notify_stopping() -> Result<()> {
     sd_notify(false, "STOPPING=1")
+}
+
+/// Check if a file descriptor is a socket of the specified type
+///
+/// This function validates that a given file descriptor is actually a socket
+/// and optionally checks its type (TCP or UDP) and address family.
+///
+/// # Arguments
+///
+/// * `fd` - The raw file descriptor to check
+/// * `socket_type` - Optional socket type to validate (TCP or UDP)
+///
+/// # Returns
+///
+/// Returns `Ok(true)` if the file descriptor is a valid socket matching the
+/// specified type, `Ok(false)` if it's not a match, or an error if validation fails.
+///
+/// # Errors
+///
+/// Returns `PlatformError` if:
+/// - The file descriptor is invalid
+/// - Socket options cannot be queried
+///
+/// # Example
+///
+/// ```no_run
+/// use dnsmasq::platform::systemd::{sd_listen_fds, sd_is_socket, SystemdSocket};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let fds = sd_listen_fds(true)?;
+/// for fd in fds {
+///     if sd_is_socket(fd, Some(SystemdSocket::Udp))? {
+///         println!("FD {} is a UDP socket", fd);
+///     }
+/// }
+/// # Ok(())
+/// # }
+/// ```
+pub fn sd_is_socket(fd: RawFd, socket_type: Option<SystemdSocket>) -> Result<bool> {
+    use nix::sys::socket::{getsockopt, sockopt, AddressFamily, SockType};
+    use nix::sys::stat::{fstat, SFlag};
+
+    // First check if the FD is a socket using fstat
+    let stat = fstat(fd).map_err(|e| {
+        error!("Failed to fstat fd {}: {}", fd, e);
+        PlatformError::SystemdProtocol(format!("Failed to fstat fd {}: {}", fd, e))
+    })?;
+
+    // Check if it's a socket using S_IFSOCK
+    if !SFlag::from_bits_truncate(stat.st_mode).contains(SFlag::S_IFSOCK) {
+        debug!("FD {} is not a socket", fd);
+        return Ok(false);
+    }
+
+    // If no specific type requested, just confirm it's a socket
+    let Some(expected_type) = socket_type else {
+        debug!("FD {} is a socket (type not validated)", fd);
+        return Ok(true);
+    };
+
+    // Get the socket type
+    let sock_type = getsockopt(fd, sockopt::SockType).map_err(|e| {
+        error!("Failed to get socket type for fd {}: {}", fd, e);
+        PlatformError::SystemdProtocol(format!("Failed to get socket type for fd {}: {}", fd, e))
+    })?;
+
+    // Get the address family
+    let domain = getsockopt(fd, sockopt::Domain).map_err(|e| {
+        error!("Failed to get socket domain for fd {}: {}", fd, e);
+        PlatformError::SystemdProtocol(format!("Failed to get socket domain for fd {}: {}", fd, e))
+    })?;
+
+    // Check if the address family is IPv4 or IPv6
+    let is_inet = matches!(domain, AddressFamily::Inet | AddressFamily::Inet6);
+    if !is_inet {
+        debug!("FD {} is not an Internet socket (domain: {:?})", fd, domain);
+        return Ok(false);
+    }
+
+    // Validate socket type matches expectation
+    let matches = match expected_type {
+        SystemdSocket::Tcp => sock_type == SockType::Stream,
+        SystemdSocket::Udp => sock_type == SockType::Datagram,
+    };
+
+    if matches {
+        debug!(
+            "FD {} is a valid {:?} socket (domain: {:?})",
+            fd, expected_type, domain
+        );
+    } else {
+        debug!(
+            "FD {} socket type mismatch: expected {:?}, got {:?}",
+            fd, expected_type, sock_type
+        );
+    }
+
+    Ok(matches)
+}
+
+/// Check if a file descriptor is an Internet socket (IPv4 or IPv6)
+///
+/// This function validates that a given file descriptor is a TCP or UDP socket
+/// with an IPv4 or IPv6 address family. This is a convenience wrapper around
+/// `sd_is_socket()` that automatically checks for Internet socket types.
+///
+/// # Arguments
+///
+/// * `fd` - The raw file descriptor to check
+/// * `socket_type` - The expected socket type (TCP or UDP)
+///
+/// # Returns
+///
+/// Returns `Ok(true)` if the file descriptor is an Internet socket of the
+/// specified type, `Ok(false)` otherwise.
+///
+/// # Errors
+///
+/// Returns `PlatformError` if socket validation fails.
+///
+/// # Example
+///
+/// ```no_run
+/// use dnsmasq::platform::systemd::{sd_listen_fds, sd_is_socket_inet, SystemdSocket};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let fds = sd_listen_fds(true)?;
+/// for fd in fds {
+///     if sd_is_socket_inet(fd, SystemdSocket::Tcp)? {
+///         println!("FD {} is a TCP Internet socket", fd);
+///     }
+/// }
+/// # Ok(())
+/// # }
+/// ```
+pub fn sd_is_socket_inet(fd: RawFd, socket_type: SystemdSocket) -> Result<bool> {
+    // sd_is_socket already validates it's an inet socket
+    sd_is_socket(fd, Some(socket_type))
+}
+
+/// Check if systemd watchdog is enabled and get its configuration
+///
+/// This function checks if the systemd watchdog mechanism is enabled for this
+/// service by reading the WATCHDOG_USEC and WATCHDOG_PID environment variables.
+/// The watchdog requires periodic notifications via `sd_notify(false, "WATCHDOG=1")`
+/// to prevent the service from being restarted by systemd.
+///
+/// # Returns
+///
+/// Returns a `WatchdogState` with:
+/// - `enabled = true` if watchdog is configured for this process
+/// - `enabled = false` if watchdog is not configured
+/// - `interval_usec` - the watchdog interval in microseconds
+/// - `pid` - the process ID that watchdog applies to
+///
+/// # Errors
+///
+/// Returns `PlatformError` if:
+/// - WATCHDOG_USEC is set but invalid
+/// - WATCHDOG_PID is set but invalid
+///
+/// # Example
+///
+/// ```no_run
+/// use dnsmasq::platform::systemd::{sd_watchdog_enabled, sd_notify};
+/// use std::time::Duration;
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let watchdog = sd_watchdog_enabled()?;
+/// if watchdog.enabled {
+///     println!("Watchdog enabled with {}µs interval", watchdog.interval_usec);
+///     
+///     // Send watchdog pings at half the interval
+///     let interval = Duration::from_micros(watchdog.interval_usec / 2);
+///     loop {
+///         tokio::time::sleep(interval).await;
+///         sd_notify(false, "WATCHDOG=1")?;
+///     }
+/// }
+/// # Ok(())
+/// # }
+/// ```
+pub fn sd_watchdog_enabled() -> Result<WatchdogState> {
+    // Check for WATCHDOG_USEC environment variable
+    let watchdog_usec = match env::var("WATCHDOG_USEC") {
+        Ok(usec_str) => usec_str.parse::<u64>().map_err(|e| {
+            error!("Invalid WATCHDOG_USEC environment variable: {}", e);
+            PlatformError::SystemdProtocol(format!("Invalid WATCHDOG_USEC: {}", e))
+        })?,
+        Err(_) => {
+            // Watchdog not configured
+            debug!("WATCHDOG_USEC not set - watchdog not enabled");
+            return Ok(WatchdogState {
+                enabled: false,
+                interval_usec: 0,
+                pid: 0,
+            });
+        }
+    };
+
+    // Check for WATCHDOG_PID - if set, verify it matches our PID
+    let watchdog_pid = match env::var("WATCHDOG_PID") {
+        Ok(pid_str) => {
+            let pid = pid_str.parse::<u32>().map_err(|e| {
+                error!("Invalid WATCHDOG_PID environment variable: {}", e);
+                PlatformError::SystemdProtocol(format!("Invalid WATCHDOG_PID: {}", e))
+            })?;
+
+            // If WATCHDOG_PID is set, verify it matches our process ID
+            let our_pid = std::process::id();
+            if pid != our_pid {
+                debug!(
+                    "WATCHDOG_PID ({}) does not match our PID ({}) - watchdog not for us",
+                    pid, our_pid
+                );
+                return Ok(WatchdogState {
+                    enabled: false,
+                    interval_usec: 0,
+                    pid: our_pid,
+                });
+            }
+            pid
+        }
+        Err(_) => {
+            // WATCHDOG_PID not set - assume watchdog applies to us
+            std::process::id()
+        }
+    };
+
+    info!(
+        "Systemd watchdog enabled: interval={}µs, pid={}",
+        watchdog_usec, watchdog_pid
+    );
+
+    Ok(WatchdogState {
+        enabled: true,
+        interval_usec: watchdog_usec,
+        pid: watchdog_pid,
+    })
+}
+
+/// Convert a raw file descriptor to a tokio TcpListener
+///
+/// This function takes a raw file descriptor from systemd socket activation
+/// and converts it to a tokio TcpListener for use in async code.
+///
+/// # Safety
+///
+/// This function uses `FromRawFd` which is unsafe. The caller must ensure:
+/// - The file descriptor is valid and open
+/// - The file descriptor is actually a TCP listening socket
+/// - The file descriptor is not used elsewhere after this call
+///
+/// # Arguments
+///
+/// * `fd` - The raw file descriptor from systemd
+///
+/// # Returns
+///
+/// A tokio TcpListener or an error if conversion fails.
+///
+/// # Errors
+///
+/// Returns `PlatformError` if the file descriptor cannot be converted.
+///
+/// # Example
+///
+/// ```no_run
+/// use dnsmasq::platform::systemd::{sd_listen_fds, sd_is_socket_inet, SystemdSocket, fd_to_tcp_listener};
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let fds = sd_listen_fds(true)?;
+/// for fd in fds {
+///     if sd_is_socket_inet(fd, SystemdSocket::Tcp)? {
+///         let listener = fd_to_tcp_listener(fd).await?;
+///         // Use the listener...
+///     }
+/// }
+/// # Ok(())
+/// # }
+/// ```
+pub async fn fd_to_tcp_listener(fd: RawFd) -> Result<TcpListener> {
+    // SAFETY: We trust that systemd has given us a valid TCP listener FD
+    // The caller should have validated this with sd_is_socket_inet()
+    let std_listener = unsafe { StdTcpListener::from_raw_fd(fd) };
+    
+    // Set non-blocking mode for tokio
+    std_listener.set_nonblocking(true).map_err(|e| {
+        error!("Failed to set non-blocking mode on TCP listener: {}", e);
+        PlatformError::SystemdError {
+            operation: "set_nonblocking".to_string(),
+            reason: e.to_string(),
+        }
+    })?;
+
+    // Convert to tokio TcpListener
+    TcpListener::from_std(std_listener).map_err(|e| {
+        error!("Failed to convert std TcpListener to tokio: {}", e);
+        DnsmasqError::Platform(PlatformError::SystemdError {
+            operation: "from_std".to_string(),
+            reason: e.to_string(),
+        })
+    })
+}
+
+/// Convert a raw file descriptor to a tokio UdpSocket
+///
+/// This function takes a raw file descriptor from systemd socket activation
+/// and converts it to a tokio UdpSocket for use in async code.
+///
+/// # Safety
+///
+/// This function uses `FromRawFd` which is unsafe. The caller must ensure:
+/// - The file descriptor is valid and open
+/// - The file descriptor is actually a UDP socket
+/// - The file descriptor is not used elsewhere after this call
+///
+/// # Arguments
+///
+/// * `fd` - The raw file descriptor from systemd
+///
+/// # Returns
+///
+/// A tokio UdpSocket or an error if conversion fails.
+///
+/// # Errors
+///
+/// Returns `PlatformError` if the file descriptor cannot be converted.
+///
+/// # Example
+///
+/// ```no_run
+/// use dnsmasq::platform::systemd::{sd_listen_fds, sd_is_socket_inet, SystemdSocket, fd_to_udp_socket};
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let fds = sd_listen_fds(true)?;
+/// for fd in fds {
+///     if sd_is_socket_inet(fd, SystemdSocket::Udp)? {
+///         let socket = fd_to_udp_socket(fd).await?;
+///         // Use the socket...
+///     }
+/// }
+/// # Ok(())
+/// # }
+/// ```
+pub async fn fd_to_udp_socket(fd: RawFd) -> Result<UdpSocket> {
+    // SAFETY: We trust that systemd has given us a valid UDP socket FD
+    // The caller should have validated this with sd_is_socket_inet()
+    let std_socket = unsafe { StdUdpSocket::from_raw_fd(fd) };
+    
+    // Set non-blocking mode for tokio
+    std_socket.set_nonblocking(true).map_err(|e| {
+        error!("Failed to set non-blocking mode on UDP socket: {}", e);
+        PlatformError::SystemdError {
+            operation: "set_nonblocking".to_string(),
+            reason: e.to_string(),
+        }
+    })?;
+
+    // Convert to tokio UdpSocket
+    UdpSocket::from_std(std_socket).map_err(|e| {
+        error!("Failed to convert std UdpSocket to tokio: {}", e);
+        DnsmasqError::Platform(PlatformError::SystemdError {
+            operation: "from_std".to_string(),
+            reason: e.to_string(),
+        })
+    })
 }
 
 #[cfg(test)]
