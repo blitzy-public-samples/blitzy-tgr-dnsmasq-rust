@@ -531,12 +531,18 @@ pub const ETHERSFILE: &str = "/etc/ethers";
 ))]
 pub const LEASEFILE: &str = "/var/db/dnsmasq.leases";
 
+/// DHCP/DHCPv6 lease database file (Solaris variant).
+/// See platform-specific documentation above for full details.
 #[cfg(target_os = "solaris")]
 pub const LEASEFILE: &str = "/var/cache/dnsmasq.leases";
 
+/// DHCP/DHCPv6 lease database file (Android variant).
+/// See platform-specific documentation above for full details.
 #[cfg(target_os = "android")]
 pub const LEASEFILE: &str = "/data/misc/dhcp/dnsmasq.leases";
 
+/// DHCP/DHCPv6 lease database file (Linux/Default variant).
+/// See platform-specific documentation above for full details.
 #[cfg(not(any(
     target_os = "freebsd",
     target_os = "openbsd",
@@ -562,6 +568,8 @@ pub const LEASEFILE: &str = "/var/lib/misc/dnsmasq.leases";
 #[cfg(target_os = "freebsd")]
 pub const CONFFILE: &str = "/usr/local/etc/dnsmasq.conf";
 
+/// Main configuration file location (Default variant).
+/// See platform-specific documentation above for full details.
 #[cfg(not(target_os = "freebsd"))]
 pub const CONFFILE: &str = "/etc/dnsmasq.conf";
 
@@ -580,6 +588,8 @@ pub const CONFFILE: &str = "/etc/dnsmasq.conf";
 #[cfg(target_env = "uclibc")]
 pub const RESOLVFILE: &str = "/etc/config/resolv.conf";
 
+/// System resolver configuration file (Default variant).
+/// See platform-specific documentation above for full details.
 #[cfg(not(target_env = "uclibc"))]
 pub const RESOLVFILE: &str = "/etc/resolv.conf";
 
@@ -598,6 +608,8 @@ pub const RESOLVFILE: &str = "/etc/resolv.conf";
 #[cfg(target_os = "android")]
 pub const RUNFILE: &str = "/data/dnsmasq.pid";
 
+/// Process ID (PID) file location (Default variant).
+/// See platform-specific documentation above for full details.
 #[cfg(not(target_os = "android"))]
 pub const RUNFILE: &str = "/var/run/dnsmasq.pid";
 
@@ -720,4 +732,3 @@ pub const STALE_CACHE_EXPIRY: usize = 86400;
 /// **Tunable via**: --min-cache-ttl command-line option  
 /// **Security**: Protects against cache exhaustion attacks via 0 TTL
 pub const TTL_FLOOR_LIMIT: usize = 3600;
-

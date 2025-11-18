@@ -1,5 +1,5 @@
 // Copyright (c) 2000-2025 Simon Kelley
-// 
+//
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation; version 2 dated June, 1991, or
@@ -16,15 +16,15 @@ use dnsmasq::error::Result;
 async fn main() -> Result<()> {
     // Initialize tracing subscriber for logging
     tracing_subscriber::fmt::init();
-    
+
     tracing::info!("dnsmasq v2.92.0 (Rust implementation) starting");
-    
+
     // TODO: Parse command-line arguments
     // TODO: Load configuration
     // TODO: Initialize services (DNS, DHCP, etc.)
     // TODO: Start event loop
-    
+
     tracing::info!("dnsmasq initialization complete (stub)");
-    
+
     Ok(())
 }

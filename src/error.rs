@@ -1,5 +1,5 @@
 // Copyright (c) 2000-2025 Simon Kelley
-// 
+//
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation; version 2 dated June, 1991, or
@@ -456,7 +456,9 @@ pub enum DnssecError {
     ///
     /// The RRSIG record's inception time is in the future. This may indicate
     /// clock skew or a premature signature.
-    #[error("DNSSEC signature not yet valid until {valid_from:?} (current time: {current_time:?})")]
+    #[error(
+        "DNSSEC signature not yet valid until {valid_from:?} (current time: {current_time:?})"
+    )]
     NotYetValid {
         /// The timestamp when the signature becomes valid
         valid_from: std::time::SystemTime,
