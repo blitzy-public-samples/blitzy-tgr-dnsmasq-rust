@@ -9,3 +9,6 @@
 
 /// DHCPv4 protocol constants
 pub mod constants;
+
+/// DHCPv4 options encoding/decoding
+pub mod options;
