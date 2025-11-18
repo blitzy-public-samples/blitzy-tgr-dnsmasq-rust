@@ -636,7 +636,7 @@ impl SignatureVerifier {
     /// - `InvalidKeyFormat` - Key too short, invalid exponent length, etc.
     /// - `DigestLengthMismatch` - Digest length doesn't match algorithm
     /// - `RingError` - ring library rejected key or verification
-    fn verify_rsa(
+    pub fn verify_rsa(
         &self,
         algorithm: u8,
         key_bytes: &[u8],
@@ -838,7 +838,7 @@ impl SignatureVerifier {
     /// - `Ok(true)` - ECDSA signature valid
     /// - `Ok(false)` - ECDSA signature invalid
     /// - `Err(CryptoError)` - Verification error
-    fn verify_ecdsa(
+    pub fn verify_ecdsa(
         &self,
         algorithm: u8,
         key_bytes: &[u8],
@@ -977,7 +977,7 @@ impl SignatureVerifier {
     /// Despite the parameter name "message_digest", for EdDSA this contains the FULL message,
     /// not a hash. This maintains API consistency with RSA/ECDSA verification functions.
     /// The C implementation achieves this by using a pseudo-hash that buffers the message.
-    fn verify_eddsa(
+    pub fn verify_eddsa(
         &self,
         algorithm: u8,
         key_bytes: &[u8],
