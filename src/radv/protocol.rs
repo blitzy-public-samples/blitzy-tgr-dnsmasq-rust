@@ -279,7 +279,7 @@ pub const DNSSL_OPT: u8 = 31;
 /// - RFC 4443 Section 4.1: ICMPv6 Echo Request Message (type 128)
 /// - RFC 4443 Section 4.2: ICMPv6 Echo Reply Message (type 129)
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct PingPacket {
     /// ICMPv6 message type
     ///
@@ -314,18 +314,6 @@ pub struct PingPacket {
     pub sequence_no: u16,
 }
 
-impl Default for PingPacket {
-    fn default() -> Self {
-        Self {
-            type_: 0,
-            code: 0,
-            checksum: 0,
-            identifier: 0,
-            sequence_no: 0,
-        }
-    }
-}
-
 /// ICMPv6 Router Advertisement message structure per RFC 4861
 ///
 /// This structure defines the base Router Advertisement message format transmitted by
@@ -356,7 +344,7 @@ impl Default for PingPacket {
 /// - RFC 4861 Section 4.2: Router Advertisement Message Format
 /// - RFC 4861 Section 6.2.3: Router Advertisement Processing by hosts
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct RaPacket {
     /// ICMPv6 message type (134 for Router Advertisement)
     ///
@@ -442,21 +430,6 @@ pub struct RaPacket {
     ///
     /// Network byte order (big-endian).
     pub retrans_time: u32,
-}
-
-impl Default for RaPacket {
-    fn default() -> Self {
-        Self {
-            type_: 0,
-            code: 0,
-            checksum: 0,
-            hop_limit: 0,
-            flags: 0,
-            lifetime: 0,
-            reachable_time: 0,
-            retrans_time: 0,
-        }
-    }
 }
 
 /// ICMPv6 Neighbor Solicitation/Advertisement packet structure per RFC 4861
