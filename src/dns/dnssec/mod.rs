@@ -368,18 +368,10 @@ pub mod blockdata;
 // Instead of: use dnsmasq::dns::dnssec::validator::{DnssecValidator, ValidationStatus};
 
 #[cfg(feature = "dnssec")]
-pub use validator::{
-    DnssecValidator,
-    ValidationResult,
-    ValidationStatus,
-    ValidationCounter,
-};
+pub use validator::{DnssecValidator, ValidationCounter, ValidationResult, ValidationStatus};
 
 #[cfg(feature = "dnssec")]
-pub use crypto::{
-    SignatureVerifier,
-    CryptoAlgorithm,
-};
+pub use crypto::{CryptoAlgorithm, SignatureVerifier};
 
 #[cfg(feature = "dnssec")]
 pub use trust_anchors::TrustAnchorStore;

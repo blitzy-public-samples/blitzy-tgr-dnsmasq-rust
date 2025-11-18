@@ -1,15 +1,15 @@
 // Copyright (c) 2000-2025 Simon Kelley
-// 
+//
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation; version 2 dated June, 1991, or
 // (at your option) version 3 dated 29 June, 2007.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
@@ -36,10 +36,10 @@
 //! cleared on demand for statistics collection periods.
 
 use serde::Deserialize;
+use serde_json::{to_string, to_value, Value};
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::sync::atomic::{AtomicU32, Ordering};
-use serde_json::{to_string, to_value, Value};
 
 /// Metric type enumeration defining all collectible performance and operational metrics.
 ///
@@ -61,119 +61,119 @@ pub enum MetricType {
     /// DNS cache record successfully inserted into cache hash table.
     /// Tracks cache population rate and insertion throughput.
     DnsCacheInserted = 0,
-    
+
     /// DNS cache record evicted from cache while still within TTL (live eviction).
     /// Indicates cache pressure when LRU eviction removes valid entries.
     DnsCacheLiveFreed = 1,
-    
+
     /// DNS queries forwarded to upstream recursive DNS servers.
     /// Counts cache miss queries requiring upstream resolution.
     DnsQueriesForwarded = 2,
-    
+
     /// DNS queries answered authoritatively from configured zones.
     /// Tracks authoritative DNS mode usage.
     DnsAuthAnswered = 3,
-    
+
     /// DNS queries answered from local sources (/etc/hosts, static configuration).
     /// Includes responses from hosts file entries and manual address records.
     DnsLocalAnswered = 4,
-    
+
     /// DNS queries answered with stale cache entries beyond original TTL.
     /// Indicates serve-stale functionality providing expired cached responses.
     DnsStaleAnswered = 5,
-    
+
     /// DNS queries that could not be answered (NXDOMAIN or timeout).
     /// Tracks failed resolution attempts including upstream timeouts.
     DnsUnanswered = 6,
-    
+
     /// DNSSEC cryptographic operations high-water mark (maximum observed).
     /// Tracks peak crypto operations during DNSSEC validation chains.
     CryptoHwm = 7,
-    
+
     /// DNSSEC signature verification failures high-water mark.
     /// Maximum signature failures observed in single validation chain.
     SigFailHwm = 8,
-    
+
     /// DNSSEC validation work operations high-water mark.
     /// Maximum queries required for single DNSSEC validation chain.
     WorkHwm = 9,
-    
+
     /// BOOTP protocol requests processed.
     /// Counts legacy BOOTP (pre-DHCP) network boot requests.
     Bootp = 10,
-    
+
     /// PXE (Preboot Execution Environment) boot requests processed.
     /// Tracks network boot via PXE protocol.
     Pxe = 11,
-    
+
     /// DHCPv4 ACK messages sent (address assignment confirmation).
     /// Successful DHCP lease grants completing the four-way handshake.
     DhcpAck = 12,
-    
+
     /// DHCPv4 DECLINE messages received from clients.
     /// Client detected IP address conflict via ARP and declined offered address.
     DhcpDecline = 13,
-    
+
     /// DHCPv4 DISCOVER messages received (initial address request).
     /// First phase of DHCP four-way handshake.
     DhcpDiscover = 14,
-    
+
     /// DHCPv4 INFORM messages received (configuration without address).
     /// Client has static IP but requests DHCP configuration options only.
     DhcpInform = 15,
-    
+
     /// DHCPv4 NAK messages sent (address assignment rejection).
     /// Server rejects client REQUEST (wrong network, expired lease, etc.).
     DhcpNak = 16,
-    
+
     /// DHCPv4 OFFER messages sent (address offer to client).
     /// Second phase of DHCP handshake offering available address.
     DhcpOffer = 17,
-    
+
     /// DHCPv4 RELEASE messages received (client relinquishes lease).
     /// Client explicitly releases IP address before lease expiration.
     DhcpRelease = 18,
-    
+
     /// DHCPv4 REQUEST messages received (address request/renewal).
     /// Third phase of DHCP handshake or lease renewal request.
     DhcpRequest = 19,
-    
+
     /// Queries with no answer available (distinct from NXDOMAIN).
     /// Tracks queries that daemon cannot answer due to configuration or policy.
     Noanswer = 20,
-    
+
     /// DHCPv4 leases allocated from dynamic address pools.
     /// Counts successful IPv4 address assignments (dynamic leases only).
     LeasesAllocated4 = 21,
-    
+
     /// DHCPv4 leases expired and pruned from lease database.
     /// Lease expiration cleanup and memory reclamation for IPv4.
     LeasesPruned4 = 22,
-    
+
     /// DHCPv6 leases allocated from IPv6 address pools.
     /// Counts successful IPv6 address assignments (stateful DHCPv6).
     LeasesAllocated6 = 23,
-    
+
     /// DHCPv6 leases expired and pruned from lease database.
     /// Lease expiration cleanup and memory reclamation for IPv6.
     LeasesPruned6 = 24,
-    
+
     /// TCP connections established for DNS-over-TCP queries.
     /// Tracks TCP query volume (large responses, zone transfers, DNSSEC).
     TcpConnections = 25,
-    
+
     /// DHCPv4 LEASEQUERY requests received (RFC 4388).
     /// External systems querying lease information by IP or MAC address.
     DhcpLeasequery = 26,
-    
+
     /// DHCPv4 LEASEQUERY responses: lease unassigned (IP not in pool).
     /// LEASEQUERY query for IP address not within configured DHCP ranges.
     DhcpLeaseUnassigned = 27,
-    
+
     /// DHCPv4 LEASEQUERY responses: lease active (IP currently leased).
     /// LEASEQUERY query returned active lease information.
     DhcpLeaseActive = 28,
-    
+
     /// DHCPv4 LEASEQUERY responses: lease unknown (no record found).
     /// LEASEQUERY query for IP/MAC with no matching lease database entry.
     DhcpLeaseUnknown = 29,
@@ -224,7 +224,7 @@ impl Display for MetricType {
             MetricType::TcpConnections => "tcp_connections",
             MetricType::DhcpLeasequery => "dhcp_leasequery",
             MetricType::DhcpLeaseUnassigned => "dhcp_lease_unassigned",
-            MetricType::DhcpLeaseActive => "dhcp_lease_actve",  // Note: typo preserved from C for compatibility
+            MetricType::DhcpLeaseActive => "dhcp_lease_actve", // Note: typo preserved from C for compatibility
             MetricType::DhcpLeaseUnknown => "dhcp_lease_unknown",
         };
         write!(f, "{}", name)
@@ -296,7 +296,7 @@ impl MetricType {
 ///
 /// let collector = MetricsCollector::new();
 /// collector.increment(MetricType::DnsQueriesForwarded);
-/// 
+///
 /// let count = collector.get_metric(MetricType::DnsQueriesForwarded);
 /// assert_eq!(count, 1);
 ///
@@ -320,14 +320,14 @@ impl MetricsCollector {
     /// ```
     pub fn new() -> Self {
         let mut metrics = HashMap::new();
-        
+
         for metric_type in MetricType::all() {
             metrics.insert(metric_type, AtomicU32::new(0));
         }
-        
+
         Self { metrics }
     }
-    
+
     /// Increments the specified metric counter by one.
     ///
     /// Uses atomic relaxed ordering for minimal overhead. This is safe because
@@ -353,7 +353,7 @@ impl MetricsCollector {
             counter.fetch_add(1, Ordering::Relaxed);
         }
     }
-    
+
     /// Retrieves the current value of the specified metric counter.
     ///
     /// # Arguments
@@ -373,12 +373,9 @@ impl MetricsCollector {
     /// assert_eq!(collector.get_metric(MetricType::DnsQueriesForwarded), 0);
     /// ```
     pub fn get_metric(&self, metric_type: MetricType) -> u32 {
-        self.metrics
-            .get(&metric_type)
-            .map(|counter| counter.load(Ordering::Relaxed))
-            .unwrap_or(0)
+        self.metrics.get(&metric_type).map(|counter| counter.load(Ordering::Relaxed)).unwrap_or(0)
     }
-    
+
     /// Resets all metric counters to zero.
     ///
     /// This operation is typically performed during daemon initialization,
@@ -399,7 +396,7 @@ impl MetricsCollector {
             counter.store(0, Ordering::Relaxed);
         }
     }
-    
+
     /// Retrieves all metric values as a HashMap.
     ///
     /// Returns a snapshot of all metric counters at the time of the call.
@@ -416,17 +413,14 @@ impl MetricsCollector {
     ///
     /// let collector = MetricsCollector::new();
     /// collector.increment(MetricType::DnsQueriesForwarded);
-    /// 
+    ///
     /// let all_metrics = collector.get_all_metrics();
     /// assert_eq!(all_metrics.get(&MetricType::DnsQueriesForwarded), Some(&1));
     /// ```
     pub fn get_all_metrics(&self) -> HashMap<MetricType, u32> {
-        self.metrics
-            .iter()
-            .map(|(k, v)| (*k, v.load(Ordering::Relaxed)))
-            .collect()
+        self.metrics.iter().map(|(k, v)| (*k, v.load(Ordering::Relaxed))).collect()
     }
-    
+
     /// Exports metrics as a JSON string.
     ///
     /// Converts all metric counters to a JSON object with metric names as keys
@@ -445,22 +439,22 @@ impl MetricsCollector {
     ///
     /// let collector = MetricsCollector::new();
     /// collector.increment(MetricType::DnsQueriesForwarded);
-    /// 
+    ///
     /// let json = collector.to_json().expect("Failed to serialize");
     /// assert!(json.contains("dns_queries_forwarded"));
     /// ```
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         let mut json_map = serde_json::Map::new();
-        
+
         for (metric_type, counter) in &self.metrics {
             let name = format!("{}", metric_type);
             let value = counter.load(Ordering::Relaxed);
             json_map.insert(name, to_value(value)?);
         }
-        
+
         to_string(&Value::Object(json_map))
     }
-    
+
     /// Clears per-upstream-server statistics.
     ///
     /// In the C implementation, this function iterates through the upstream server list
@@ -481,7 +475,7 @@ impl MetricsCollector {
         // Server-specific statistics (queries, failed_queries, retries, nxdomain_replies,
         // query_latency) are managed by the upstream server module (dns/upstream.rs).
         // This method is provided for API compatibility with the C implementation.
-        // 
+        //
         // In a complete integration, this would delegate to:
         // upstream_manager.clear_all_server_stats();
         //
@@ -547,7 +541,7 @@ pub fn get_metric_name(metric_type: MetricType) -> &'static str {
         MetricType::TcpConnections => "tcp_connections",
         MetricType::DhcpLeasequery => "dhcp_leasequery",
         MetricType::DhcpLeaseUnassigned => "dhcp_lease_unassigned",
-        MetricType::DhcpLeaseActive => "dhcp_lease_actve",  // Note: typo preserved from C
+        MetricType::DhcpLeaseActive => "dhcp_lease_actve", // Note: typo preserved from C
         MetricType::DhcpLeaseUnknown => "dhcp_lease_unknown",
     }
 }
@@ -613,23 +607,14 @@ mod tests {
 
     #[test]
     fn test_metric_type_display() {
-        assert_eq!(
-            format!("{}", MetricType::DnsQueriesForwarded),
-            "dns_queries_forwarded"
-        );
+        assert_eq!(format!("{}", MetricType::DnsQueriesForwarded), "dns_queries_forwarded");
         assert_eq!(format!("{}", MetricType::DhcpAck), "dhcp_ack");
-        assert_eq!(
-            format!("{}", MetricType::LeasesAllocated4),
-            "leases_allocated_4"
-        );
+        assert_eq!(format!("{}", MetricType::LeasesAllocated4), "leases_allocated_4");
     }
 
     #[test]
     fn test_get_metric_name() {
-        assert_eq!(
-            get_metric_name(MetricType::DnsQueriesForwarded),
-            "dns_queries_forwarded"
-        );
+        assert_eq!(get_metric_name(MetricType::DnsQueriesForwarded), "dns_queries_forwarded");
         assert_eq!(get_metric_name(MetricType::DhcpAck), "dhcp_ack");
     }
 
@@ -643,13 +628,13 @@ mod tests {
     #[test]
     fn test_metrics_collector_increment() {
         let collector = MetricsCollector::new();
-        
+
         collector.increment(MetricType::DnsQueriesForwarded);
         assert_eq!(collector.get_metric(MetricType::DnsQueriesForwarded), 1);
-        
+
         collector.increment(MetricType::DnsQueriesForwarded);
         assert_eq!(collector.get_metric(MetricType::DnsQueriesForwarded), 2);
-        
+
         collector.increment(MetricType::DhcpAck);
         assert_eq!(collector.get_metric(MetricType::DhcpAck), 1);
     }
@@ -657,12 +642,12 @@ mod tests {
     #[test]
     fn test_metrics_collector_clear() {
         let collector = MetricsCollector::new();
-        
+
         collector.increment(MetricType::DnsQueriesForwarded);
         collector.increment(MetricType::DhcpAck);
-        
+
         collector.clear_metrics();
-        
+
         assert_eq!(collector.get_metric(MetricType::DnsQueriesForwarded), 0);
         assert_eq!(collector.get_metric(MetricType::DhcpAck), 0);
     }
@@ -670,31 +655,25 @@ mod tests {
     #[test]
     fn test_metrics_collector_get_all() {
         let collector = MetricsCollector::new();
-        
+
         collector.increment(MetricType::DnsQueriesForwarded);
         collector.increment(MetricType::DhcpAck);
-        
+
         let all_metrics = collector.get_all_metrics();
-        assert_eq!(
-            all_metrics.get(&MetricType::DnsQueriesForwarded),
-            Some(&1)
-        );
+        assert_eq!(all_metrics.get(&MetricType::DnsQueriesForwarded), Some(&1));
         assert_eq!(all_metrics.get(&MetricType::DhcpAck), Some(&1));
-        assert_eq!(
-            all_metrics.get(&MetricType::DnsCacheInserted),
-            Some(&0)
-        );
+        assert_eq!(all_metrics.get(&MetricType::DnsCacheInserted), Some(&0));
     }
 
     #[test]
     fn test_metrics_collector_to_json() {
         let collector = MetricsCollector::new();
-        
+
         collector.increment(MetricType::DnsQueriesForwarded);
         collector.increment(MetricType::DhcpAck);
-        
+
         let json = collector.to_json().expect("Failed to serialize to JSON");
-        
+
         assert!(json.contains("dns_queries_forwarded"));
         assert!(json.contains("dhcp_ack"));
     }
@@ -702,10 +681,10 @@ mod tests {
     #[test]
     fn test_clear_metrics_function() {
         let collector = MetricsCollector::new();
-        
+
         collector.increment(MetricType::DnsQueriesForwarded);
         clear_metrics(&collector);
-        
+
         assert_eq!(collector.get_metric(MetricType::DnsQueriesForwarded), 0);
     }
 

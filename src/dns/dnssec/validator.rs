@@ -50,7 +50,7 @@ impl Default for DnssecValidator {
 pub struct ValidationResult {
     /// Validation status.
     pub status: ValidationStatus,
-    
+
     /// Error details if validation failed.
     pub error_details: Option<String>,
 }
@@ -60,13 +60,13 @@ pub struct ValidationResult {
 pub enum ValidationStatus {
     /// Response cryptographically verified - safe to use.
     Secure,
-    
+
     /// Zone not signed - validation not possible but not an error.
     Insecure,
-    
+
     /// Validation failed - response may be forged.
     Bogus,
-    
+
     /// Validation cannot complete (missing records, timeouts).
     Indeterminate,
 }
@@ -108,32 +108,32 @@ impl ValidationCounter {
             max_sig_fail: 20,
         }
     }
-    
+
     /// Sets maximum validation queries allowed.
     pub fn set_max_work(&mut self, max: usize) {
         self.max_work = max;
     }
-    
+
     /// Sets maximum signature verifications allowed.
     pub fn set_max_crypto(&mut self, max: usize) {
         self.max_crypto = max;
     }
-    
+
     /// Sets maximum signature failures allowed.
     pub fn set_max_sig_fail(&mut self, max: usize) {
         self.max_sig_fail = max;
     }
-    
+
     /// Checks if work limit exceeded.
     pub fn check_work_limit(&self) -> bool {
         self.work_count >= self.max_work
     }
-    
+
     /// Checks if crypto limit exceeded.
     pub fn check_crypto_limit(&self) -> bool {
         self.crypto_count >= self.max_crypto
     }
-    
+
     /// Checks if signature failure limit exceeded.
     pub fn check_sig_fail_limit(&self) -> bool {
         self.sig_fail_count >= self.max_sig_fail

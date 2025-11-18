@@ -53,25 +53,25 @@ impl Default for SignatureVerifier {
 pub enum CryptoAlgorithm {
     /// RSA/SHA-1 (deprecated, MUST NOT implement)
     RsaSha1 = 5,
-    
+
     /// DSA/SHA-1 (deprecated, MUST NOT implement)
     DsaSha1 = 3,
-    
+
     /// RSA/SHA-256 (MUST implement)
     RsaSha256 = 8,
-    
+
     /// RSA/SHA-512 (RECOMMENDED)
     RsaSha512 = 10,
-    
+
     /// ECDSA Curve P-256 with SHA-256 (MUST implement)
     EcdsaP256Sha256 = 13,
-    
+
     /// ECDSA Curve P-384 with SHA-384 (RECOMMENDED)
     EcdsaP384Sha384 = 14,
-    
+
     /// Ed25519 (RECOMMENDED)
     Ed25519 = 15,
-    
+
     /// Ed448 (RECOMMENDED)
     Ed448 = 16,
 }
@@ -91,12 +91,12 @@ impl CryptoAlgorithm {
             _ => None,
         }
     }
-    
+
     /// Converts enum variant to algorithm number.
     pub fn to_u8(self) -> u8 {
         self as u8
     }
-    
+
     /// Returns whether this algorithm is recommended for use.
     pub fn is_recommended(self) -> bool {
         matches!(
@@ -109,7 +109,7 @@ impl CryptoAlgorithm {
                 | Self::Ed448
         )
     }
-    
+
     /// Returns whether this algorithm is deprecated.
     pub fn is_deprecated(self) -> bool {
         matches!(self, Self::RsaSha1 | Self::DsaSha1)

@@ -21,8 +21,8 @@
 //!
 //! Replaces trust anchor handling scattered throughout C `dnssec.c`.
 
-use std::path::Path;
 use std::fmt;
+use std::path::Path;
 
 /// Trust anchor store managing root zone DNSKEY records.
 ///
@@ -38,12 +38,15 @@ impl TrustAnchorStore {
     pub fn new() -> Self {
         Self {}
     }
-    
+
     /// Loads trust anchors from a configuration file.
     ///
     /// Parses trust-anchors.conf maintaining compatibility with the
     /// C implementation's format.
-    pub async fn load_from_file<P: AsRef<Path>>(&mut self, _path: P) -> Result<(), TrustAnchorError> {
+    pub async fn load_from_file<P: AsRef<Path>>(
+        &mut self,
+        _path: P,
+    ) -> Result<(), TrustAnchorError> {
         // TODO: Implement trust anchor loading
         Ok(())
     }
@@ -60,10 +63,10 @@ impl Default for TrustAnchorStore {
 pub enum TrustAnchorError {
     /// Failed to read trust anchor file.
     IoError(String),
-    
+
     /// Failed to parse trust anchor file.
     ParseError(String),
-    
+
     /// Invalid trust anchor data.
     InvalidData(String),
 }
