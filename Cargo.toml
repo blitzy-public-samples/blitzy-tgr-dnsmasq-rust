@@ -1,0 +1,97 @@
+[package]
+name = "dnsmasq"
+version = "2.92.0"
+edition = "2021"
+rust-version = "1.91.0"
+authors = ["Dnsmasq Contributors"]
+license = "GPL-2.0-or-later OR GPL-3.0"
+description = "Memory-safe DNS forwarder and DHCP server"
+repository = "https://github.com/dnsmasq/dnsmasq"
+readme = "README.md"
+keywords = ["dns", "dhcp", "network", "server", "forwarder"]
+categories = ["network-programming"]
+
+[dependencies]
+tokio = { version = "1.42", features = ["full"] }
+hickory-proto = "0.25"
+hickory-server = "0.25"
+hickory-client = "0.25"
+hickory-resolver = "0.25"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive", "env", "wrap_help"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+bytes = "1.9"
+nom = "7.1"
+ring = { version = "0.17", optional = true }
+tokio-util = "0.7"
+futures = "0.3"
+async-trait = "0.1"
+
+# Platform-specific dependencies
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "0.29", features = ["socket", "net", "signal", "process"] }
+netlink-packet-route = { version = "0.20", optional = true }
+rtnetlink = { version = "0.15", optional = true }
+caps = "0.5"
+
+[target.'cfg(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))'.dependencies]
+nix = { version = "0.29", features = ["socket", "net", "signal", "process"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nix = { version = "0.29", features = ["socket", "net", "signal", "process"] }
+
+# Optional feature dependencies
+[dependencies.zbus]
+version = "5.1"
+optional = true
+
+[dependencies.mlua]
+version = "0.10"
+optional = true
+features = ["lua54", "vendored"]
+
+[dependencies.idna]
+version = "1.0"
+optional = true
+
+[dependencies.notify]
+version = "7.0"
+optional = true
+
+[dev-dependencies]
+proptest = "1.6"
+mockall = "0.13"
+criterion = "0.5"
+tempfile = "3.14"
+tokio-test = "0.4"
+
+[features]
+default = ["dnssec", "idn"]
+dnssec = ["ring"]
+dbus = ["zbus"]
+lua-scripts = ["mlua"]
+idn = ["idna"]
+tftp = []
+conntrack = ["rtnetlink", "netlink-packet-route"]
+nftset = []
+ipset = []
+inotify = ["notify"]
+all-features = ["dnssec", "dbus", "lua-scripts", "idn", "tftp", "conntrack", "nftset", "ipset", "inotify"]
+
+[[bin]]
+name = "dnsmasq"
+path = "src/main.rs"
+
+[lib]
+name = "dnsmasq"
+path = "src/lib.rs"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
