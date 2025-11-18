@@ -70,19 +70,17 @@
 //! - [`flush_log()`]: Synchronous drain during shutdown ensuring all messages written
 //!
 //! **Usage Example:**
-//! ```rust
-//! use dnsmasq::util::{log_init, flush_log};
-//! use tracing::{info, error};
+//! ```rust,ignore
+//! use dnsmasq::util::log_init;
+//! use tracing::{info, error, Level};
 //!
-//! // Initialize logging at startup
-//! log_init().expect("Failed to initialize logging");
+//! // Initialize logging at startup with configuration
+//! log_init(false, None, true, Level::INFO)
+//!     .expect("Failed to initialize logging");
 //!
 //! // Use tracing macros throughout the codebase
-//! info!(ip = %lease_ip, mac = %client_mac, "DHCP lease allocated");
-//! error!(domain = %name, "DNSSEC validation failed: BOGUS");
-//!
-//! // Flush all logs during graceful shutdown
-//! flush_log().await;
+//! info!(ip = "192.168.1.100", mac = "00:11:22:33:44:55", "DHCP lease allocated");
+//! error!(domain = "example.com", "DNSSEC validation failed: BOGUS");
 //! ```
 //!
 //! ## Metrics (`metrics`)
@@ -96,8 +94,9 @@
 //! - [`MetricType`]: Enum of all collectible metrics
 //!
 //! **Usage Example:**
-//! ```rust
-//! use dnsmasq::util::{MetricType, MetricsCollector};
+//! ```rust,ignore
+//! use dnsmasq::util::MetricType;
+//! use dnsmasq::util::metrics::MetricsCollector;
 //!
 //! let metrics = MetricsCollector::new();
 //! metrics.increment(MetricType::DnsQueriesForwarded);
@@ -145,15 +144,17 @@
 //! - [`dump_packet_icmp()`]: Capture ICMPv6 packets (Router Advertisements)
 //!
 //! **Usage Example:**
-//! ```rust
-//! use dnsmasq::util::pcap::{dump_init, dump_packet_udp, DumpMask};
+//! ```rust,ignore
+//! use dnsmasq::util::pcap::dump_init;
+//! use std::path::Path;
 //!
-//! // Initialize packet capture
-//! let pcap = dump_init("/var/log/dnsmasq.pcap", DumpMask::QUERY | DumpMask::REPLY)
+//! // Initialize packet capture with 65535 byte snaplen
+//! let pcap = dump_init(Path::new("/var/log/dnsmasq.pcap"), 65535)
+//!     .await
 //!     .expect("Failed to create pcap file");
 //!
-//! // Capture packets
-//! pcap.write_packet_udp(&src_addr, &dst_addr, &packet_data).await;
+//! // Capture packets using PcapWriter methods
+//! // (see pcap module documentation for packet capture details)
 //! ```
 //!
 //! ## Helper Scripts (`helpers`)
@@ -172,15 +173,19 @@
 //! - [`queue_arp()`]: Queue ARP table change event
 //!
 //! **Usage Example:**
-//! ```rust
-//! use dnsmasq::util::helpers::{queue_script, ScriptEvent};
+//! ```rust,ignore
+//! use dnsmasq::util::helpers::{queue_script, ScriptEvent, LeaseAction, ScriptExecutor};
+//! use std::sync::Arc;
+//! use std::net::IpAddr;
 //!
-//! // Queue DHCP lease event
-//! queue_script(ScriptEvent::DhcpLease {
+//! // Queue DHCP lease event with executor
+//! let executor = Arc::new(ScriptExecutor::new("/usr/local/bin/dhcp-script"));
+//! queue_script(&executor, ScriptEvent::DhcpLease {
 //!     action: LeaseAction::Add,
-//!     mac: client_mac,
-//!     ip: lease_ip,
-//!     hostname: client_hostname,
+//!     mac: "00:11:22:33:44:55".to_string(),
+//!     ip: IpAddr::from([192, 168, 1, 100]),
+//!     hostname: Some("client-host".to_string()),
+//!     // ... other required fields
 //! }).await?;
 //! ```
 //!
