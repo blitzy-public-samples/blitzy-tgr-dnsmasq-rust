@@ -46,9 +46,9 @@
 
 use crate::error::{DnsmasqError, PlatformError, Result};
 use std::env;
+use std::net::{TcpListener as StdTcpListener, UdpSocket as StdUdpSocket};
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
-use std::net::{TcpListener as StdTcpListener, UdpSocket as StdUdpSocket};
 use tokio::net::{TcpListener, UdpSocket};
 use tracing::{debug, error, info};
 
@@ -135,12 +135,10 @@ pub struct WatchdogState {
 pub fn sd_listen_fds(unset_environment: bool) -> Result<Vec<RawFd>> {
     // Check if we were started by systemd by looking for LISTEN_PID
     let listen_pid = match env::var("LISTEN_PID") {
-        Ok(pid_str) => pid_str
-            .parse::<u32>()
-            .map_err(|e| {
-                error!("Invalid LISTEN_PID environment variable: {}", e);
-                PlatformError::SystemdProtocol(format!("Invalid LISTEN_PID: {}", e))
-            })?,
+        Ok(pid_str) => pid_str.parse::<u32>().map_err(|e| {
+            error!("Invalid LISTEN_PID environment variable: {}", e);
+            PlatformError::SystemdProtocol(format!("Invalid LISTEN_PID: {}", e))
+        })?,
         Err(_) => {
             // Not started by systemd with socket activation
             debug!("LISTEN_PID not set - not started with systemd socket activation");
@@ -161,12 +159,10 @@ pub fn sd_listen_fds(unset_environment: bool) -> Result<Vec<RawFd>> {
 
     // Get the number of file descriptors passed
     let listen_fds = match env::var("LISTEN_FDS") {
-        Ok(fds_str) => fds_str
-            .parse::<u32>()
-            .map_err(|e| {
-                error!("Invalid LISTEN_FDS environment variable: {}", e);
-                PlatformError::SystemdProtocol(format!("Invalid LISTEN_FDS: {}", e))
-            })?,
+        Ok(fds_str) => fds_str.parse::<u32>().map_err(|e| {
+            error!("Invalid LISTEN_FDS environment variable: {}", e);
+            PlatformError::SystemdProtocol(format!("Invalid LISTEN_FDS: {}", e))
+        })?,
         Err(_) => {
             // LISTEN_PID was set but LISTEN_FDS wasn't - this is an error
             error!("LISTEN_PID set but LISTEN_FDS not set");
@@ -288,10 +284,7 @@ pub fn sd_notify(unset_environment: bool, state: &str) -> Result<()> {
 
     // Send the notification message
     socket.send_to(state.as_bytes(), &socket_path).map_err(|e| {
-        error!(
-            "Failed to send systemd notification to {}: {}",
-            notify_socket, e
-        );
+        error!("Failed to send systemd notification to {}: {}", notify_socket, e);
         PlatformError::SystemdNotify(format!(
             "Failed to send notification to {}: {}",
             socket_path, e
@@ -423,7 +416,9 @@ pub fn sd_notify_stopping() -> Result<()> {
 /// # }
 /// ```
 pub fn sd_is_socket(fd: RawFd, socket_type: Option<SystemdSocket>) -> Result<bool> {
-    use nix::sys::socket::{getsockname, getsockopt, sockopt, AddressFamily, SockaddrLike, SockaddrStorage, SockType};
+    use nix::sys::socket::{
+        getsockname, getsockopt, sockopt, AddressFamily, SockType, SockaddrLike, SockaddrStorage,
+    };
     use nix::sys::stat::{fstat, SFlag};
     use std::os::unix::io::BorrowedFd;
 
@@ -458,7 +453,7 @@ pub fn sd_is_socket(fd: RawFd, socket_type: Option<SystemdSocket>) -> Result<boo
         error!("Failed to get socket address for fd {}: {}", fd, e);
         PlatformError::SystemdProtocol(format!("Failed to get socket address for fd {}: {}", fd, e))
     })?;
-    
+
     let domain = addr.family().ok_or_else(|| {
         error!("Failed to get address family for fd {}", fd);
         PlatformError::SystemdProtocol(format!("Failed to get address family for fd {}", fd))
@@ -478,15 +473,9 @@ pub fn sd_is_socket(fd: RawFd, socket_type: Option<SystemdSocket>) -> Result<boo
     };
 
     if matches {
-        debug!(
-            "FD {} is a valid {:?} socket (domain: {:?})",
-            fd, expected_type, domain
-        );
+        debug!("FD {} is a valid {:?} socket (domain: {:?})", fd, expected_type, domain);
     } else {
-        debug!(
-            "FD {} socket type mismatch: expected {:?}, got {:?}",
-            fd, expected_type, sock_type
-        );
+        debug!("FD {} socket type mismatch: expected {:?}, got {:?}", fd, expected_type, sock_type);
     }
 
     Ok(matches)
@@ -584,11 +573,7 @@ pub fn sd_watchdog_enabled() -> Result<WatchdogState> {
         Err(_) => {
             // Watchdog not configured
             debug!("WATCHDOG_USEC not set - watchdog not enabled");
-            return Ok(WatchdogState {
-                enabled: false,
-                interval_usec: 0,
-                pid: 0,
-            });
+            return Ok(WatchdogState { enabled: false, interval_usec: 0, pid: 0 });
         }
     };
 
@@ -607,11 +592,7 @@ pub fn sd_watchdog_enabled() -> Result<WatchdogState> {
                     "WATCHDOG_PID ({}) does not match our PID ({}) - watchdog not for us",
                     pid, our_pid
                 );
-                return Ok(WatchdogState {
-                    enabled: false,
-                    interval_usec: 0,
-                    pid: our_pid,
-                });
+                return Ok(WatchdogState { enabled: false, interval_usec: 0, pid: our_pid });
             }
             pid
         }
@@ -621,16 +602,9 @@ pub fn sd_watchdog_enabled() -> Result<WatchdogState> {
         }
     };
 
-    info!(
-        "Systemd watchdog enabled: interval={}µs, pid={}",
-        watchdog_usec, watchdog_pid
-    );
+    info!("Systemd watchdog enabled: interval={}µs, pid={}", watchdog_usec, watchdog_pid);
 
-    Ok(WatchdogState {
-        enabled: true,
-        interval_usec: watchdog_usec,
-        pid: watchdog_pid,
-    })
+    Ok(WatchdogState { enabled: true, interval_usec: watchdog_usec, pid: watchdog_pid })
 }
 
 /// Convert a raw file descriptor to a tokio TcpListener
@@ -677,7 +651,7 @@ pub async fn fd_to_tcp_listener(fd: RawFd) -> Result<TcpListener> {
     // SAFETY: We trust that systemd has given us a valid TCP listener FD
     // The caller should have validated this with sd_is_socket_inet()
     let std_listener = unsafe { StdTcpListener::from_raw_fd(fd) };
-    
+
     // Set non-blocking mode for tokio
     std_listener.set_nonblocking(true).map_err(|e| {
         error!("Failed to set non-blocking mode on TCP listener: {}", e);
@@ -741,7 +715,7 @@ pub async fn fd_to_udp_socket(fd: RawFd) -> Result<UdpSocket> {
     // SAFETY: We trust that systemd has given us a valid UDP socket FD
     // The caller should have validated this with sd_is_socket_inet()
     let std_socket = unsafe { StdUdpSocket::from_raw_fd(fd) };
-    
+
     // Set non-blocking mode for tokio
     std_socket.set_nonblocking(true).map_err(|e| {
         error!("Failed to set non-blocking mode on UDP socket: {}", e);

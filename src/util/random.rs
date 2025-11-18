@@ -85,10 +85,10 @@ use std::io::Read;
 pub enum RandomError {
     /// Failed to open entropy source file (typically /dev/urandom).
     EntropySourceOpen(String),
-    
+
     /// Failed to read sufficient entropy from source.
     EntropySourceRead(String),
-    
+
     /// System entropy function (getrandom) failed.
     SystemEntropyFailed(String),
 }
@@ -123,16 +123,16 @@ impl std::error::Error for RandomError {}
 struct SurfState {
     /// Seed array (32 x u32) initialized from system entropy.
     seed: [u32; 32],
-    
+
     /// Input state array (12 x u32) incremented on each surf() call.
     in_state: [u32; 12],
-    
+
     /// Output buffer (8 x u32) holding generated random values.
     out: [u32; 8],
-    
+
     /// Remaining values in output buffer for rand16/rand32.
     outleft: usize,
-    
+
     /// Remaining 32-bit pairs in output buffer for rand64.
     outleft64: usize,
 }
@@ -142,13 +142,7 @@ impl SurfState {
     ///
     /// State must be initialized by calling `seed_from_entropy()` before use.
     fn new() -> Self {
-        Self {
-            seed: [0u32; 32],
-            in_state: [0u32; 12],
-            out: [0u32; 8],
-            outleft: 0,
-            outleft64: 0,
-        }
+        Self { seed: [0u32; 32], in_state: [0u32; 12], out: [0u32; 8], outleft: 0, outleft64: 0 }
     }
 
     /// Seed the RNG state from raw entropy bytes.
@@ -256,9 +250,7 @@ impl SurfRng {
     fn from_entropy(entropy: &[u8]) -> Result<Self, RandomError> {
         let mut state = SurfState::new();
         state.seed_from_entropy(entropy)?;
-        Ok(Self {
-            state: RefCell::new(state),
-        })
+        Ok(Self { state: RefCell::new(state) })
     }
 
     /// Generate a random 16-bit value.
@@ -272,7 +264,7 @@ impl SurfRng {
     /// Random u16 value (0-65535)
     pub fn rand16(&self) -> u16 {
         let mut state = self.state.borrow_mut();
-        
+
         if state.outleft == 0 {
             // Increment input state counter
             increment_input_state(&mut state.in_state);
@@ -280,7 +272,7 @@ impl SurfRng {
             surf(&mut state);
             state.outleft = 8;
         }
-        
+
         state.outleft -= 1;
         (state.out[state.outleft] & 0xFFFF) as u16
     }
@@ -296,7 +288,7 @@ impl SurfRng {
     /// Random u32 value (0-4294967295)
     pub fn rand32(&self) -> u32 {
         let mut state = self.state.borrow_mut();
-        
+
         if state.outleft == 0 {
             // Increment input state counter
             increment_input_state(&mut state.in_state);
@@ -304,7 +296,7 @@ impl SurfRng {
             surf(&mut state);
             state.outleft = 8;
         }
-        
+
         state.outleft -= 1;
         state.out[state.outleft]
     }
@@ -321,7 +313,7 @@ impl SurfRng {
     /// Random u64 value (0-18446744073709551615)
     pub fn rand64(&self) -> u64 {
         let mut state = self.state.borrow_mut();
-        
+
         if state.outleft64 < 2 {
             // Increment input state counter
             increment_input_state(&mut state.in_state);
@@ -329,7 +321,7 @@ impl SurfRng {
             surf(&mut state);
             state.outleft64 = 8;
         }
-        
+
         state.outleft64 -= 2;
         let high = state.out[state.outleft64] as u64;
         let low = state.out[state.outleft64 + 1] as u64;
@@ -411,43 +403,43 @@ fn mush(t: &mut [u32; 12], seed: &[u32; 32], i: usize, sum: u32, x: u32, b: u32)
 fn surf(state: &mut SurfState) {
     let mut t: [u32; 12] = [0; 12];
     let mut sum: u32 = 0;
-    
+
     // Initialize temporary state: t[i] = in[i] ^ seed[12 + i]
     for (i, item) in t.iter_mut().enumerate() {
         *item = state.in_state[i] ^ state.seed[12 + i];
     }
-    
+
     // Initialize output: out[i] = seed[24 + i]
     for i in 0..8 {
         state.out[i] = state.seed[24 + i];
     }
-    
+
     // Start with x = t[11]
     let mut x = t[11];
-    
+
     // 2 loops of 16 rounds each = 32 total rounds
     for _ in 0..2 {
         for _ in 0..16 {
             // Increment sum by golden ratio constant
             sum = sum.wrapping_add(0x9e3779b9);
-            
+
             // Apply 12 MUSH operations with rotation amounts: 5, 7, 9, 13
             x = mush(&mut t, &state.seed, 0, sum, x, 5);
             x = mush(&mut t, &state.seed, 1, sum, x, 7);
             x = mush(&mut t, &state.seed, 2, sum, x, 9);
             x = mush(&mut t, &state.seed, 3, sum, x, 13);
-            
+
             x = mush(&mut t, &state.seed, 4, sum, x, 5);
             x = mush(&mut t, &state.seed, 5, sum, x, 7);
             x = mush(&mut t, &state.seed, 6, sum, x, 9);
             x = mush(&mut t, &state.seed, 7, sum, x, 13);
-            
+
             x = mush(&mut t, &state.seed, 8, sum, x, 5);
             x = mush(&mut t, &state.seed, 9, sum, x, 7);
             x = mush(&mut t, &state.seed, 10, sum, x, 9);
             x = mush(&mut t, &state.seed, 11, sum, x, 13);
         }
-        
+
         // XOR output with middle of temporary state
         for i in 0..8 {
             state.out[i] ^= t[i + 4];
@@ -516,7 +508,7 @@ fn increment_input_state(in_state: &mut [u32; 12]) {
 /// ```
 pub fn rand_init() -> Result<SurfRng, RandomError> {
     let mut entropy = [0u8; 176]; // 32 u32 + 12 u32 = 44 u32 = 176 bytes
-    
+
     // Try getrandom first (preferred method on modern systems)
     match getrandom::getrandom(&mut entropy) {
         Ok(()) => {
@@ -527,16 +519,14 @@ pub fn rand_init() -> Result<SurfRng, RandomError> {
             eprintln!("getrandom failed ({}), falling back to {}", e, RANDFILE);
         }
     }
-    
+
     // Fallback: read from RANDFILE (/dev/urandom)
-    let mut file = File::open(RANDFILE).map_err(|e| {
-        RandomError::EntropySourceOpen(format!("{}: {}", RANDFILE, e))
-    })?;
-    
-    file.read_exact(&mut entropy).map_err(|e| {
-        RandomError::EntropySourceRead(format!("{}: {}", RANDFILE, e))
-    })?;
-    
+    let mut file = File::open(RANDFILE)
+        .map_err(|e| RandomError::EntropySourceOpen(format!("{}: {}", RANDFILE, e)))?;
+
+    file.read_exact(&mut entropy)
+        .map_err(|e| RandomError::EntropySourceRead(format!("{}: {}", RANDFILE, e)))?;
+
     SurfRng::from_entropy(&entropy)
 }
 
@@ -589,12 +579,7 @@ fn ensure_global_rng_initialized() {
 /// ```
 pub fn rand16() -> u16 {
     ensure_global_rng_initialized();
-    GLOBAL_RNG.with(|rng| {
-        rng.borrow()
-            .as_ref()
-            .expect("Global RNG not initialized")
-            .rand16()
-    })
+    GLOBAL_RNG.with(|rng| rng.borrow().as_ref().expect("Global RNG not initialized").rand16())
 }
 
 /// Generate random 32-bit value using global RNG instance.
@@ -620,12 +605,7 @@ pub fn rand16() -> u16 {
 /// ```
 pub fn rand32() -> u32 {
     ensure_global_rng_initialized();
-    GLOBAL_RNG.with(|rng| {
-        rng.borrow()
-            .as_ref()
-            .expect("Global RNG not initialized")
-            .rand32()
-    })
+    GLOBAL_RNG.with(|rng| rng.borrow().as_ref().expect("Global RNG not initialized").rand32())
 }
 
 /// Generate random 64-bit value using global RNG instance.
@@ -651,12 +631,7 @@ pub fn rand32() -> u32 {
 /// ```
 pub fn rand64() -> u64 {
     ensure_global_rng_initialized();
-    GLOBAL_RNG.with(|rng| {
-        rng.borrow()
-            .as_ref()
-            .expect("Global RNG not initialized")
-            .rand64()
-    })
+    GLOBAL_RNG.with(|rng| rng.borrow().as_ref().expect("Global RNG not initialized").rand64())
 }
 
 // ============================================================================
@@ -730,18 +705,18 @@ mod tests {
     #[test]
     fn test_increment_input_state() {
         let mut in_state = [0u32; 12];
-        
+
         // First increment
         increment_input_state(&mut in_state);
         assert_eq!(in_state[0], 1);
         assert_eq!(in_state[1], 0);
-        
+
         // Overflow from in_state[0]
         in_state[0] = u32::MAX;
         increment_input_state(&mut in_state);
         assert_eq!(in_state[0], 0);
         assert_eq!(in_state[1], 1);
-        
+
         // Cascade overflow from in_state[0] and in_state[1]
         in_state[0] = u32::MAX;
         in_state[1] = u32::MAX;
@@ -761,13 +736,13 @@ mod tests {
     #[test]
     fn test_surf_generates_different_outputs() {
         let rng = rand_init().expect("Failed to initialize RNG");
-        
+
         // Generate multiple values
         let mut values = Vec::new();
         for _ in 0..100 {
             values.push(rng.rand32());
         }
-        
+
         // Check that not all values are the same (would indicate broken RNG)
         let first = values[0];
         let all_same = values.iter().all(|&v| v == first);

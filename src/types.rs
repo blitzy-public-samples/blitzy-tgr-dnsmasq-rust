@@ -119,8 +119,8 @@ use crate::error::DnsmasqError;
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug, Display, Formatter};
-use std::net::SocketAddr;
 pub use std::net::IpAddr;
+use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -271,55 +271,54 @@ impl DomainName {
     /// ```
     pub fn new(name: impl Into<String>) -> Result<Self, DnsmasqError> {
         let inner = name.into();
-        
+
         // Validate total length (RFC 1035: 255 octets max)
         if inner.is_empty() {
-            return Err(DnsmasqError::Other(
-                "Domain name cannot be empty".to_string()
-            ));
+            return Err(DnsmasqError::Other("Domain name cannot be empty".to_string()));
         }
-        
+
         if inner.len() > 255 {
-            return Err(DnsmasqError::Other(
-                format!("Domain name exceeds 255 bytes: {} bytes", inner.len())
-            ));
+            return Err(DnsmasqError::Other(format!(
+                "Domain name exceeds 255 bytes: {} bytes",
+                inner.len()
+            )));
         }
-        
+
         // Validate labels (segments between dots)
         let labels: Vec<&str> = inner.trim_end_matches('.').split('.').collect();
-        
+
         for label in labels {
             if label.is_empty() {
                 return Err(DnsmasqError::Other(
-                    "Domain name contains empty label (consecutive dots)".to_string()
+                    "Domain name contains empty label (consecutive dots)".to_string(),
                 ));
             }
-            
+
             if label.len() > 63 {
-                return Err(DnsmasqError::Other(
-                    format!("Label '{}' exceeds 63 bytes", label)
-                ));
+                return Err(DnsmasqError::Other(format!("Label '{}' exceeds 63 bytes", label)));
             }
-            
+
             // Validate label characters
             if label.starts_with('-') || label.ends_with('-') {
-                return Err(DnsmasqError::Other(
-                    format!("Label '{}' cannot start or end with hyphen", label)
-                ));
+                return Err(DnsmasqError::Other(format!(
+                    "Label '{}' cannot start or end with hyphen",
+                    label
+                )));
             }
-            
+
             for ch in label.chars() {
                 if !ch.is_ascii_alphanumeric() && ch != '-' {
-                    return Err(DnsmasqError::Other(
-                        format!("Label '{}' contains invalid character '{}'", label, ch)
-                    ));
+                    return Err(DnsmasqError::Other(format!(
+                        "Label '{}' contains invalid character '{}'",
+                        label, ch
+                    )));
                 }
             }
         }
-        
+
         Ok(Self { inner })
     }
-    
+
     /// Returns the domain name as a string slice.
     ///
     /// # Examples
@@ -331,7 +330,7 @@ impl DomainName {
     pub fn as_str(&self) -> &str {
         &self.inner
     }
-    
+
     /// Returns the labels (segments between dots) of the domain name.
     ///
     /// Trailing dots are ignored for FQDN handling.
@@ -348,7 +347,7 @@ impl DomainName {
     pub fn labels(&self) -> Vec<&str> {
         self.inner.trim_end_matches('.').split('.').collect()
     }
-    
+
     /// Checks if this domain name is a subdomain of another.
     ///
     /// Comparison is case-insensitive per DNS specifications.
@@ -367,22 +366,24 @@ impl DomainName {
     pub fn is_subdomain_of(&self, other: &DomainName) -> bool {
         let self_labels = self.labels();
         let other_labels = other.labels();
-        
+
         if self_labels.len() <= other_labels.len() {
             return false;
         }
-        
+
         // Check if parent labels match suffix of child labels (case-insensitive)
-        self_labels.iter().rev()
+        self_labels
+            .iter()
+            .rev()
             .zip(other_labels.iter().rev())
             .all(|(a, b)| a.eq_ignore_ascii_case(b))
     }
-    
+
     /// Returns the length of the domain name in bytes.
     pub fn len(&self) -> usize {
         self.inner.len()
     }
-    
+
     /// Checks if the domain name is empty (always false due to validation).
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
@@ -403,7 +404,7 @@ impl Debug for DomainName {
 
 impl FromStr for DomainName {
     type Err = DnsmasqError;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::new(s)
     }
@@ -479,7 +480,7 @@ impl MacAddress {
     pub fn new(octets: [u8; 6]) -> Self {
         Self { octets }
     }
-    
+
     /// Parses a MAC address from string with multiple format support.
     ///
     /// # Supported Formats
@@ -498,30 +499,28 @@ impl MacAddress {
     /// - Separators are inconsistent
     pub fn parse(s: &str) -> Result<Self, DnsmasqError> {
         let s = s.trim();
-        
+
         // Remove common separators and validate
-        let hex_str: String = s.chars()
-            .filter(|c| c.is_ascii_hexdigit())
-            .collect();
-        
+        let hex_str: String = s.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+
         if hex_str.len() != 12 {
-            return Err(DnsmasqError::Other(
-                format!("Invalid MAC address '{}': expected 12 hex digits", s)
-            ));
+            return Err(DnsmasqError::Other(format!(
+                "Invalid MAC address '{}': expected 12 hex digits",
+                s
+            )));
         }
-        
+
         let mut octets = [0u8; 6];
         for i in 0..6 {
-            let byte_str = &hex_str[i*2..i*2+2];
-            octets[i] = u8::from_str_radix(byte_str, 16)
-                .map_err(|e| DnsmasqError::Other(
-                    format!("Invalid hex in MAC address '{}': {}", s, e)
-                ))?;
+            let byte_str = &hex_str[i * 2..i * 2 + 2];
+            octets[i] = u8::from_str_radix(byte_str, 16).map_err(|e| {
+                DnsmasqError::Other(format!("Invalid hex in MAC address '{}': {}", s, e))
+            })?;
         }
-        
+
         Ok(Self { octets })
     }
-    
+
     /// Creates a MAC address from a 6-byte array.
     ///
     /// # Examples
@@ -532,7 +531,7 @@ impl MacAddress {
     pub fn from_bytes(bytes: [u8; 6]) -> Self {
         Self { octets: bytes }
     }
-    
+
     /// Returns a reference to the underlying octets.
     ///
     /// # Examples
@@ -544,7 +543,7 @@ impl MacAddress {
     pub fn octets(&self) -> &[u8; 6] {
         &self.octets
     }
-    
+
     /// Returns the octets as a byte slice.
     pub fn as_bytes(&self) -> &[u8] {
         &self.octets
@@ -556,9 +555,16 @@ impl Display for MacAddress {
     ///
     /// Example: `00:11:22:33:44:55`
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-            self.octets[0], self.octets[1], self.octets[2],
-            self.octets[3], self.octets[4], self.octets[5])
+        write!(
+            f,
+            "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+            self.octets[0],
+            self.octets[1],
+            self.octets[2],
+            self.octets[3],
+            self.octets[4],
+            self.octets[5]
+        )
     }
 }
 
@@ -570,7 +576,7 @@ impl Debug for MacAddress {
 
 impl FromStr for MacAddress {
     type Err = DnsmasqError;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)
     }
@@ -796,49 +802,49 @@ bitflags! {
     pub struct CacheFlags: u32 {
         /// Cache entry never expires (static configuration)
         const IMMORTAL  = 1u32 << 0;
-        
+
         /// Name field is a pointer (not inline storage)
         const NAMEP     = 1u32 << 1;
-        
+
         /// Reverse DNS lookup (PTR record)
         const REVERSE   = 1u32 << 2;
-        
+
         /// Forward DNS lookup (A/AAAA record)
         const FORWARD   = 1u32 << 3;
-        
+
         /// Entry originated from DHCP lease
         const DHCP      = 1u32 << 4;
-        
+
         /// Negative cache entry (NXDOMAIN or no data)
         const NEG       = 1u32 << 5;
-        
+
         /// Entry from /etc/hosts file
         const HOSTS     = 1u32 << 6;
-        
+
         /// Contains IPv4 address
         const IPV4      = 1u32 << 7;
-        
+
         /// Contains IPv6 address
         const IPV6      = 1u32 << 8;
-        
+
         /// Domain name exceeds SMALLDNAME (uses heap)
         const BIGNAME   = 1u32 << 9;
-        
+
         /// Non-existent domain (NXDOMAIN response)
         const NXDOMAIN  = 1u32 << 10;
-        
+
         /// CNAME record (canonical name alias)
         const CNAME     = 1u32 << 11;
-        
+
         /// DNSKEY record (DNSSEC public key)
         const DNSKEY    = 1u32 << 12;
-        
+
         /// Entry from configuration file
         const CONFIG    = 1u32 << 13;
-        
+
         /// DS record (delegation signer for DNSSEC)
         const DS        = 1u32 << 14;
-        
+
         /// DNSSEC validation successful
         const DNSSECOK  = 1u32 << 15;
     }
@@ -896,10 +902,10 @@ bitflags! {
 pub struct ServerDetails {
     /// Socket address of the upstream DNS server
     addr: SocketAddr,
-    
+
     /// Optional domain restriction (None = forward all domains)
     domain: Option<DomainName>,
-    
+
     /// Server configuration flags
     flags: u16,
 }
@@ -912,25 +918,29 @@ impl ServerDetails {
     /// * `addr` - Socket address of the DNS server (IP + port)
     /// * `domain` - Optional domain to restrict forwarding
     /// * `flags` - Server configuration flags
-    pub fn new(addr: SocketAddr, domain: Option<impl Into<String>>, flags: u16) -> Result<Self, DnsmasqError> {
+    pub fn new(
+        addr: SocketAddr,
+        domain: Option<impl Into<String>>,
+        flags: u16,
+    ) -> Result<Self, DnsmasqError> {
         let domain = match domain {
             Some(d) => Some(DomainName::new(d)?),
             None => None,
         };
-        
+
         Ok(Self { addr, domain, flags })
     }
-    
+
     /// Returns the server socket address.
     pub fn addr(&self) -> SocketAddr {
         self.addr
     }
-    
+
     /// Returns the domain restriction, if any.
     pub fn domain(&self) -> Option<&DomainName> {
         self.domain.as_ref()
     }
-    
+
     /// Returns the server configuration flags.
     pub fn flags(&self) -> u16 {
         self.flags
@@ -992,13 +1002,13 @@ impl ServerDetails {
 pub struct LeaseInfo {
     /// Allocated IP address
     ip_addr: IpAddr,
-    
+
     /// Client MAC address
     mac_addr: MacAddress,
-    
+
     /// Client hostname (optional)
     hostname: Option<String>,
-    
+
     /// Lease expiration time
     expiry: SystemTime,
 }
@@ -1016,36 +1026,31 @@ impl LeaseInfo {
         ip_addr: IpAddr,
         mac_addr: MacAddress,
         hostname: Option<impl Into<String>>,
-        expiry: SystemTime
+        expiry: SystemTime,
     ) -> Result<Self, DnsmasqError> {
-        Ok(Self {
-            ip_addr,
-            mac_addr,
-            hostname: hostname.map(|h| h.into()),
-            expiry,
-        })
+        Ok(Self { ip_addr, mac_addr, hostname: hostname.map(|h| h.into()), expiry })
     }
-    
+
     /// Returns the allocated IP address.
     pub fn ip_addr(&self) -> IpAddr {
         self.ip_addr
     }
-    
+
     /// Returns the client MAC address.
     pub fn mac_addr(&self) -> MacAddress {
         self.mac_addr
     }
-    
+
     /// Returns the client hostname, if any.
     pub fn hostname(&self) -> Option<&str> {
         self.hostname.as_deref()
     }
-    
+
     /// Returns the lease expiration time.
     pub fn expiry(&self) -> SystemTime {
         self.expiry
     }
-    
+
     /// Checks if the lease has expired.
     ///
     /// Compares expiration time against current system time.
@@ -1115,11 +1120,9 @@ impl Timestamp {
     /// let now = Timestamp::now();
     /// ```
     pub fn now() -> Self {
-        Self {
-            instant: Instant::now(),
-        }
+        Self { instant: Instant::now() }
     }
-    
+
     /// Creates a timestamp representing a duration from now.
     ///
     /// # Arguments
@@ -1133,18 +1136,16 @@ impl Timestamp {
     /// let future = Timestamp::from_secs(3600);
     /// ```
     pub fn from_secs(secs: u64) -> Self {
-        Self {
-            instant: Instant::now() + Duration::from_secs(secs),
-        }
+        Self { instant: Instant::now() + Duration::from_secs(secs) }
     }
-    
+
     /// Returns the timestamp as seconds since creation.
     ///
     /// Note: This is relative to the first `Instant::now()` call, not UNIX epoch.
     pub fn as_secs(&self) -> u64 {
         self.instant.elapsed().as_secs()
     }
-    
+
     /// Returns the duration elapsed since this timestamp.
     ///
     /// # Examples
@@ -1158,7 +1159,7 @@ impl Timestamp {
     pub fn elapsed(&self) -> Duration {
         self.instant.elapsed()
     }
-    
+
     /// Returns the duration between this timestamp and another.
     ///
     /// Returns `None` if `other` is later than `self`.
@@ -1170,44 +1171,44 @@ impl Timestamp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_domain_name_validation() {
         // Valid names
         assert!(DomainName::new("example.com").is_ok());
         assert!(DomainName::new("sub.domain.example.com").is_ok());
-        assert!(DomainName::new("example.com.").is_ok());  // FQDN
+        assert!(DomainName::new("example.com.").is_ok()); // FQDN
         assert!(DomainName::new("localhost").is_ok());
-        
+
         // Invalid names
-        assert!(DomainName::new("").is_err());  // Empty
-        assert!(DomainName::new("a".repeat(256)).is_err());  // Too long
-        assert!(DomainName::new("invalid..domain").is_err());  // Double dot
-        assert!(DomainName::new("-invalid").is_err());  // Leading hyphen
+        assert!(DomainName::new("").is_err()); // Empty
+        assert!(DomainName::new("a".repeat(256)).is_err()); // Too long
+        assert!(DomainName::new("invalid..domain").is_err()); // Double dot
+        assert!(DomainName::new("-invalid").is_err()); // Leading hyphen
     }
-    
+
     #[test]
     fn test_domain_name_subdomain() {
         let parent = DomainName::new("example.com").unwrap();
         let child = DomainName::new("www.example.com").unwrap();
         let unrelated = DomainName::new("other.org").unwrap();
-        
+
         assert!(child.is_subdomain_of(&parent));
         assert!(!unrelated.is_subdomain_of(&parent));
         assert!(!parent.is_subdomain_of(&child));
     }
-    
+
     #[test]
     fn test_mac_address_parsing() {
         let mac1 = MacAddress::parse("00:11:22:33:44:55").unwrap();
         let mac2 = MacAddress::parse("00-11-22-33-44-55").unwrap();
         let mac3 = MacAddress::parse("001122334455").unwrap();
-        
+
         assert_eq!(mac1, mac2);
         assert_eq!(mac2, mac3);
         assert_eq!(mac1.to_string(), "00:11:22:33:44:55");
     }
-    
+
     #[test]
     fn test_record_type_conversion() {
         assert_eq!(RecordType::from(1), RecordType::A);
@@ -1215,41 +1216,43 @@ mod tests {
         assert_eq!(u16::from(RecordType::A), 1);
         assert_eq!(u16::from(RecordType::AAAA), 28);
     }
-    
+
     #[test]
     fn test_cache_flags_operations() {
         let mut flags = CacheFlags::FORWARD | CacheFlags::IPV4;
-        
+
         assert!(flags.contains(CacheFlags::FORWARD));
         assert!(flags.contains(CacheFlags::IPV4));
         assert!(!flags.contains(CacheFlags::IPV6));
-        
+
         flags.insert(CacheFlags::DNSSECOK);
         assert!(flags.contains(CacheFlags::DNSSECOK));
-        
+
         flags.remove(CacheFlags::IPV4);
         assert!(!flags.contains(CacheFlags::IPV4));
     }
-    
+
     #[test]
     fn test_lease_expiration() {
         let future = SystemTime::now() + Duration::from_secs(3600);
         let past = SystemTime::now() - Duration::from_secs(3600);
-        
+
         let valid_lease = LeaseInfo::new(
             "192.168.1.100".parse().unwrap(),
             MacAddress::from_bytes([0, 1, 2, 3, 4, 5]),
             Some("client"),
-            future
-        ).unwrap();
-        
+            future,
+        )
+        .unwrap();
+
         let expired_lease = LeaseInfo::new(
             "192.168.1.101".parse().unwrap(),
             MacAddress::from_bytes([0, 1, 2, 3, 4, 6]),
             Some("old-client"),
-            past
-        ).unwrap();
-        
+            past,
+        )
+        .unwrap();
+
         assert!(!valid_lease.is_expired());
         assert!(expired_lease.is_expired());
     }
