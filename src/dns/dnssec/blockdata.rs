@@ -199,7 +199,7 @@ impl BlockData {
         let num_blocks = if total_len == 0 {
             0
         } else {
-            (total_len + BLOCK_SIZE - 1) / BLOCK_SIZE
+            total_len.div_ceil(BLOCK_SIZE)
         };
 
         let mut blocks = Vec::with_capacity(num_blocks);
@@ -581,6 +581,12 @@ pub struct BlockDataStats {
     
     /// Total number of blocks allocated since initialization (cumulative).
     total_allocated: AtomicUsize,
+}
+
+impl Default for BlockDataStats {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BlockDataStats {
