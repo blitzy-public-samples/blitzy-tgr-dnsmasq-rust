@@ -641,6 +641,7 @@ dependencies = [
  "criterion",
  "futures",
  "getrandom 0.2.16",
+ "hex",
  "hickory-client",
  "hickory-proto",
  "hickory-resolver",
