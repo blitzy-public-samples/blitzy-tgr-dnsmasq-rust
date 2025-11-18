@@ -14,10 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-//! DNS subsystem for query forwarding, caching, and DNSSEC validation.
+//! DNSSEC validation and cryptographic operations.
 //!
-//! This module provides the complete DNS functionality for dnsmasq, replacing
-//! the C implementation with memory-safe Rust code.
+//! This module provides DNSSEC validation functionality including signature verification,
+//! trust anchor management, and secure data storage for DNSSEC records.
 
-pub mod dnssec;
-pub mod protocol;
+pub mod blockdata;
