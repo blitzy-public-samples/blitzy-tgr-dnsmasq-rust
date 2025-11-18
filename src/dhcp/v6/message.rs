@@ -23,7 +23,7 @@
 //!
 //! ```text
 //! DHCPv6 Message Structure:
-//! 
+//!
 //! +--------+--------+--------+--------+
 //! |  msg   |    transaction-id        |
 //! | type   |  (3 bytes)               |
@@ -106,8 +106,7 @@
 use bytes::{BufMut, BytesMut};
 use nom::{
     bytes::complete::take,
-    combinator::{map, map_res},
-    error::Error as NomError,
+    combinator::map,
     multi::many0,
     number::complete::{be_u16, be_u8},
     sequence::tuple,
@@ -115,9 +114,7 @@ use nom::{
 };
 use std::collections::HashMap;
 
-use crate::dhcp::v6::constants::*;
 use crate::error::DhcpError;
-use crate::types::IpAddr;
 
 /// DHCPv6 message structure with type-safe option storage.
 ///
@@ -238,11 +235,7 @@ impl DhcpV6Message {
     /// assert_eq!(msg.transaction_id(), &[0x12, 0x34, 0x56]);
     /// ```
     pub fn new(message_type: u8, transaction_id: [u8; 3]) -> Self {
-        Self {
-            message_type,
-            transaction_id,
-            options: HashMap::new(),
-        }
+        Self { message_type, transaction_id, options: HashMap::new() }
     }
 
     /// Parses a DHCPv6 message from raw network bytes using nom parser combinators.
@@ -281,11 +274,11 @@ impl DhcpV6Message {
     /// ```c
     /// // From rfc3315.c - Original C parsing logic
     /// if (sz < 4) return 0;  // Validate minimum size
-    /// 
+    ///
     /// state->xid = inbuff[3] | inbuff[2] << 8 | inbuff[1] << 16;
     /// unsigned char *opts = &inbuff[4];
     /// unsigned char *end = &inbuff[sz];
-    /// 
+    ///
     /// while ((opt = opt6_next(opts, end))) {
     ///     // Manually check bounds and parse
     /// }
@@ -318,9 +311,7 @@ impl DhcpV6Message {
         // Parse using nom combinators - this provides automatic bounds checking
         match Self::parse_message(input) {
             Ok((_, message)) => Ok(message),
-            Err(e) => Err(DhcpError::ParseFailed {
-                reason: format!("nom parsing failed: {}", e),
-            }),
+            Err(e) => Err(DhcpError::ParseFailed { reason: format!("nom parsing failed: {}", e) }),
         }
     }
 
@@ -359,14 +350,7 @@ impl DhcpV6Message {
             options.insert(code, data);
         }
 
-        Ok((
-            input,
-            Self {
-                message_type,
-                transaction_id,
-                options,
-            },
-        ))
+        Ok((input, Self { message_type, transaction_id, options }))
     }
 
     /// Parses the 3-byte DHCPv6 transaction ID from network bytes.
@@ -390,9 +374,7 @@ impl DhcpV6Message {
     ///
     /// `IResult<&[u8], [u8; 3]>` - nom parse result with 3-byte transaction ID array
     fn parse_xid(input: &[u8]) -> IResult<&[u8], [u8; 3]> {
-        map(take(3usize), |bytes: &[u8]| {
-            [bytes[0], bytes[1], bytes[2]]
-        })(input)
+        map(take(3usize), |bytes: &[u8]| [bytes[0], bytes[1], bytes[2]])(input)
     }
 
     /// Parses a single DHCPv6 option in TLV (Type-Length-Value) format.
@@ -470,7 +452,7 @@ impl DhcpV6Message {
     /// ```rust,ignore
     /// let mut msg = DhcpV6Message::new(MSG_ADVERTISE, [0x12, 0x34, 0x56]);
     /// msg.add_option(OPTION_SERVER_ID, vec![0x00, 0x01, ...]);
-    /// 
+    ///
     /// let packet = msg.to_bytes()?;
     /// socket.send_to(&packet, client_addr).await?;
     /// ```
@@ -478,8 +460,8 @@ impl DhcpV6Message {
         // Pre-allocate buffer: 4 bytes header + options
         let options_size: usize = self
             .options
-            .iter()
-            .map(|(_, data)| 4 + data.len()) // 4 bytes header per option
+            .values()
+            .map(|data| 4 + data.len()) // 4 bytes header per option
             .sum();
         let mut buf = BytesMut::with_capacity(4 + options_size);
 
@@ -491,10 +473,10 @@ impl DhcpV6Message {
         for (code, data) in &self.options {
             // Write option code (2 bytes, big-endian)
             buf.put_u16(*code);
-            
+
             // Write option length (2 bytes, big-endian)
             buf.put_u16(data.len() as u16);
-            
+
             // Write option data
             buf.extend_from_slice(data);
         }
@@ -676,12 +658,13 @@ impl DhcpV6Message {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dhcp::v6::constants::*;
 
     #[test]
     fn test_new_message() {
         let xid = [0x12, 0x34, 0x56];
         let msg = DhcpV6Message::new(MSG_SOLICIT, xid);
-        
+
         assert_eq!(msg.message_type(), MSG_SOLICIT);
         assert_eq!(msg.transaction_id(), &[0x12, 0x34, 0x56]);
         assert_eq!(msg.options().count(), 0);
@@ -691,8 +674,8 @@ mod tests {
     fn test_parse_minimal_message() {
         // Minimal valid packet: type + XID only
         let packet = vec![
-            0x01,              // Message type: SOLICIT
-            0x12, 0x34, 0x56,  // Transaction ID
+            0x01, // Message type: SOLICIT
+            0x12, 0x34, 0x56, // Transaction ID
         ];
 
         let msg = DhcpV6Message::from_bytes(&packet).unwrap();
@@ -704,23 +687,23 @@ mod tests {
     #[test]
     fn test_parse_message_with_options() {
         let packet = vec![
-            0x01,              // Message type: SOLICIT
-            0x12, 0x34, 0x56,  // Transaction ID
-            0x00, 0x01,        // Option code: CLIENT_ID
-            0x00, 0x04,        // Length: 4 bytes
-            0xAA, 0xBB, 0xCC, 0xDD,  // Option data
-            0x00, 0x06,        // Option code: ORO
-            0x00, 0x02,        // Length: 2 bytes
-            0x00, 0x17,        // Requested option
+            0x01, // Message type: SOLICIT
+            0x12, 0x34, 0x56, // Transaction ID
+            0x00, 0x01, // Option code: CLIENT_ID
+            0x00, 0x04, // Length: 4 bytes
+            0xAA, 0xBB, 0xCC, 0xDD, // Option data
+            0x00, 0x06, // Option code: ORO
+            0x00, 0x02, // Length: 2 bytes
+            0x00, 0x17, // Requested option
         ];
 
         let msg = DhcpV6Message::from_bytes(&packet).unwrap();
         assert_eq!(msg.message_type(), 0x01);
         assert_eq!(msg.transaction_id(), &[0x12, 0x34, 0x56]);
-        
+
         let client_id = msg.get_option(OPTION_CLIENT_ID).unwrap();
         assert_eq!(client_id, &[0xAA, 0xBB, 0xCC, 0xDD]);
-        
+
         let oro = msg.get_option(OPTION_ORO).unwrap();
         assert_eq!(oro, &[0x00, 0x17]);
     }
@@ -729,7 +712,7 @@ mod tests {
     fn test_parse_packet_too_short() {
         // Only 3 bytes (need at least 4)
         let packet = vec![0x01, 0x12, 0x34];
-        
+
         let result = DhcpV6Message::from_bytes(&packet);
         assert!(result.is_err());
         match result {
@@ -744,7 +727,7 @@ mod tests {
     fn test_to_bytes_minimal() {
         let xid = [0x12, 0x34, 0x56];
         let msg = DhcpV6Message::new(MSG_ADVERTISE, xid);
-        
+
         let bytes = msg.to_bytes().unwrap();
         assert_eq!(bytes.len(), 4);
         assert_eq!(bytes[0], MSG_ADVERTISE);
@@ -755,16 +738,16 @@ mod tests {
     fn test_to_bytes_with_options() {
         let xid = [0x12, 0x34, 0x56];
         let mut msg = DhcpV6Message::new(MSG_REPLY, xid);
-        
+
         msg.add_option(OPTION_SERVER_ID, vec![0xAA, 0xBB]);
         msg.add_option(OPTION_PREFERENCE, vec![255]);
-        
+
         let bytes = msg.to_bytes().unwrap();
-        
+
         // Verify header
         assert_eq!(bytes[0], MSG_REPLY);
         assert_eq!(&bytes[1..4], &[0x12, 0x34, 0x56]);
-        
+
         // Verify options are present (order may vary due to HashMap)
         let parsed = DhcpV6Message::from_bytes(&bytes).unwrap();
         assert_eq!(parsed.get_option(OPTION_SERVER_ID).unwrap(), &[0xAA, 0xBB]);
@@ -777,10 +760,10 @@ mod tests {
         let mut original = DhcpV6Message::new(MSG_REQUEST, xid);
         original.add_option(OPTION_CLIENT_ID, vec![1, 2, 3, 4]);
         original.add_option(OPTION_IA_NA, vec![5, 6, 7, 8, 9, 10]);
-        
+
         let bytes = original.to_bytes().unwrap();
         let parsed = DhcpV6Message::from_bytes(&bytes).unwrap();
-        
+
         assert_eq!(parsed.message_type(), MSG_REQUEST);
         assert_eq!(parsed.transaction_id(), &[0xAB, 0xCD, 0xEF]);
         assert_eq!(parsed.get_option(OPTION_CLIENT_ID).unwrap(), &[1, 2, 3, 4]);
@@ -790,10 +773,10 @@ mod tests {
     #[test]
     fn test_add_option() {
         let mut msg = DhcpV6Message::new(MSG_SOLICIT, [0; 3]);
-        
+
         msg.add_option(OPTION_CLIENT_ID, vec![1, 2, 3]);
         assert_eq!(msg.get_option(OPTION_CLIENT_ID).unwrap(), &[1, 2, 3]);
-        
+
         // Replace existing option
         msg.add_option(OPTION_CLIENT_ID, vec![4, 5, 6]);
         assert_eq!(msg.get_option(OPTION_CLIENT_ID).unwrap(), &[4, 5, 6]);
@@ -802,14 +785,14 @@ mod tests {
     #[test]
     fn test_remove_option() {
         let mut msg = DhcpV6Message::new(MSG_SOLICIT, [0; 3]);
-        
+
         msg.add_option(OPTION_CLIENT_ID, vec![1, 2, 3]);
         assert!(msg.get_option(OPTION_CLIENT_ID).is_some());
-        
+
         let removed = msg.remove_option(OPTION_CLIENT_ID);
         assert_eq!(removed, Some(vec![1, 2, 3]));
         assert!(msg.get_option(OPTION_CLIENT_ID).is_none());
-        
+
         // Remove non-existent option
         let removed = msg.remove_option(OPTION_SERVER_ID);
         assert_eq!(removed, None);
@@ -820,10 +803,10 @@ mod tests {
         // Test that 3-byte transaction ID is preserved exactly
         let xid = [0xFF, 0xAA, 0x55];
         let msg = DhcpV6Message::new(MSG_SOLICIT, xid);
-        
+
         let bytes = msg.to_bytes().unwrap();
         let parsed = DhcpV6Message::from_bytes(&bytes).unwrap();
-        
+
         assert_eq!(parsed.transaction_id(), &[0xFF, 0xAA, 0x55]);
     }
 }
