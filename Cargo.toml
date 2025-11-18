@@ -40,7 +40,7 @@ hickory-client = "0.25"
 hickory-resolver = "0.25"
 
 # Cryptography for DNSSEC - replaces Nettle library
-ring = "0.17"
+ring = { version = "0.17", optional = true }
 
 # Parsing and serialization
 nom = "7.1"
@@ -65,8 +65,8 @@ tracing-appender = "0.2"
 # Platform-specific dependencies for Linux
 [target.'cfg(target_os = "linux")'.dependencies]
 nix = { version = "0.29", features = ["socket", "net", "signal", "process", "user"] }
-netlink-packet-route = "0.20"
-rtnetlink = "0.15"
+netlink-packet-route = { version = "0.20", optional = true }
+rtnetlink = { version = "0.15", optional = true }
 caps = "0.5"
 libc = "0.2"
 
