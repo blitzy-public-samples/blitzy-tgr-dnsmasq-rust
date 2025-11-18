@@ -393,7 +393,7 @@ pub fn is_valid_dns_name(value: &str) -> bool {
 /// // Invalid patterns
 /// assert!(!is_valid_dns_name_pattern("ipcamera"));           // Not fully qualified (single label)
 /// assert!(!is_valid_dns_name_pattern("*.com"));              // Wildcard in TLD (security risk)
-/// assert!(!is_valid_dns_name_pattern("*.co.uk"));            // Wildcard in second-to-last label
+/// assert!(!is_valid_dns_name_pattern("host.*.org"));         // Wildcard in second-to-last label
 /// assert!(!is_valid_dns_name_pattern("ipcamera.local"));     // "local" pseudo-TLD forbidden
 /// ```
 ///

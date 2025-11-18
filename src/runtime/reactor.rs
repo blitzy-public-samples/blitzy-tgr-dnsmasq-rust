@@ -124,10 +124,10 @@
 //! - BSD kqueue(2): <https://man.freebsd.org/cgi/man.cgi?query=kqueue>
 
 use crate::error::Result;
-use std::io;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadBuf};
-use tokio::net::{TcpListener, TcpStream, UdpSocket};
+use std::os::unix::io::{FromRawFd, RawFd};
+#[cfg(test)]
+use std::os::unix::io::IntoRawFd;
+use tokio::net::{TcpStream, UdpSocket};
 use tracing::{debug, instrument, trace, warn};
 
 /// Configuration builder for reactor behavior and buffer sizing.
@@ -611,7 +611,9 @@ mod tests {
     async fn test_wrap_raw_fd_udp_integration() {
         // Create a standard UDP socket
         let std_socket = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-        let fd = std_socket.as_raw_fd();
+        // Set to non-blocking mode (required by tokio)
+        std_socket.set_nonblocking(true).unwrap();
+        let fd = std_socket.into_raw_fd();
         
         // Wrap it in tokio (transfers ownership)
         let tokio_socket = wrap_raw_fd_udp(fd).await.unwrap();
@@ -625,8 +627,14 @@ mod tests {
         // Create a socket with no incoming data
         let socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
         
-        // Should indicate no data available (may return true or false depending on timing)
-        let result = check_readiness(&socket).await;
-        assert!(result.is_ok());
+        // check_readiness() waits for data, so we use a timeout to verify
+        // it doesn't return immediately when no data is available
+        let result = tokio::time::timeout(
+            tokio::time::Duration::from_millis(100),
+            check_readiness(&socket)
+        ).await;
+        
+        // Should timeout because socket.readable() waits indefinitely without data
+        assert!(result.is_err(), "check_readiness should timeout when no data is available");
     }
 }

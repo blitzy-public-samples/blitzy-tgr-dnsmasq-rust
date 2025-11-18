@@ -42,6 +42,7 @@ pub mod dhcp;
 pub mod dns;
 pub mod error;
 pub mod radv;
+pub mod runtime;
 pub mod util;
 
 // Re-export commonly used types

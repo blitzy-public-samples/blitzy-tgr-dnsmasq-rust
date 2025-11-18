@@ -14,7 +14,8 @@
 
 [build]
 # Enable parallel compilation for faster builds
-jobs = 0  # 0 = use number of logical CPUs
+# jobs setting removed - Cargo uses all available CPUs by default
+# jobs = 0  # 0 = use number of logical CPUs (not supported in all Cargo versions)
 
 # Incremental compilation for faster development builds
 # (disabled in release builds via profile overrides)
@@ -307,9 +308,10 @@ RUST_BACKTRACE = "1"
 # Cargo Registry Configuration
 # =============================================================================
 # All dependencies are sourced from public crates.io registry
+# No source replacement needed - using crates.io directly
 
 [source.crates-io]
-replace-with = "crates-io"
+# replace-with = "crates-io"  # Commented out - causes circular reference
 
 # =============================================================================
 # Notes on Platform-Specific Security Features
