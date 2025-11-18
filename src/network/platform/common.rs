@@ -89,16 +89,16 @@ bitflags! {
     pub struct InterfaceFlags: u32 {
         /// Interface is up and operational (IFF_UP)
         const UP = 0x1;
-        
+
         /// Loopback interface (IFF_LOOPBACK)
         const LOOPBACK = 0x8;
-        
+
         /// Point-to-point link (IFF_POINTOPOINT) - VPN, PPP, etc.
         const POINT_TO_POINT = 0x10;
-        
+
         /// Supports multicast (IFF_MULTICAST)
         const MULTICAST = 0x1000;
-        
+
         /// Supports broadcast (IFF_BROADCAST)
         const BROADCAST = 0x2;
     }
@@ -391,7 +391,9 @@ pub trait NetworkPlatform: Send + Sync {
     ///     }
     /// }
     /// ```
-    async fn subscribe_to_changes(&self) -> Result<Pin<Box<dyn Stream<Item = InterfaceEvent> + Send>>>;
+    async fn subscribe_to_changes(
+        &self,
+    ) -> Result<Pin<Box<dyn Stream<Item = InterfaceEvent> + Send>>>;
 
     /// Convert interface index to interface name
     ///
@@ -478,5 +480,9 @@ pub trait NetworkPlatform: Send + Sync {
     ///     }
     /// }
     /// ```
-    async fn is_valid_address(&self, address: &IpAddr, interface: &NetworkInterface) -> Result<bool>;
+    async fn is_valid_address(
+        &self,
+        address: &IpAddr,
+        interface: &NetworkInterface,
+    ) -> Result<bool>;
 }

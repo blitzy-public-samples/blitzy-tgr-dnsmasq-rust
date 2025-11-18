@@ -351,11 +351,7 @@ impl ScriptExecutor {
             Self::worker_loop(worker_script_path, event_rx).await;
         });
 
-        Ok(Arc::new(Self {
-            script_path,
-            event_tx,
-            _worker_handle: worker_handle,
-        }))
+        Ok(Arc::new(Self { script_path, event_tx, _worker_handle: worker_handle }))
     }
 
     /// Queue an event for script execution
@@ -364,10 +360,7 @@ impl ScriptExecutor {
     ///
     /// Returns `HelperError::QueueFull` if the event queue is full
     pub async fn queue_event(&self, event: ScriptEvent) -> Result<(), HelperError> {
-        self.event_tx
-            .send(event)
-            .await
-            .map_err(|e| HelperError::ChannelSend(e.to_string()))
+        self.event_tx.send(event).await.map_err(|e| HelperError::ChannelSend(e.to_string()))
     }
 
     /// Worker loop processing events and executing scripts
@@ -447,7 +440,9 @@ impl ScriptExecutor {
     }
 
     /// Prepare script invocation parameters (action, args, environment)
-    fn prepare_script_invocation(event: &ScriptEvent) -> (&str, Vec<String>, HashMap<String, String>) {
+    fn prepare_script_invocation(
+        event: &ScriptEvent,
+    ) -> (&str, Vec<String>, HashMap<String, String>) {
         let mut args = Vec::new();
         let mut env_vars = HashMap::new();
 
@@ -466,7 +461,10 @@ impl ScriptExecutor {
 
                 // Environment variables
                 env_vars.insert("DNSMASQ_INTERFACE".to_string(), lease_event.interface.clone());
-                env_vars.insert("DNSMASQ_LEASE_EXPIRES".to_string(), lease_event.lease_expires.to_string());
+                env_vars.insert(
+                    "DNSMASQ_LEASE_EXPIRES".to_string(),
+                    lease_event.lease_expires.to_string(),
+                );
 
                 if let Some(d) = &lease_event.domain {
                     env_vars.insert("DNSMASQ_DOMAIN".to_string(), d.clone());
@@ -556,11 +554,7 @@ impl ScriptExecutor {
             }
 
             #[cfg(feature = "tftp")]
-            ScriptEvent::TftpTransfer {
-                file_size,
-                destination,
-                file_path,
-            } => {
+            ScriptEvent::TftpTransfer { file_size, destination, file_path } => {
                 // Positional arguments
                 args.push(file_size.to_string());
                 args.push(destination.to_string());
@@ -583,7 +577,10 @@ impl ScriptExecutor {
 }
 
 /// Convenience function to queue a DHCP lease event
-pub async fn queue_script(executor: &Arc<ScriptExecutor>, event: ScriptEvent) -> Result<(), HelperError> {
+pub async fn queue_script(
+    executor: &Arc<ScriptExecutor>,
+    event: ScriptEvent,
+) -> Result<(), HelperError> {
     executor.queue_event(event).await
 }
 
@@ -595,13 +592,7 @@ pub async fn queue_tftp(
     destination: IpAddr,
     file_path: PathBuf,
 ) -> Result<(), HelperError> {
-    executor
-        .queue_event(ScriptEvent::TftpTransfer {
-            file_size,
-            destination,
-            file_path,
-        })
-        .await
+    executor.queue_event(ScriptEvent::TftpTransfer { file_size, destination, file_path }).await
 }
 
 /// Convenience function to queue an ARP event
@@ -611,9 +602,7 @@ pub async fn queue_arp(
     mac: String,
     ip: IpAddr,
 ) -> Result<(), HelperError> {
-    executor
-        .queue_event(ScriptEvent::ArpChange { action, mac, ip })
-        .await
+    executor.queue_event(ScriptEvent::ArpChange { action, mac, ip }).await
 }
 
 #[cfg(test)]

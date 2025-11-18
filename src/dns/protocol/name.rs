@@ -143,10 +143,7 @@ impl DomainName {
     /// assert_eq!(name.as_str(), "example.com");
     /// ```
     pub fn new(s: &str) -> Result<Self, DnsError> {
-        Self::from_str(s).map_err(|e| DnsError::InvalidName {
-            name: s.to_string(),
-            reason: e,
-        })
+        Self::from_str(s).map_err(|e| DnsError::InvalidName { name: s.to_string(), reason: e })
     }
 
     /// Returns a string slice of the domain name in presentation format.
@@ -214,10 +211,7 @@ impl DomainName {
 
         // Check if parent labels match rightmost labels of self (case-insensitive)
         let self_suffix = &self_labels[self_labels.len() - parent_labels.len()..];
-        self_suffix
-            .iter()
-            .zip(parent_labels.iter())
-            .all(|(a, b)| a.eq_ignore_ascii_case(b))
+        self_suffix.iter().zip(parent_labels.iter()).all(|(a, b)| a.eq_ignore_ascii_case(b))
     }
 
     /// Returns the length of the domain name in presentation format.
@@ -408,10 +402,11 @@ impl DomainName {
 
             // Extract label bytes
             let label_bytes = &packet[offset + 1..offset + 1 + len];
-            let label = String::from_utf8(label_bytes.to_vec()).map_err(|_| DnsError::InvalidName {
-                name: "parsed".to_string(),
-                reason: "Invalid UTF-8 in label".to_string(),
-            })?;
+            let label =
+                String::from_utf8(label_bytes.to_vec()).map_err(|_| DnsError::InvalidName {
+                    name: "parsed".to_string(),
+                    reason: "Invalid UTF-8 in label".to_string(),
+                })?;
 
             labels.push(label);
             total_len += len + 1; // +1 for length byte
@@ -422,7 +417,10 @@ impl DomainName {
             if total_len > MAX_NAME_LEN {
                 return Err(DnsError::InvalidName {
                     name: labels.join("."),
-                    reason: format!("Total name length {} exceeds maximum {}", total_len, MAX_NAME_LEN),
+                    reason: format!(
+                        "Total name length {} exceeds maximum {}",
+                        total_len, MAX_NAME_LEN
+                    ),
                 });
             }
         }
@@ -475,7 +473,10 @@ impl DomainName {
         if wire_len > MAX_NAME_LEN {
             return Err(DnsError::InvalidName {
                 name: self.name.clone(),
-                reason: format!("Total wire format length {} exceeds maximum {}", wire_len, MAX_NAME_LEN),
+                reason: format!(
+                    "Total wire format length {} exceeds maximum {}",
+                    wire_len, MAX_NAME_LEN
+                ),
             });
         }
 
@@ -582,9 +583,7 @@ impl FromStr for DomainName {
         let s = s;
 
         // Create the domain name
-        let name = DomainName {
-            name: s.trim_end_matches('.').to_string(),
-        };
+        let name = DomainName { name: s.trim_end_matches('.').to_string() };
 
         // Validate
         name.validate().map_err(|e| match e {
@@ -645,7 +644,8 @@ mod tests {
     #[test]
     fn test_name_too_long() {
         // Create a name that exceeds 255 bytes in wire format
-        let long_name = format!("{}.{}.{}.{}", "a".repeat(63), "b".repeat(63), "c".repeat(63), "d".repeat(63));
+        let long_name =
+            format!("{}.{}.{}.{}", "a".repeat(63), "b".repeat(63), "c".repeat(63), "d".repeat(63));
         let result = DomainName::from_str(&long_name);
         assert!(result.is_err());
     }
@@ -699,7 +699,7 @@ mod tests {
     fn test_to_wire_format() {
         let name = DomainName::from_str("example.com").unwrap();
         let wire = name.to_wire_format().unwrap();
-        
+
         // Expected: 7 "example" 3 "com" 0
         assert_eq!(wire[0], 7); // Length of "example"
         assert_eq!(&wire[1..8], b"example");
@@ -713,7 +713,7 @@ mod tests {
         let name = DomainName::from_str("example.com").unwrap();
         let mut buffer = BytesMut::new();
         name.to_wire(&mut buffer, None).unwrap();
-        
+
         assert_eq!(buffer[0], 7);
         assert_eq!(&buffer[1..8], b"example");
         assert_eq!(buffer[8], 3);
@@ -729,10 +729,10 @@ mod tests {
         packet_vec.push(3);
         packet_vec.extend_from_slice(b"com");
         packet_vec.push(0);
-        
+
         let packet = Bytes::from(packet_vec);
         let (name, next_offset) = DomainName::from_wire(&packet, 0).unwrap();
-        
+
         assert_eq!(name.as_str(), "example.com");
         assert_eq!(next_offset, 13); // Past the null terminator
     }
@@ -749,15 +749,15 @@ mod tests {
         packet_vec.push(3);
         packet_vec.extend_from_slice(b"com");
         packet_vec.push(0); // Offset 16 (null terminator for first name)
-        
+
         // Second name starts at offset 17
         packet_vec.push(3);
         packet_vec.extend_from_slice(b"ftp");
         packet_vec.push(0xC0); // Compression pointer
         packet_vec.push(4); // Offset 4 points to "example.com"
-        
+
         let packet = Bytes::from(packet_vec);
-        
+
         // Parse second name
         let (name, next_offset) = DomainName::from_wire(&packet, 17).unwrap();
         assert_eq!(name.as_str(), "ftp.example.com");
@@ -773,11 +773,11 @@ mod tests {
     #[test]
     fn test_hash_case_insensitive() {
         use std::collections::HashMap;
-        
+
         let mut map = HashMap::new();
         let name1 = DomainName::from_str("Example.COM").unwrap();
         map.insert(name1, 42);
-        
+
         let name2 = DomainName::from_str("example.com").unwrap();
         assert_eq!(map.get(&name2), Some(&42));
     }

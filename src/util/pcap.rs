@@ -249,9 +249,7 @@ struct PcapRecordHeader {
 impl PcapRecordHeader {
     /// Create new packet record header with current timestamp.
     fn new(packet_len: u32) -> Self {
-        let now = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default();
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
 
         Self {
             ts_sec: now.as_secs() as u32,
@@ -275,16 +273,16 @@ impl PcapRecordHeader {
 /// IPv4 header structure (20 bytes minimum).
 #[derive(Debug, Clone)]
 struct Ipv4Header {
-    version_ihl: u8,      // Version (4 bits) + IHL (4 bits)
-    tos: u8,              // Type of service
-    total_length: u16,    // Total packet length
-    identification: u16,  // Identification
-    flags_fragment: u16,  // Flags (3 bits) + Fragment offset (13 bits)
-    ttl: u8,              // Time to live
-    protocol: u8,         // Protocol (UDP, ICMP, etc.)
-    checksum: u16,        // Header checksum
-    src_addr: Ipv4Addr,   // Source address
-    dst_addr: Ipv4Addr,   // Destination address
+    version_ihl: u8,     // Version (4 bits) + IHL (4 bits)
+    tos: u8,             // Type of service
+    total_length: u16,   // Total packet length
+    identification: u16, // Identification
+    flags_fragment: u16, // Flags (3 bits) + Fragment offset (13 bits)
+    ttl: u8,             // Time to live
+    protocol: u8,        // Protocol (UDP, ICMP, etc.)
+    checksum: u16,       // Header checksum
+    src_addr: Ipv4Addr,  // Source address
+    dst_addr: Ipv4Addr,  // Destination address
 }
 
 impl Ipv4Header {
@@ -321,11 +319,11 @@ impl Ipv4Header {
         sum += u32::from(self.ttl) << 8;
         sum += u32::from(self.protocol);
         // checksum field is zero
-        
+
         let src_octets = self.src_addr.octets();
         sum += u32::from(u16::from_be_bytes([src_octets[0], src_octets[1]]));
         sum += u32::from(u16::from_be_bytes([src_octets[2], src_octets[3]]));
-        
+
         let dst_octets = self.dst_addr.octets();
         sum += u32::from(u16::from_be_bytes([dst_octets[0], dst_octets[1]]));
         sum += u32::from(u16::from_be_bytes([dst_octets[2], dst_octets[3]]));
@@ -336,11 +334,7 @@ impl Ipv4Header {
         }
 
         // One's complement
-        self.checksum = if sum == 0xffff {
-            sum as u16
-        } else {
-            !sum as u16
-        };
+        self.checksum = if sum == 0xffff { sum as u16 } else { !sum as u16 };
     }
 
     /// Serialize header to bytes.
@@ -400,10 +394,10 @@ impl Ipv6Header {
 /// UDP header structure (8 bytes).
 #[derive(Debug, Clone)]
 struct UdpHeader {
-    src_port: u16,   // Source port
-    dst_port: u16,   // Destination port
-    length: u16,     // Length (header + data)
-    checksum: u16,   // Checksum
+    src_port: u16, // Source port
+    dst_port: u16, // Destination port
+    length: u16,   // Length (header + data)
+    checksum: u16, // Checksum
 }
 
 impl UdpHeader {
@@ -472,12 +466,7 @@ impl PcapWriter {
         // Open file with appropriate flags
         let mut file = if is_fifo {
             // For FIFO, open with append and read-write
-            tokio::fs::OpenOptions::new()
-                .append(true)
-                .read(true)
-                .write(true)
-                .open(path)
-                .await?
+            tokio::fs::OpenOptions::new().append(true).read(true).write(true).open(path).await?
         } else {
             // For regular file, create or open
             tokio::fs::OpenOptions::new()
@@ -497,12 +486,7 @@ impl PcapWriter {
 
         info!("Initialized pcap file: {} (FIFO: {})", path.display(), is_fifo);
 
-        Ok(Self {
-            file,
-            packet_count: AtomicU32::new(0),
-            snaplen,
-            is_fifo,
-        })
+        Ok(Self { file, packet_count: AtomicU32::new(0), snaplen, is_fifo })
     }
 
     /// Write UDP packet to pcap file.
@@ -529,19 +513,14 @@ impl PcapWriter {
 
         match (src.ip(), dst.ip()) {
             (IpAddr::V4(src_ip), IpAddr::V4(dst_ip)) => {
-                self.write_udp_v4(packet, src_ip, src.port(), dst_ip, dst.port())
-                    .await?;
+                self.write_udp_v4(packet, src_ip, src.port(), dst_ip, dst.port()).await?;
             }
             (IpAddr::V6(src_ip), IpAddr::V6(dst_ip)) => {
-                self.write_udp_v6(packet, src_ip, src.port(), dst_ip, dst.port())
-                    .await?;
+                self.write_udp_v6(packet, src_ip, src.port(), dst_ip, dst.port()).await?;
             }
             _ => {
                 error!("Mismatched IP address families in packet dump");
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Mismatched IP families",
-                ));
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, "Mismatched IP families"));
             }
         }
 
@@ -611,31 +590,31 @@ impl PcapWriter {
         dst_port: u16,
     ) -> io::Result<()> {
         let payload_len = payload.len() as u16;
-        
+
         // Create UDP header
         let mut udp = UdpHeader::new(src_port, dst_port, payload_len);
-        
+
         // Create IPv4 header
         let mut ip = Ipv4Header::new(src_ip, dst_ip, IPPROTO_UDP, 8 + payload_len);
         ip.calculate_checksum();
-        
+
         // Calculate UDP checksum with IPv4 pseudo-header
         udp.checksum = self.calculate_udp_checksum_v4(&ip, &udp, payload);
-        
+
         // Build complete packet
         let ip_bytes = ip.serialize()?;
         let udp_bytes = udp.serialize()?;
-        
+
         let total_len = (ip_bytes.len() + udp_bytes.len() + payload.len()) as u32;
         let record_header = PcapRecordHeader::new(total_len);
-        
+
         // Write to file
         self.file.write_all(&record_header.serialize()?).await?;
         self.file.write_all(&ip_bytes).await?;
         self.file.write_all(&udp_bytes).await?;
         self.file.write_all(payload).await?;
         self.file.flush().await?;
-        
+
         Ok(())
     }
 
@@ -649,30 +628,30 @@ impl PcapWriter {
         dst_port: u16,
     ) -> io::Result<()> {
         let payload_len = payload.len() as u16;
-        
+
         // Create UDP header
         let mut udp = UdpHeader::new(src_port, dst_port, payload_len);
-        
+
         // Create IPv6 header
         let ip = Ipv6Header::new(src_ip, dst_ip, IPPROTO_UDP, 8 + payload_len);
-        
+
         // Calculate UDP checksum with IPv6 pseudo-header
         udp.checksum = self.calculate_udp_checksum_v6(&ip, &udp, payload);
-        
+
         // Build complete packet
         let ip_bytes = ip.serialize()?;
         let udp_bytes = udp.serialize()?;
-        
+
         let total_len = (ip_bytes.len() + udp_bytes.len() + payload.len()) as u32;
         let record_header = PcapRecordHeader::new(total_len);
-        
+
         // Write to file
         self.file.write_all(&record_header.serialize()?).await?;
         self.file.write_all(&ip_bytes).await?;
         self.file.write_all(&udp_bytes).await?;
         self.file.write_all(payload).await?;
         self.file.flush().await?;
-        
+
         Ok(())
     }
 
@@ -684,62 +663,57 @@ impl PcapWriter {
         dst_ip: Ipv6Addr,
     ) -> io::Result<()> {
         let packet_len = packet.len() as u16;
-        
+
         // Create IPv6 header
         let ip = Ipv6Header::new(src_ip, dst_ip, IPPROTO_ICMPV6, packet_len);
-        
+
         // Calculate ICMPv6 checksum
         let mut packet_with_checksum = packet.to_vec();
         let checksum = self.calculate_icmpv6_checksum(&ip, &packet_with_checksum);
-        
+
         // Set checksum in packet (bytes 2-3)
         if packet_with_checksum.len() >= 4 {
             packet_with_checksum[2] = (checksum >> 8) as u8;
             packet_with_checksum[3] = (checksum & 0xff) as u8;
         }
-        
+
         // Build complete packet
         let ip_bytes = ip.serialize()?;
-        
+
         let total_len = (ip_bytes.len() + packet_with_checksum.len()) as u32;
         let record_header = PcapRecordHeader::new(total_len);
-        
+
         // Write to file
         self.file.write_all(&record_header.serialize()?).await?;
         self.file.write_all(&ip_bytes).await?;
         self.file.write_all(&packet_with_checksum).await?;
         self.file.flush().await?;
-        
+
         Ok(())
     }
 
     /// Calculate UDP checksum with IPv4 pseudo-header.
-    fn calculate_udp_checksum_v4(
-        &self,
-        ip: &Ipv4Header,
-        udp: &UdpHeader,
-        payload: &[u8],
-    ) -> u16 {
+    fn calculate_udp_checksum_v4(&self, ip: &Ipv4Header, udp: &UdpHeader, payload: &[u8]) -> u16 {
         let mut sum: u32 = 0;
-        
+
         // IPv4 pseudo-header
         let src_octets = ip.src_addr.octets();
         sum += u32::from(u16::from_be_bytes([src_octets[0], src_octets[1]]));
         sum += u32::from(u16::from_be_bytes([src_octets[2], src_octets[3]]));
-        
+
         let dst_octets = ip.dst_addr.octets();
         sum += u32::from(u16::from_be_bytes([dst_octets[0], dst_octets[1]]));
         sum += u32::from(u16::from_be_bytes([dst_octets[2], dst_octets[3]]));
-        
+
         sum += u32::from(IPPROTO_UDP);
         sum += u32::from(udp.length);
-        
+
         // UDP header
         sum += u32::from(udp.src_port);
         sum += u32::from(udp.dst_port);
         sum += u32::from(udp.length);
         // checksum field is zero
-        
+
         // Payload
         for chunk in payload.chunks(2) {
             if chunk.len() == 2 {
@@ -748,12 +722,12 @@ impl PcapWriter {
                 sum += u32::from(chunk[0]) << 8;
             }
         }
-        
+
         // Fold to 16 bits
         while sum >> 16 != 0 {
             sum = (sum & 0xffff) + (sum >> 16);
         }
-        
+
         if sum == 0xffff {
             sum as u16
         } else {
@@ -762,36 +736,31 @@ impl PcapWriter {
     }
 
     /// Calculate UDP checksum with IPv6 pseudo-header.
-    fn calculate_udp_checksum_v6(
-        &self,
-        ip: &Ipv6Header,
-        udp: &UdpHeader,
-        payload: &[u8],
-    ) -> u16 {
+    fn calculate_udp_checksum_v6(&self, ip: &Ipv6Header, udp: &UdpHeader, payload: &[u8]) -> u16 {
         let mut sum: u32 = 0;
-        
+
         // IPv6 pseudo-header - source address
         let src_octets = ip.src_addr.octets();
         for chunk in src_octets.chunks(2) {
             sum += u32::from(u16::from_be_bytes([chunk[0], chunk[1]]));
         }
-        
+
         // IPv6 pseudo-header - destination address
         let dst_octets = ip.dst_addr.octets();
         for chunk in dst_octets.chunks(2) {
             sum += u32::from(u16::from_be_bytes([chunk[0], chunk[1]]));
         }
-        
+
         // IPv6 pseudo-header - length and next header
         sum += u32::from(udp.length);
         sum += u32::from(IPPROTO_UDP);
-        
+
         // UDP header
         sum += u32::from(udp.src_port);
         sum += u32::from(udp.dst_port);
         sum += u32::from(udp.length);
         // checksum field is zero
-        
+
         // Payload
         for chunk in payload.chunks(2) {
             if chunk.len() == 2 {
@@ -800,12 +769,12 @@ impl PcapWriter {
                 sum += u32::from(chunk[0]) << 8;
             }
         }
-        
+
         // Fold to 16 bits
         while sum >> 16 != 0 {
             sum = (sum & 0xffff) + (sum >> 16);
         }
-        
+
         if sum == 0xffff {
             sum as u16
         } else {
@@ -816,42 +785,42 @@ impl PcapWriter {
     /// Calculate ICMPv6 checksum with IPv6 pseudo-header.
     fn calculate_icmpv6_checksum(&self, ip: &Ipv6Header, packet: &[u8]) -> u16 {
         let mut sum: u32 = 0;
-        
+
         // IPv6 pseudo-header - source address
         let src_octets = ip.src_addr.octets();
         for chunk in src_octets.chunks(2) {
             sum += u32::from(u16::from_be_bytes([chunk[0], chunk[1]]));
         }
-        
+
         // IPv6 pseudo-header - destination address
         let dst_octets = ip.dst_addr.octets();
         for chunk in dst_octets.chunks(2) {
             sum += u32::from(u16::from_be_bytes([chunk[0], chunk[1]]));
         }
-        
+
         // IPv6 pseudo-header - length and next header
         sum += u32::from(packet.len() as u16);
         sum += u32::from(IPPROTO_ICMPV6);
-        
+
         // ICMPv6 packet (with checksum field zeroed)
         for (i, chunk) in packet.chunks(2).enumerate() {
             // Skip checksum field (bytes 2-3)
             if i == 1 {
                 continue;
             }
-            
+
             if chunk.len() == 2 {
                 sum += u32::from(u16::from_be_bytes([chunk[0], chunk[1]]));
             } else {
                 sum += u32::from(chunk[0]) << 8;
             }
         }
-        
+
         // Fold to 16 bits
         while sum >> 16 != 0 {
             sum = (sum & 0xffff) + (sum >> 16);
         }
-        
+
         if sum == 0xffff {
             sum as u16
         } else {
@@ -944,7 +913,7 @@ mod tests {
         let ver_minor = header.version_minor;
         let snaplen = header.snaplen;
         let network = header.network;
-        
+
         assert_eq!(magic, 0xa1b2c3d4);
         assert_eq!(ver_major, 2);
         assert_eq!(ver_minor, 4);
@@ -956,7 +925,7 @@ mod tests {
     async fn test_pcap_global_header_serialization() {
         let header = PcapGlobalHeader::new(65535);
         let bytes = header.serialize().unwrap();
-        
+
         assert_eq!(bytes.len(), 24);
         // Magic number in little-endian
         assert_eq!(&bytes[0..4], &[0xd4, 0xc3, 0xb2, 0xa1]);
@@ -972,7 +941,7 @@ mod tests {
         let ts_sec = header.ts_sec;
         let incl_len = header.incl_len;
         let orig_len = header.orig_len;
-        
+
         // Timestamp is set automatically to current time
         assert!(ts_sec > 0);
         assert_eq!(incl_len, 100);
@@ -984,7 +953,7 @@ mod tests {
         let src = Ipv4Addr::new(192, 168, 1, 1);
         let dst = Ipv4Addr::new(192, 168, 1, 2);
         let header = Ipv4Header::new(src, dst, IPPROTO_UDP, 100);
-        
+
         assert_eq!(header.version_ihl, 0x45); // Version 4, IHL 5
         assert_eq!(header.total_length, 20 + 100); // Header + payload
         assert_eq!(header.protocol, IPPROTO_UDP);
@@ -996,13 +965,13 @@ mod tests {
         let src = Ipv4Addr::new(10, 0, 0, 1);
         let dst = Ipv4Addr::new(10, 0, 0, 2);
         let mut header = Ipv4Header::new(src, dst, IPPROTO_UDP, 50);
-        
+
         // Calculate checksum
         header.calculate_checksum();
-        
+
         // Copy checksum to avoid packed struct alignment issues
         let checksum = header.checksum;
-        
+
         // Checksum should be non-zero for a valid packet
         assert_ne!(checksum, 0);
     }
@@ -1012,7 +981,7 @@ mod tests {
         let src = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1);
         let dst = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 2);
         let header = Ipv6Header::new(src, dst, IPPROTO_UDP, 100);
-        
+
         assert_eq!(header.version_class_flow, 0x60000000); // Version 6
         assert_eq!(header.payload_length, 100);
         assert_eq!(header.next_header, IPPROTO_UDP);
@@ -1032,7 +1001,7 @@ mod tests {
         assert!(DumpMask::QUERY.contains(DumpMask::QUERY));
         assert!(DumpMask::REPLY.contains(DumpMask::REPLY));
         assert!(!DumpMask::QUERY.contains(DumpMask::REPLY));
-        
+
         let both = DumpMask::QUERY | DumpMask::REPLY;
         assert!(both.contains(DumpMask::QUERY));
         assert!(both.contains(DumpMask::REPLY));
@@ -1042,10 +1011,10 @@ mod tests {
     async fn test_pcap_writer_creation() {
         let temp_dir = TempDir::new().unwrap();
         let pcap_path = temp_dir.path().join("test.pcap");
-        
+
         let result = PcapWriter::new(&pcap_path, 65535).await;
         assert!(result.is_ok());
-        
+
         assert!(pcap_path.exists());
         let metadata = tokio::fs::metadata(&pcap_path).await.unwrap();
         assert!(metadata.len() >= 24); // At least global header
@@ -1055,11 +1024,11 @@ mod tests {
     async fn test_dump_ipv4_packet() {
         let temp_dir = TempDir::new().unwrap();
         let pcap_path = temp_dir.path().join("test_ipv4.pcap");
-        
+
         let mut writer = PcapWriter::new(&pcap_path, 65535).await.unwrap();
         let src = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)), 12345);
         let dst = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
-        
+
         let result = writer.write_packet_udp(DumpMask::QUERY, b"test", &src, &dst).await;
         assert!(result.is_ok());
         assert_eq!(writer.packet_count(), 1);
@@ -1069,11 +1038,15 @@ mod tests {
     async fn test_dump_ipv6_packet() {
         let temp_dir = TempDir::new().unwrap();
         let pcap_path = temp_dir.path().join("test_ipv6.pcap");
-        
+
         let mut writer = PcapWriter::new(&pcap_path, 65535).await.unwrap();
-        let src = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)), 54321);
-        let dst = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888)), 53);
-        
+        let src =
+            SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)), 54321);
+        let dst = SocketAddr::new(
+            IpAddr::V6(Ipv6Addr::new(0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888)),
+            53,
+        );
+
         let result = writer.write_packet_udp(DumpMask::QUERY, b"ipv6", &src, &dst).await;
         assert!(result.is_ok());
         assert_eq!(writer.packet_count(), 1);
@@ -1083,16 +1056,16 @@ mod tests {
     async fn test_multiple_packets() {
         let temp_dir = TempDir::new().unwrap();
         let pcap_path = temp_dir.path().join("test_multi.pcap");
-        
+
         let mut writer = PcapWriter::new(&pcap_path, 65535).await.unwrap();
-        
+
         for i in 0..5 {
             let src = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1000 + i);
             let dst = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
             let payload = format!("packet {}", i);
             writer.write_packet_udp(DumpMask::QUERY, payload.as_bytes(), &src, &dst).await.unwrap();
         }
-        
+
         assert_eq!(writer.packet_count(), 5);
     }
 
@@ -1100,11 +1073,11 @@ mod tests {
     async fn test_empty_payload() {
         let temp_dir = TempDir::new().unwrap();
         let pcap_path = temp_dir.path().join("test_empty.pcap");
-        
+
         let mut writer = PcapWriter::new(&pcap_path, 65535).await.unwrap();
         let src = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 5000);
         let dst = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 6000);
-        
+
         let result = writer.write_packet_udp(DumpMask::QUERY, b"", &src, &dst).await;
         assert!(result.is_ok());
     }
@@ -1113,12 +1086,12 @@ mod tests {
     async fn test_large_payload() {
         let temp_dir = TempDir::new().unwrap();
         let pcap_path = temp_dir.path().join("test_large.pcap");
-        
+
         let mut writer = PcapWriter::new(&pcap_path, 65535).await.unwrap();
         let src = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(172, 16, 0, 1)), 7000);
         let dst = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(172, 16, 0, 2)), 8000);
         let large_payload = vec![0x42u8; 1024];
-        
+
         let result = writer.write_packet_udp(DumpMask::REPLY, &large_payload, &src, &dst).await;
         assert!(result.is_ok());
     }
@@ -1127,16 +1100,16 @@ mod tests {
     async fn test_packet_count_increments() {
         let temp_dir = TempDir::new().unwrap();
         let pcap_path = temp_dir.path().join("test_count.pcap");
-        
+
         let mut writer = PcapWriter::new(&pcap_path, 65535).await.unwrap();
         assert_eq!(writer.packet_count(), 0);
-        
+
         let src = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)), 1000);
         let dst = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(2, 2, 2, 2)), 2000);
-        
+
         writer.write_packet_udp(DumpMask::QUERY, b"test1", &src, &dst).await.unwrap();
         assert_eq!(writer.packet_count(), 1);
-        
+
         writer.write_packet_udp(DumpMask::REPLY, b"test2", &src, &dst).await.unwrap();
         assert_eq!(writer.packet_count(), 2);
     }
@@ -1145,14 +1118,14 @@ mod tests {
     async fn test_dump_init_public_api() {
         let temp_dir = TempDir::new().unwrap();
         let pcap_path = temp_dir.path().join("test_api.pcap");
-        
+
         let result = dump_init(&pcap_path, 65535).await;
         assert!(result.is_ok());
-        
+
         let mut writer = result.unwrap();
         let src = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1)), 5353);
         let dst = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 1)), 5353);
-        
+
         writer.write_packet_udp(DumpMask::QUERY, b"mdns", &src, &dst).await.unwrap();
         assert_eq!(writer.packet_count(), 1);
     }
