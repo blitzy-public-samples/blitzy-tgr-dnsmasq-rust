@@ -185,6 +185,7 @@
 //! ```rust,no_run
 //! use dnsmasq::dns::protocol::DomainName;
 //! use std::str::FromStr;
+//! use bytes::BytesMut;
 //!
 //! // Parse domain name with validation
 //! let domain = DomainName::from_str("www.example.com")?;
@@ -194,7 +195,7 @@
 //! assert!(domain.is_subdomain_of(&parent));
 //!
 //! // Serialize to wire format with compression
-//! let mut buffer = Vec::new();
+//! let mut buffer = BytesMut::new();
 //! domain.to_wire(&mut buffer, None)?;
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```

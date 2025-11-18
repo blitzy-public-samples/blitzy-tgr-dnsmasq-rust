@@ -67,22 +67,15 @@
 //! ```
 
 use crate::dns::protocol::compression::CompressionMap;
-use crate::dns::protocol::constants::{MAXDNAME, MAXLABEL};
+use crate::dns::protocol::constants::MAXLABEL;
 use crate::error::DnsError;
-use bytes::{Buf, BufMut, Bytes, BytesMut};
-use nom::{
-    bytes::complete::take,
-    combinator::map,
-    multi::many0,
-    number::complete::u8 as nom_u8,
-    IResult,
-};
+use bytes::{BufMut, Bytes, BytesMut};
 use std::cmp::{Eq, PartialEq};
 use std::fmt;
 use std::str::FromStr;
 
 #[cfg(feature = "idn")]
-use idna::{domain_to_ascii, domain_to_unicode, Config, Errors};
+use idna::domain_to_ascii;
 
 /// Compression pointer mask (high 2 bits = 11).
 const COMPRESSION_POINTER: u8 = 0xC0;
@@ -154,21 +147,6 @@ impl DomainName {
             name: s.to_string(),
             reason: e,
         })
-    }
-
-    /// Converts the domain name to a String in presentation format.
-    ///
-    /// Returns the dotted notation representation (e.g., "www.example.com").
-    /// Trailing dots are not included unless the name is explicitly the root.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,ignore
-    /// let name = DomainName::from_str("example.com")?;
-    /// assert_eq!(name.to_string(), "example.com");
-    /// ```
-    pub fn to_string(&self) -> String {
-        self.name.clone()
     }
 
     /// Returns a string slice of the domain name in presentation format.
@@ -390,7 +368,7 @@ impl DomainName {
                 }
 
                 // Extract pointer offset
-                let pointer_offset = (((len & 0x3F) as usize) << 8) | (packet[offset + 1] as usize);
+                let pointer_offset = ((len & 0x3F) << 8) | (packet[offset + 1] as usize);
 
                 // Save first pointer position for returning correct next offset
                 if first_pointer.is_none() {
@@ -770,9 +748,9 @@ mod tests {
         packet_vec.extend_from_slice(b"example");
         packet_vec.push(3);
         packet_vec.extend_from_slice(b"com");
-        packet_vec.push(0); // Offset 17
+        packet_vec.push(0); // Offset 16 (null terminator for first name)
         
-        // Second name starts at offset 18
+        // Second name starts at offset 17
         packet_vec.push(3);
         packet_vec.extend_from_slice(b"ftp");
         packet_vec.push(0xC0); // Compression pointer
@@ -781,9 +759,9 @@ mod tests {
         let packet = Bytes::from(packet_vec);
         
         // Parse second name
-        let (name, next_offset) = DomainName::from_wire(&packet, 18).unwrap();
+        let (name, next_offset) = DomainName::from_wire(&packet, 17).unwrap();
         assert_eq!(name.as_str(), "ftp.example.com");
-        assert_eq!(next_offset, 24); // Past the compression pointer
+        assert_eq!(next_offset, 23); // Past the compression pointer
     }
 
     #[test]

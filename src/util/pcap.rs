@@ -216,7 +216,7 @@ impl PcapGlobalHeader {
     }
 
     /// Serialize header to bytes for file writing.
-    fn to_bytes(&self) -> io::Result<Vec<u8>> {
+    fn serialize(&self) -> io::Result<Vec<u8>> {
         let mut buf = Vec::with_capacity(24);
         WriteBytesExt::write_u32::<LittleEndian>(&mut buf, self.magic_number)?;
         WriteBytesExt::write_u16::<LittleEndian>(&mut buf, self.version_major)?;
@@ -262,7 +262,7 @@ impl PcapRecordHeader {
     }
 
     /// Serialize header to bytes for file writing.
-    fn to_bytes(&self) -> io::Result<Vec<u8>> {
+    fn serialize(&self) -> io::Result<Vec<u8>> {
         let mut buf = Vec::with_capacity(16);
         WriteBytesExt::write_u32::<LittleEndian>(&mut buf, self.ts_sec)?;
         WriteBytesExt::write_u32::<LittleEndian>(&mut buf, self.ts_usec)?;
@@ -344,7 +344,7 @@ impl Ipv4Header {
     }
 
     /// Serialize header to bytes.
-    fn to_bytes(&self) -> io::Result<Vec<u8>> {
+    fn serialize(&self) -> io::Result<Vec<u8>> {
         let mut buf = Vec::with_capacity(20);
         WriteBytesExt::write_u8(&mut buf, self.version_ihl)?;
         WriteBytesExt::write_u8(&mut buf, self.tos)?;
@@ -385,7 +385,7 @@ impl Ipv6Header {
     }
 
     /// Serialize header to bytes.
-    fn to_bytes(&self) -> io::Result<Vec<u8>> {
+    fn serialize(&self) -> io::Result<Vec<u8>> {
         let mut buf = Vec::with_capacity(40);
         WriteBytesExt::write_u32::<NetworkEndian>(&mut buf, self.version_class_flow)?;
         WriteBytesExt::write_u16::<NetworkEndian>(&mut buf, self.payload_length)?;
@@ -418,7 +418,7 @@ impl UdpHeader {
     }
 
     /// Serialize header to bytes.
-    fn to_bytes(&self) -> io::Result<Vec<u8>> {
+    fn serialize(&self) -> io::Result<Vec<u8>> {
         let mut buf = Vec::with_capacity(8);
         WriteBytesExt::write_u16::<NetworkEndian>(&mut buf, self.src_port)?;
         WriteBytesExt::write_u16::<NetworkEndian>(&mut buf, self.dst_port)?;
@@ -491,7 +491,7 @@ impl PcapWriter {
 
         // Write global header
         let header = PcapGlobalHeader::new(snaplen);
-        let header_bytes = header.to_bytes()?;
+        let header_bytes = header.serialize()?;
         file.write_all(&header_bytes).await?;
         file.flush().await?;
 
@@ -623,14 +623,14 @@ impl PcapWriter {
         udp.checksum = self.calculate_udp_checksum_v4(&ip, &udp, payload);
         
         // Build complete packet
-        let ip_bytes = ip.to_bytes()?;
-        let udp_bytes = udp.to_bytes()?;
+        let ip_bytes = ip.serialize()?;
+        let udp_bytes = udp.serialize()?;
         
         let total_len = (ip_bytes.len() + udp_bytes.len() + payload.len()) as u32;
         let record_header = PcapRecordHeader::new(total_len);
         
         // Write to file
-        self.file.write_all(&record_header.to_bytes()?).await?;
+        self.file.write_all(&record_header.serialize()?).await?;
         self.file.write_all(&ip_bytes).await?;
         self.file.write_all(&udp_bytes).await?;
         self.file.write_all(payload).await?;
@@ -660,14 +660,14 @@ impl PcapWriter {
         udp.checksum = self.calculate_udp_checksum_v6(&ip, &udp, payload);
         
         // Build complete packet
-        let ip_bytes = ip.to_bytes()?;
-        let udp_bytes = udp.to_bytes()?;
+        let ip_bytes = ip.serialize()?;
+        let udp_bytes = udp.serialize()?;
         
         let total_len = (ip_bytes.len() + udp_bytes.len() + payload.len()) as u32;
         let record_header = PcapRecordHeader::new(total_len);
         
         // Write to file
-        self.file.write_all(&record_header.to_bytes()?).await?;
+        self.file.write_all(&record_header.serialize()?).await?;
         self.file.write_all(&ip_bytes).await?;
         self.file.write_all(&udp_bytes).await?;
         self.file.write_all(payload).await?;
@@ -699,13 +699,13 @@ impl PcapWriter {
         }
         
         // Build complete packet
-        let ip_bytes = ip.to_bytes()?;
+        let ip_bytes = ip.serialize()?;
         
         let total_len = (ip_bytes.len() + packet_with_checksum.len()) as u32;
         let record_header = PcapRecordHeader::new(total_len);
         
         // Write to file
-        self.file.write_all(&record_header.to_bytes()?).await?;
+        self.file.write_all(&record_header.serialize()?).await?;
         self.file.write_all(&ip_bytes).await?;
         self.file.write_all(&packet_with_checksum).await?;
         self.file.flush().await?;
@@ -955,7 +955,7 @@ mod tests {
     #[tokio::test]
     async fn test_pcap_global_header_serialization() {
         let header = PcapGlobalHeader::new(65535);
-        let bytes = header.to_bytes().unwrap();
+        let bytes = header.serialize().unwrap();
         
         assert_eq!(bytes.len(), 24);
         // Magic number in little-endian

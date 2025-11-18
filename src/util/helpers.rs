@@ -46,7 +46,7 @@
 //! let executor = ScriptExecutor::new("/etc/dnsmasq/lease-script.sh")?;
 //!
 //! // Queue DHCP lease event
-//! executor.queue_event(ScriptEvent::DhcpLease {
+//! executor.queue_event(ScriptEvent::DhcpLease(Box::new(DhcpLeaseEvent {
 //!     action: LeaseAction::Add,
 //!     mac: "00:11:22:33:44:55".to_string(),
 //!     ip: "192.168.1.100".parse()?,
@@ -64,7 +64,7 @@
 //!     subscriber_id: None,
 //!     remote_id: None,
 //!     tags: vec![],
-//! }).await?;
+//! }))).await?;
 //! # Ok(())
 //! # }
 //! ```
@@ -217,46 +217,50 @@ impl ArpAction {
     }
 }
 
+/// DHCP lease event data
+#[derive(Debug, Clone)]
+pub struct DhcpLeaseEvent {
+    /// Lease action: add, old, or del
+    pub action: LeaseAction,
+    /// MAC address of the client
+    pub mac: String,
+    /// IP address allocated to the client
+    pub ip: IpAddr,
+    /// Hostname of the client (if known)
+    pub hostname: Option<String>,
+    /// Network interface name
+    pub interface: String,
+    /// Lease expiration time (seconds since epoch)
+    pub lease_expires: u64,
+    /// Domain name for the client
+    pub domain: Option<String>,
+    /// DHCP client identifier option (option 61)
+    pub client_id: Option<Vec<u8>>,
+    /// Vendor class identifier (option 60)
+    pub vendor_class: Option<String>,
+    /// Hostname supplied by client in DHCP request
+    pub supplied_hostname: Option<String>,
+    /// CableHome CPE WAN Management Protocol OUI
+    pub cpewan_oui: Option<String>,
+    /// CableHome CPE WAN Management Protocol serial number
+    pub cpewan_serial: Option<String>,
+    /// CableHome CPE WAN Management Protocol device class
+    pub cpewan_class: Option<String>,
+    /// DHCP relay agent circuit ID (option 82 sub-option 1)
+    pub circuit_id: Option<Vec<u8>>,
+    /// DHCP relay agent subscriber ID (option 82 sub-option 6)
+    pub subscriber_id: Option<Vec<u8>>,
+    /// DHCP relay agent remote ID (option 82 sub-option 2)
+    pub remote_id: Option<Vec<u8>>,
+    /// Tag list for the client
+    pub tags: Vec<String>,
+}
+
 /// Events that trigger script execution
 #[derive(Debug, Clone)]
 pub enum ScriptEvent {
     /// DHCP lease event (add/old/del)
-    DhcpLease {
-        /// Lease action: add, old, or del
-        action: LeaseAction,
-        /// MAC address of the client
-        mac: String,
-        /// IP address allocated to the client
-        ip: IpAddr,
-        /// Hostname of the client (if known)
-        hostname: Option<String>,
-        /// Network interface name
-        interface: String,
-        /// Lease expiration time (seconds since epoch)
-        lease_expires: u64,
-        /// Domain name for the client
-        domain: Option<String>,
-        /// DHCP client identifier option (option 61)
-        client_id: Option<Vec<u8>>,
-        /// Vendor class identifier (option 60)
-        vendor_class: Option<String>,
-        /// Hostname supplied by client in DHCP request
-        supplied_hostname: Option<String>,
-        /// CableHome CPE WAN Management Protocol OUI
-        cpewan_oui: Option<String>,
-        /// CableHome CPE WAN Management Protocol serial number
-        cpewan_serial: Option<String>,
-        /// CableHome CPE WAN Management Protocol device class
-        cpewan_class: Option<String>,
-        /// DHCP relay agent circuit ID (option 82 sub-option 1)
-        circuit_id: Option<Vec<u8>>,
-        /// DHCP relay agent subscriber ID (option 82 sub-option 6)
-        subscriber_id: Option<Vec<u8>>,
-        /// DHCP relay agent remote ID (option 82 sub-option 2)
-        remote_id: Option<Vec<u8>>,
-        /// Tag list for the client
-        tags: Vec<String>,
-    },
+    DhcpLease(Box<DhcpLeaseEvent>),
 
     /// DHCPv6 relay snooping event
     #[cfg(feature = "dhcp6")]
@@ -448,82 +452,64 @@ impl ScriptExecutor {
         let mut env_vars = HashMap::new();
 
         match event {
-            ScriptEvent::DhcpLease {
-                action,
-                mac,
-                ip,
-                hostname,
-                interface,
-                lease_expires,
-                domain,
-                client_id,
-                vendor_class,
-                supplied_hostname,
-                cpewan_oui,
-                cpewan_serial,
-                cpewan_class,
-                circuit_id,
-                subscriber_id,
-                remote_id,
-                tags,
-            } => {
-                let action_str = action.as_str();
+            ScriptEvent::DhcpLease(lease_event) => {
+                let action_str = lease_event.action.as_str();
 
                 // Positional arguments
-                args.push(mac.clone());
-                args.push(ip.to_string());
-                if let Some(h) = hostname {
+                args.push(lease_event.mac.clone());
+                args.push(lease_event.ip.to_string());
+                if let Some(h) = &lease_event.hostname {
                     args.push(h.clone());
                 } else {
                     args.push(String::new());
                 }
 
                 // Environment variables
-                env_vars.insert("DNSMASQ_INTERFACE".to_string(), interface.clone());
-                env_vars.insert("DNSMASQ_LEASE_EXPIRES".to_string(), lease_expires.to_string());
+                env_vars.insert("DNSMASQ_INTERFACE".to_string(), lease_event.interface.clone());
+                env_vars.insert("DNSMASQ_LEASE_EXPIRES".to_string(), lease_event.lease_expires.to_string());
 
-                if let Some(d) = domain {
+                if let Some(d) = &lease_event.domain {
                     env_vars.insert("DNSMASQ_DOMAIN".to_string(), d.clone());
                 }
 
-                if let Some(cid) = client_id {
+                if let Some(cid) = &lease_event.client_id {
                     env_vars.insert("DNSMASQ_CLIENT_ID".to_string(), hex::encode(cid));
                 }
 
-                if let Some(vc) = vendor_class {
+                if let Some(vc) = &lease_event.vendor_class {
                     env_vars.insert("DNSMASQ_VENDOR_CLASS".to_string(), vc.clone());
                 }
 
-                if let Some(sh) = supplied_hostname {
+                if let Some(sh) = &lease_event.supplied_hostname {
                     env_vars.insert("DNSMASQ_SUPPLIED_HOSTNAME".to_string(), sh.clone());
                 }
 
-                if let Some(oui) = cpewan_oui {
+                if let Some(oui) = &lease_event.cpewan_oui {
                     env_vars.insert("DNSMASQ_CPEWAN_OUI".to_string(), oui.clone());
                 }
 
-                if let Some(serial) = cpewan_serial {
+                if let Some(serial) = &lease_event.cpewan_serial {
                     env_vars.insert("DNSMASQ_CPEWAN_SERIAL".to_string(), serial.clone());
                 }
 
-                if let Some(class) = cpewan_class {
+                if let Some(class) = &lease_event.cpewan_class {
                     env_vars.insert("DNSMASQ_CPEWAN_CLASS".to_string(), class.clone());
                 }
 
-                if let Some(cid) = circuit_id {
+                if let Some(cid) = &lease_event.circuit_id {
                     env_vars.insert("DNSMASQ_CIRCUIT_ID".to_string(), hex::encode(cid));
                 }
 
-                if let Some(sid) = subscriber_id {
+                if let Some(sid) = &lease_event.subscriber_id {
                     env_vars.insert("DNSMASQ_SUBSCRIBER_ID".to_string(), hex::encode(sid));
                 }
 
-                if let Some(rid) = remote_id {
+                if let Some(rid) = &lease_event.remote_id {
                     env_vars.insert("DNSMASQ_REMOTE_ID".to_string(), hex::encode(rid));
                 }
 
-                if !tags.is_empty() {
-                    env_vars.insert("DNSMASQ_TAGS".to_string(), tags.join(" "));
+                if !lease_event.tags.is_empty() {
+                    env_vars.insert("DNSMASQ_TAGS".to_string(), lease_event.tags.join(" "));
                 }
 
                 (action_str, args, env_vars)
@@ -650,7 +636,7 @@ mod tests {
 
     #[test]
     fn test_prepare_script_invocation_dhcp_lease() {
-        let event = ScriptEvent::DhcpLease {
+        let event = ScriptEvent::DhcpLease(Box::new(DhcpLeaseEvent {
             action: LeaseAction::Add,
             mac: "00:11:22:33:44:55".to_string(),
             ip: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)),
@@ -668,7 +654,7 @@ mod tests {
             subscriber_id: None,
             remote_id: None,
             tags: vec![],
-        };
+        }));
 
         let (action, args, env_vars) = ScriptExecutor::prepare_script_invocation(&event);
 
