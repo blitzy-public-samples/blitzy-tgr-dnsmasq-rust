@@ -145,7 +145,7 @@ pub fn is_string_matching_glob_pattern(value: &str, pattern: &str) -> bool {
     while value_index < num_value_bytes || pattern_index < num_pattern_bytes {
         if pattern_index < num_pattern_bytes {
             let mut pattern_character = pattern_bytes[pattern_index];
-            
+
             // Convert lowercase ASCII to uppercase for case-insensitive comparison
             if pattern_character.is_ascii_lowercase() {
                 pattern_character -= b'a' - b'A';
@@ -166,7 +166,7 @@ pub fn is_string_matching_glob_pattern(value: &str, pattern: &str) -> bool {
                 // Ordinary character
                 if value_index < num_value_bytes {
                     let mut value_character = value_bytes[value_index];
-                    
+
                     // Convert lowercase ASCII to uppercase for case-insensitive comparison
                     if value_character.is_ascii_lowercase() {
                         value_character -= b'a' - b'A';
@@ -250,7 +250,8 @@ pub fn is_valid_dns_name(value: &str) -> bool {
 
     for (index, &byte) in bytes.iter().enumerate() {
         // Check for valid characters: alphanumeric, hyphen, period
-        if byte != b'-' && byte != b'.'
+        if byte != b'-'
+            && byte != b'.'
             && !byte.is_ascii_digit()
             && !byte.is_ascii_uppercase()
             && !byte.is_ascii_lowercase()
@@ -420,7 +421,9 @@ pub fn is_valid_dns_name_pattern(value: &str) -> bool {
 
     for (index, &byte) in bytes.iter().enumerate() {
         // Check for valid characters: alphanumeric, hyphen, period, wildcard
-        if byte != b'*' && byte != b'-' && byte != b'.'
+        if byte != b'*'
+            && byte != b'-'
+            && byte != b'.'
             && !byte.is_ascii_digit()
             && !byte.is_ascii_uppercase()
             && !byte.is_ascii_lowercase()
@@ -474,12 +477,12 @@ pub fn is_valid_dns_name_pattern(value: &str) -> bool {
             }
 
             num_labels += 1;
-            
+
             // Record label position if it contains wildcards
             if num_wildcards != 0 {
                 wildcard_label_positions.push(num_labels);
             }
-            
+
             label_start = None;
             is_label_numeric = true;
             num_wildcards = 0;
@@ -514,7 +517,7 @@ pub fn is_valid_dns_name_pattern(value: &str) -> bool {
             debug!("Invalid DNS name pattern: Wildcard in final label");
             return false;
         }
-        
+
         // Check if the second-to-last label (label at position num_labels - 1) has wildcards
         if wildcard_label_positions.contains(&(num_labels - 1)) {
             debug!("Invalid DNS name pattern: Wildcard in second-to-last label");
@@ -749,7 +752,7 @@ mod tests {
     fn test_invalid_dns_name_pattern_wildcard_in_second_to_last() {
         // "host.*.org" has wildcard in second-to-last label (position 2 from right), so it's invalid
         assert!(!is_valid_dns_name_pattern("host.*.org"));
-        
+
         // Note: "*.co.uk" has wildcard in position 3 from right, NOT in final two labels,
         // so it's actually VALID per the C implementation (even though C documentation says otherwise).
         // The "final two labels" rule applies to positions 1 and 2 from right (TLD and second-level).
@@ -767,17 +770,17 @@ mod tests {
     fn test_dns_name_matching_pattern() {
         // Exact matches
         assert!(is_dns_name_matching_pattern("www.example.com", "www.example.com"));
-        
+
         // Wildcard matches
         assert!(is_dns_name_matching_pattern("api.example.com", "*.example.com"));
         assert!(is_dns_name_matching_pattern("video123.site.org", "video*.site.org"));
-        
+
         // Case-insensitive
         assert!(is_dns_name_matching_pattern("API.EXAMPLE.COM", "api.example.com"));
-        
+
         // No matches - label count mismatch
         assert!(!is_dns_name_matching_pattern("api.us.example.com", "*.example.com"));
-        
+
         // No matches - pattern doesn't match
         assert!(!is_dns_name_matching_pattern("test.example.com", "api*.example.com"));
     }
