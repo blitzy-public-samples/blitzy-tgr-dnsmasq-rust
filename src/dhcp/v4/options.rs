@@ -41,25 +41,17 @@ use crate::dhcp::v4::constants::{
     OPTION_PAD, OPTION_END, OPTION_NETMASK, OPTION_ROUTER, OPTION_DNS_SERVER,
     OPTION_HOSTNAME, OPTION_DOMAIN_NAME, OPTION_REQUESTED_IP, OPTION_LEASE_TIME,
     OPTION_OVERLOAD, OPTION_MESSAGE_TYPE, OPTION_SERVER_IDENTIFIER, OPTION_PARAMETER_LIST,
-    OPTION_MESSAGE, OPTION_RENEWAL_TIME, OPTION_REBINDING_TIME, OPTION_VENDOR_CLASS_ID,
-    OPTION_CLIENT_IDENTIFIER, OPTION_TFTP_SERVER_NAME, OPTION_BOOT_FILE_NAME,
-    OPTION_RELAY_AGENT_INFO, OPTION_RAPID_COMMIT, MSG_TYPE_DISCOVER, MSG_TYPE_OFFER,
+    OPTION_MESSAGE, OPTION_T1, OPTION_T2, OPTION_VENDOR_ID,
+    OPTION_CLIENT_ID, OPTION_SNAME, OPTION_FILENAME,
+    OPTION_AGENT_ID, OPTION_RAPID_COMMIT, MSG_TYPE_DISCOVER, MSG_TYPE_OFFER,
     MSG_TYPE_REQUEST, MSG_TYPE_ACK, MSG_TYPE_NAK, MSG_TYPE_DECLINE, MSG_TYPE_RELEASE,
     MSG_TYPE_INFORM,
 };
-use crate::types::MacAddress;
 use crate::error::DhcpError;
 
 use std::fmt;
 use std::net::Ipv4Addr;
 use bytes::{Bytes, BytesMut, BufMut};
-use nom::{
-    IResult,
-    bytes::complete::take,
-    number::complete::be_u8,
-    combinator::{map, verify},
-    multi::many0,
-};
 
 /// DHCP Message Type (Option 53)
 ///
@@ -100,10 +92,10 @@ impl MessageType {
             MSG_TYPE_DECLINE => Ok(MessageType::Decline),
             MSG_TYPE_RELEASE => Ok(MessageType::Release),
             MSG_TYPE_INFORM => Ok(MessageType::Inform),
-            _ => Err(DhcpError::InvalidOption(format!(
-                "Invalid message type value: {}",
-                value
-            ))),
+            _ => Err(DhcpError::InvalidOption {
+                option_code: OPTION_MESSAGE_TYPE,
+                reason: format!("Invalid message type value: {}", value),
+            }),
         }
     }
 
@@ -217,7 +209,12 @@ pub enum DhcpOption {
     RapidCommit,
     
     /// Unknown option - Code and raw data for options not explicitly handled
-    Unknown { code: u8, data: Vec<u8> },
+    Unknown {
+        /// The DHCP option code (0-255)
+        code: u8,
+        /// The raw option data bytes
+        data: Vec<u8>
+    },
 }
 
 impl DhcpOption {
@@ -238,13 +235,13 @@ impl DhcpOption {
             DhcpOption::ServerId(_) => OPTION_SERVER_IDENTIFIER,
             DhcpOption::ParameterRequestList(_) => OPTION_PARAMETER_LIST,
             DhcpOption::Message(_) => OPTION_MESSAGE,
-            DhcpOption::RenewalTime(_) => OPTION_RENEWAL_TIME,
-            DhcpOption::RebindingTime(_) => OPTION_REBINDING_TIME,
-            DhcpOption::VendorClassId(_) => OPTION_VENDOR_CLASS_ID,
-            DhcpOption::ClientId(_) => OPTION_CLIENT_IDENTIFIER,
-            DhcpOption::TftpServerName(_) => OPTION_TFTP_SERVER_NAME,
-            DhcpOption::BootFileName(_) => OPTION_BOOT_FILE_NAME,
-            DhcpOption::RelayAgentInfo(_) => OPTION_RELAY_AGENT_INFO,
+            DhcpOption::RenewalTime(_) => OPTION_T1,
+            DhcpOption::RebindingTime(_) => OPTION_T2,
+            DhcpOption::VendorClassId(_) => OPTION_VENDOR_ID,
+            DhcpOption::ClientId(_) => OPTION_CLIENT_ID,
+            DhcpOption::TftpServerName(_) => OPTION_SNAME,
+            DhcpOption::BootFileName(_) => OPTION_FILENAME,
+            DhcpOption::RelayAgentInfo(_) => OPTION_AGENT_ID,
             DhcpOption::RapidCommit => OPTION_RAPID_COMMIT,
             DhcpOption::Unknown { code, .. } => *code,
         }
@@ -338,10 +335,10 @@ pub fn parse_option(code: u8, data: &[u8]) -> Result<DhcpOption, DhcpError> {
         
         OPTION_NETMASK => {
             if data.len() != 4 {
-                return Err(DhcpError::InvalidOption(format!(
-                    "Netmask option must be 4 bytes, got {}",
-                    data.len()
-                )));
+                return Err(DhcpError::InvalidOption {
+                    option_code: code,
+                    reason: format!("Netmask option must be 4 bytes, got {}", data.len()),
+                });
             }
             let addr = Ipv4Addr::new(data[0], data[1], data[2], data[3]);
             
@@ -353,42 +350,42 @@ pub fn parse_option(code: u8, data: &[u8]) -> Result<DhcpOption, DhcpError> {
         
         OPTION_ROUTER => {
             if data.len() % 4 != 0 {
-                return Err(DhcpError::InvalidOption(format!(
-                    "Router option length must be multiple of 4, got {}",
-                    data.len()
-                )));
+                return Err(DhcpError::InvalidOption {
+                    option_code: OPTION_ROUTER,
+                    reason: format!("Router option length must be multiple of 4, got {}", data.len()),
+                });
             }
-            let addrs = parse_ipv4_list(data)?;
+            let addrs = parse_ipv4_list(data, OPTION_ROUTER)?;
             Ok(DhcpOption::Router(addrs))
         }
         
         OPTION_DNS_SERVER => {
             if data.len() % 4 != 0 {
-                return Err(DhcpError::InvalidOption(format!(
-                    "DNS Server option length must be multiple of 4, got {}",
-                    data.len()
-                )));
+                return Err(DhcpError::InvalidOption {
+                    option_code: OPTION_DNS_SERVER,
+                    reason: format!("DNS Server option length must be multiple of 4, got {}", data.len()),
+                });
             }
-            let addrs = parse_ipv4_list(data)?;
+            let addrs = parse_ipv4_list(data, OPTION_DNS_SERVER)?;
             Ok(DhcpOption::DnsServer(addrs))
         }
         
         OPTION_HOSTNAME => {
-            let hostname = parse_string(data)?;
+            let hostname = parse_string(data, OPTION_HOSTNAME)?;
             Ok(DhcpOption::Hostname(hostname))
         }
         
         OPTION_DOMAIN_NAME => {
-            let domain = parse_string(data)?;
+            let domain = parse_string(data, OPTION_DOMAIN_NAME)?;
             Ok(DhcpOption::DomainName(domain))
         }
         
         OPTION_REQUESTED_IP => {
             if data.len() != 4 {
-                return Err(DhcpError::InvalidOption(format!(
-                    "Requested IP option must be 4 bytes, got {}",
-                    data.len()
-                )));
+                return Err(DhcpError::InvalidOption {
+                    option_code: code,
+                    reason: format!("Requested IP option must be 4 bytes, got {}", data.len()),
+                });
             }
             let addr = Ipv4Addr::new(data[0], data[1], data[2], data[3]);
             Ok(DhcpOption::RequestedIpAddress(addr))
@@ -396,10 +393,10 @@ pub fn parse_option(code: u8, data: &[u8]) -> Result<DhcpOption, DhcpError> {
         
         OPTION_LEASE_TIME => {
             if data.len() != 4 {
-                return Err(DhcpError::InvalidOption(format!(
-                    "Lease Time option must be 4 bytes, got {}",
-                    data.len()
-                )));
+                return Err(DhcpError::InvalidOption {
+                    option_code: code,
+                    reason: format!("Lease Time option must be 4 bytes, got {}", data.len()),
+                });
             }
             let time = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
             Ok(DhcpOption::LeaseTime(time))
@@ -407,27 +404,27 @@ pub fn parse_option(code: u8, data: &[u8]) -> Result<DhcpOption, DhcpError> {
         
         OPTION_OVERLOAD => {
             if data.len() != 1 {
-                return Err(DhcpError::InvalidOption(format!(
-                    "Overload option must be 1 byte, got {}",
-                    data.len()
-                )));
+                return Err(DhcpError::InvalidOption {
+                    option_code: code,
+                    reason: format!("Overload option must be 1 byte, got {}", data.len()),
+                });
             }
             let flag = data[0];
             if flag < 1 || flag > 3 {
-                return Err(DhcpError::InvalidOption(format!(
-                    "Overload flag must be 1-3, got {}",
-                    flag
-                )));
+                return Err(DhcpError::InvalidOption {
+                    option_code: code,
+                    reason: format!("Overload flag must be 1-3, got {}", flag),
+                });
             }
             Ok(DhcpOption::Overload(flag))
         }
         
         OPTION_MESSAGE_TYPE => {
             if data.len() != 1 {
-                return Err(DhcpError::InvalidOption(format!(
-                    "Message Type option must be 1 byte, got {}",
-                    data.len()
-                )));
+                return Err(DhcpError::InvalidOption {
+                    option_code: code,
+                    reason: format!("Message Type option must be 1 byte, got {}", data.len()),
+                });
             }
             let msg_type = MessageType::from_u8(data[0])?;
             Ok(DhcpOption::MessageType(msg_type))
@@ -435,10 +432,10 @@ pub fn parse_option(code: u8, data: &[u8]) -> Result<DhcpOption, DhcpError> {
         
         OPTION_SERVER_IDENTIFIER => {
             if data.len() != 4 {
-                return Err(DhcpError::InvalidOption(format!(
-                    "Server Identifier option must be 4 bytes, got {}",
-                    data.len()
-                )));
+                return Err(DhcpError::InvalidOption {
+                    option_code: code,
+                    reason: format!("Server Identifier option must be 4 bytes, got {}", data.len()),
+                });
             }
             let addr = Ipv4Addr::new(data[0], data[1], data[2], data[3]);
             Ok(DhcpOption::ServerId(addr))
@@ -449,65 +446,66 @@ pub fn parse_option(code: u8, data: &[u8]) -> Result<DhcpOption, DhcpError> {
         }
         
         OPTION_MESSAGE => {
-            let message = parse_string(data)?;
+            let message = parse_string(data, OPTION_MESSAGE)?;
             Ok(DhcpOption::Message(message))
         }
         
-        OPTION_RENEWAL_TIME => {
+        OPTION_T1 => {
             if data.len() != 4 {
-                return Err(DhcpError::InvalidOption(format!(
-                    "Renewal Time option must be 4 bytes, got {}",
-                    data.len()
-                )));
+                return Err(DhcpError::InvalidOption {
+                    option_code: code,
+                    reason: format!("Renewal Time option must be 4 bytes, got {}", data.len()),
+                });
             }
             let time = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
             Ok(DhcpOption::RenewalTime(time))
         }
         
-        OPTION_REBINDING_TIME => {
+        OPTION_T2 => {
             if data.len() != 4 {
-                return Err(DhcpError::InvalidOption(format!(
-                    "Rebinding Time option must be 4 bytes, got {}",
-                    data.len()
-                )));
+                return Err(DhcpError::InvalidOption {
+                    option_code: code,
+                    reason: format!("Rebinding Time option must be 4 bytes, got {}", data.len()),
+                });
             }
             let time = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
             Ok(DhcpOption::RebindingTime(time))
         }
         
-        OPTION_VENDOR_CLASS_ID => {
+        OPTION_VENDOR_ID => {
             Ok(DhcpOption::VendorClassId(data.to_vec()))
         }
         
-        OPTION_CLIENT_IDENTIFIER => {
+        OPTION_CLIENT_ID => {
             if data.is_empty() {
-                return Err(DhcpError::InvalidOption(
-                    "Client Identifier option cannot be empty".to_string()
-                ));
+                return Err(DhcpError::InvalidOption {
+                    option_code: code,
+                    reason: "Client Identifier option cannot be empty".to_string(),
+                });
             }
             Ok(DhcpOption::ClientId(data.to_vec()))
         }
         
-        OPTION_TFTP_SERVER_NAME => {
-            let name = parse_string(data)?;
+        OPTION_SNAME => {
+            let name = parse_string(data, OPTION_SNAME)?;
             Ok(DhcpOption::TftpServerName(name))
         }
         
-        OPTION_BOOT_FILE_NAME => {
-            let name = parse_string(data)?;
+        OPTION_FILENAME => {
+            let name = parse_string(data, OPTION_FILENAME)?;
             Ok(DhcpOption::BootFileName(name))
         }
         
-        OPTION_RELAY_AGENT_INFO => {
+        OPTION_AGENT_ID => {
             Ok(DhcpOption::RelayAgentInfo(data.to_vec()))
         }
         
         OPTION_RAPID_COMMIT => {
             if !data.is_empty() {
-                return Err(DhcpError::InvalidOption(format!(
-                    "Rapid Commit option must have zero length, got {}",
-                    data.len()
-                )));
+                return Err(DhcpError::InvalidOption {
+                    option_code: code,
+                    reason: format!("Rapid Commit option must have zero length, got {}", data.len()),
+                });
             }
             Ok(DhcpOption::RapidCommit)
         }
@@ -621,43 +619,43 @@ pub fn encode_option(option: &DhcpOption, buf: &mut BytesMut) {
         }
         
         DhcpOption::RenewalTime(time) => {
-            buf.put_u8(OPTION_RENEWAL_TIME);
+            buf.put_u8(OPTION_T1);
             buf.put_u8(4);
             buf.put_u32(*time);
         }
         
         DhcpOption::RebindingTime(time) => {
-            buf.put_u8(OPTION_REBINDING_TIME);
+            buf.put_u8(OPTION_T2);
             buf.put_u8(4);
             buf.put_u32(*time);
         }
         
         DhcpOption::VendorClassId(data) => {
-            buf.put_u8(OPTION_VENDOR_CLASS_ID);
+            buf.put_u8(OPTION_VENDOR_ID);
             buf.put_u8(data.len() as u8);
             buf.put_slice(data);
         }
         
         DhcpOption::ClientId(data) => {
-            buf.put_u8(OPTION_CLIENT_IDENTIFIER);
+            buf.put_u8(OPTION_CLIENT_ID);
             buf.put_u8(data.len() as u8);
             buf.put_slice(data);
         }
         
         DhcpOption::TftpServerName(s) => {
-            buf.put_u8(OPTION_TFTP_SERVER_NAME);
+            buf.put_u8(OPTION_SNAME);
             buf.put_u8(s.len() as u8);
             buf.put_slice(s.as_bytes());
         }
         
         DhcpOption::BootFileName(s) => {
-            buf.put_u8(OPTION_BOOT_FILE_NAME);
+            buf.put_u8(OPTION_FILENAME);
             buf.put_u8(s.len() as u8);
             buf.put_slice(s.as_bytes());
         }
         
         DhcpOption::RelayAgentInfo(data) => {
-            buf.put_u8(OPTION_RELAY_AGENT_INFO);
+            buf.put_u8(OPTION_AGENT_ID);
             buf.put_u8(data.len() as u8);
             buf.put_slice(data);
         }
@@ -717,21 +715,23 @@ pub fn parse_options(input: &[u8]) -> Result<Vec<DhcpOption>, DhcpError> {
         
         // Need at least 2 bytes for code + length
         if remaining.len() < 2 {
-            return Err(DhcpError::ParseFailed(
-                "Truncated option: missing length field".to_string()
-            ));
+            return Err(DhcpError::ParseFailed {
+                reason: "Truncated option: missing length field".to_string(),
+            });
         }
         
         let length = remaining[1] as usize;
         
         // Check if we have enough data
         if remaining.len() < 2 + length {
-            return Err(DhcpError::ParseFailed(format!(
-                "Truncated option {}: expected {} bytes, got {}",
-                code,
-                length,
-                remaining.len() - 2
-            )));
+            return Err(DhcpError::ParseFailed {
+                reason: format!(
+                    "Truncated option {}: expected {} bytes, got {}",
+                    code,
+                    length,
+                    remaining.len() - 2
+                ),
+            });
         }
         
         // Extract option data
@@ -789,12 +789,12 @@ pub fn encode_options(options: &[DhcpOption]) -> Bytes {
 /// # Returns
 ///
 /// Returns `Ok(Vec<Ipv4Addr>)` or `Err(DhcpError)` if length is invalid
-fn parse_ipv4_list(data: &[u8]) -> Result<Vec<Ipv4Addr>, DhcpError> {
+fn parse_ipv4_list(data: &[u8], option_code: u8) -> Result<Vec<Ipv4Addr>, DhcpError> {
     if data.len() % 4 != 0 {
-        return Err(DhcpError::InvalidOption(format!(
-            "IPv4 address list length must be multiple of 4, got {}",
-            data.len()
-        )));
+        return Err(DhcpError::InvalidOption {
+            option_code,
+            reason: format!("IPv4 address list length must be multiple of 4, got {}", data.len()),
+        });
     }
     
     let mut addrs = Vec::new();
@@ -818,9 +818,12 @@ fn parse_ipv4_list(data: &[u8]) -> Result<Vec<Ipv4Addr>, DhcpError> {
 /// # Returns
 ///
 /// Returns `Ok(String)` or `Err(DhcpError)` if UTF-8 validation fails
-fn parse_string(data: &[u8]) -> Result<String, DhcpError> {
+fn parse_string(data: &[u8], option_code: u8) -> Result<String, DhcpError> {
     String::from_utf8(data.to_vec()).map_err(|e| {
-        DhcpError::InvalidOption(format!("Invalid UTF-8 in string option: {}", e))
+        DhcpError::InvalidOption {
+            option_code,
+            reason: format!("Invalid UTF-8 in string option: {}", e),
+        }
     })
 }
 
@@ -849,10 +852,10 @@ fn validate_subnet_mask(addr: Ipv4Addr) -> Result<(), DhcpError> {
     if inverted == 0 || (inverted.wrapping_add(1) & inverted) == 0 {
         Ok(())
     } else {
-        Err(DhcpError::InvalidOption(format!(
-            "Invalid subnet mask: {} (must have contiguous 1 bits)",
-            addr
-        )))
+        Err(DhcpError::InvalidOption {
+            option_code: OPTION_NETMASK,
+            reason: format!("Invalid subnet mask: {} (must have contiguous 1 bits)", addr),
+        })
     }
 }
 
