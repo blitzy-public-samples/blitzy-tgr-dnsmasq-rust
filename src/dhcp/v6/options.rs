@@ -29,7 +29,7 @@
 //! // C pattern: Global buffer with manual position tracking
 //! static size_t outpacket_counter;
 //! daemon->outpacket.iov_base = malloc(size);
-//! 
+//!
 //! int new_opt6(int opt) {
 //!     int ret = outpacket_counter;
 //!     unsigned char *p = expand(4);
@@ -37,7 +37,7 @@
 //!     PUTSHORT(0, p);      // Length placeholder
 //!     return ret;
 //! }
-//! 
+//!
 //! void end_opt6(int container) {
 //!     uint8_t *p = (uint8_t *)daemon->outpacket.iov_base + container + 2;
 //!     u16 len = outpacket_counter - container - 4;
@@ -50,13 +50,13 @@
 //! ```rust,ignore
 //! // Rust pattern: Owned Vec<u8> with type-safe methods
 //! let mut builder = OptionBuilder::new();
-//! 
+//!
 //! builder.start_container(OPTION_IA_NA)?;
 //! builder.put_u32(iaid)?;
 //! builder.put_u32(t1)?;
 //! builder.put_u32(t2)?;
 //! builder.end_container()?;  // Automatic length calculation
-//! 
+//!
 //! let packet = builder.build();
 //! ```
 //!
@@ -77,22 +77,22 @@
 //!
 //! ```rust,ignore
 //! use std::net::Ipv6Addr;
-//! 
+//!
 //! let mut builder = OptionBuilder::new();
-//! 
+//!
 //! // Start IA_NA container
 //! builder.start_container(constants::OPTION_IA_NA)?;
 //! builder.put_u32(0x12345678)?;  // IAID
 //! builder.put_u32(3600)?;         // T1
 //! builder.put_u32(7200)?;         // T2
-//! 
+//!
 //! // Add IA_ADDR sub-option within IA_NA
 //! builder.start_container(constants::OPTION_IAADDR)?;
 //! builder.put_ipv6_addr(&Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1))?;
 //! builder.put_u32(7200)?;   // Preferred lifetime
 //! builder.put_u32(14400)?;  // Valid lifetime
 //! builder.end_container()?;  // Finalize IA_ADDR
-//! 
+//!
 //! builder.end_container()?;  // Finalize IA_NA with correct total length
 //! ```
 //!
@@ -109,12 +109,12 @@
 //! ```rust,ignore
 //! use crate::dhcp::v6::options::OptionBuilder;
 //! use crate::dhcp::v6::constants;
-//! 
+//!
 //! // Build a simple PREFERENCE option
 //! let mut builder = OptionBuilder::new();
 //! builder.put_preference(255)?;
 //! let options_bytes = builder.build();
-//! 
+//!
 //! // Build complex nested options
 //! let mut builder = OptionBuilder::new();
 //! builder.put_server_id(&[0x00, 0x01, 0x00, 0x01, ...])?;
@@ -157,7 +157,7 @@ use std::net::Ipv6Addr;
 pub struct OptionBuilder {
     /// Buffer containing serialized DHCPv6 options in wire format
     buffer: Vec<u8>,
-    
+
     /// Stack of container start positions for nested options (e.g., IA_NA containing IA_ADDR)
     /// Each entry stores the byte offset where the container option header begins
     container_stack: Vec<usize>,
@@ -180,10 +180,7 @@ impl OptionBuilder {
     /// assert_eq!(builder.buffer.len(), 0);
     /// ```
     pub fn new() -> Self {
-        Self {
-            buffer: Vec::new(),
-            container_stack: Vec::new(),
-        }
+        Self { buffer: Vec::new(), container_stack: Vec::new() }
     }
 
     /// Starts a new DHCPv6 option with the specified option code.
@@ -213,10 +210,10 @@ impl OptionBuilder {
     pub fn new_option(&mut self, option_code: u16) -> Result<(), DhcpError> {
         // Encode option code (2 bytes, big-endian)
         self.buffer.extend_from_slice(&option_code.to_be_bytes());
-        
+
         // Encode length placeholder (2 bytes, big-endian) - will be backpatched
         self.buffer.extend_from_slice(&0u16.to_be_bytes());
-        
+
         Ok(())
     }
 
@@ -400,10 +397,10 @@ impl OptionBuilder {
         // Save current buffer position (where this option header starts)
         let container_pos = self.buffer.len();
         self.container_stack.push(container_pos);
-        
+
         // Create option header
         self.new_option(option_code)?;
-        
+
         Ok(())
     }
 
@@ -434,12 +431,11 @@ impl OptionBuilder {
     /// ```
     pub fn end_container(&mut self) -> Result<(), DhcpError> {
         // Pop container start position from stack
-        let container_pos = self.container_stack.pop().ok_or_else(|| {
-            DhcpError::V6ProtocolError {
+        let container_pos =
+            self.container_stack.pop().ok_or_else(|| DhcpError::V6ProtocolError {
                 reason: "end_container called without matching start_container".to_string(),
-            }
-        })?;
-        
+            })?;
+
         // Calculate option data length (total bytes - 4-byte header)
         let total_length = self.buffer.len() - container_pos;
         if total_length < 4 {
@@ -448,12 +444,12 @@ impl OptionBuilder {
             });
         }
         let option_data_len = (total_length - 4) as u16;
-        
+
         // Backpatch the length field (bytes at container_pos+2 and container_pos+3)
         let length_bytes = option_data_len.to_be_bytes();
         self.buffer[container_pos + 2] = length_bytes[0];
         self.buffer[container_pos + 3] = length_bytes[1];
-        
+
         Ok(())
     }
 
@@ -559,13 +555,19 @@ impl OptionBuilder {
     /// ```rust,ignore
     /// use std::net::Ipv6Addr;
     /// let addr = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1);
-    /// 
+    ///
     /// builder.put_ia_na(0x12345678, 3600, 7200, |b| {
     ///     b.put_ia_addr(&addr, 7200, 14400, |_| Ok(()))?;
     ///     Ok(())
     /// })?;
     /// ```
-    pub fn put_ia_na<F>(&mut self, iaid: u32, t1: u32, t2: u32, sub_options_fn: F) -> Result<(), DhcpError>
+    pub fn put_ia_na<F>(
+        &mut self,
+        iaid: u32,
+        t1: u32,
+        t2: u32,
+        sub_options_fn: F,
+    ) -> Result<(), DhcpError>
     where
         F: FnOnce(&mut Self) -> Result<(), DhcpError>,
     {
@@ -636,7 +638,13 @@ impl OptionBuilder {
     ///     Ok(())
     /// })?;
     /// ```
-    pub fn put_ia_pd<F>(&mut self, iaid: u32, t1: u32, t2: u32, sub_options_fn: F) -> Result<(), DhcpError>
+    pub fn put_ia_pd<F>(
+        &mut self,
+        iaid: u32,
+        t1: u32,
+        t2: u32,
+        sub_options_fn: F,
+    ) -> Result<(), DhcpError>
     where
         F: FnOnce(&mut Self) -> Result<(), DhcpError>,
     {
@@ -729,7 +737,7 @@ impl OptionBuilder {
                 reason: format!("Invalid prefix length: {} (must be <= 128)", prefix_len),
             });
         }
-        
+
         self.start_container(constants::OPTION_IAPREFIX)?;
         self.put_u32(preferred_lifetime)?;
         self.put_u32(valid_lifetime)?;
@@ -842,7 +850,7 @@ impl OptionBuilder {
     /// ```rust,ignore
     /// // Success status
     /// builder.put_status_code(0, "Success")?;
-    /// 
+    ///
     /// // No addresses available
     /// builder.put_status_code(2, "No addresses available in pool")?;
     /// ```
@@ -929,7 +937,11 @@ impl OptionBuilder {
     /// ```rust,ignore
     /// builder.put_vendor_class(9, &["MSFT 5.0"])?;
     /// ```
-    pub fn put_vendor_class(&mut self, enterprise_number: u32, vendor_classes: &[&str]) -> Result<(), DhcpError> {
+    pub fn put_vendor_class(
+        &mut self,
+        enterprise_number: u32,
+        vendor_classes: &[&str],
+    ) -> Result<(), DhcpError> {
         self.start_container(constants::OPTION_VENDOR_CLASS)?;
         self.put_u32(enterprise_number)?;
         for class in vendor_classes {
@@ -1008,7 +1020,7 @@ impl OptionBuilder {
                 self.put_u8(label.len() as u8)?;
                 self.put_bytes(label.as_bytes())?;
             }
-            self.put_u8(0)?;  // Null terminator for domain name
+            self.put_u8(0)?; // Null terminator for domain name
         }
         self.end_container()
     }
@@ -1067,7 +1079,7 @@ impl OptionBuilder {
     pub fn put_fqdn(&mut self, flags: u8, fqdn: &str) -> Result<(), DhcpError> {
         self.start_container(constants::OPTION_FQDN)?;
         self.put_u8(flags)?;
-        
+
         // Encode FQDN in DNS wire format (length-prefixed labels)
         for label in fqdn.split('.') {
             if label.is_empty() {
@@ -1081,8 +1093,8 @@ impl OptionBuilder {
             self.put_u8(label.len() as u8)?;
             self.put_bytes(label.as_bytes())?;
         }
-        self.put_u8(0)?;  // Null terminator for domain name
-        
+        self.put_u8(0)?; // Null terminator for domain name
+
         self.end_container()
     }
 }
@@ -1140,11 +1152,11 @@ mod tests {
         let mut builder = OptionBuilder::new();
         builder.put_preference(255).unwrap();
         let result = builder.build();
-        
+
         // Expected: option_code(2) + length(2) + value(1)
         assert_eq!(result.len(), 5);
         assert_eq!(&result[0..2], &constants::OPTION_PREFERENCE.to_be_bytes());
-        assert_eq!(&result[2..4], &1u16.to_be_bytes());  // Length of 1 byte
+        assert_eq!(&result[2..4], &1u16.to_be_bytes()); // Length of 1 byte
         assert_eq!(result[4], 255);
     }
 
@@ -1152,19 +1164,21 @@ mod tests {
     fn test_nested_option() {
         let mut builder = OptionBuilder::new();
         let addr = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1);
-        
-        builder.put_ia_na(0x12345678, 3600, 7200, |b| {
-            b.put_ia_addr(&addr, 7200, 14400, |_| Ok(()))?;
-            Ok(())
-        }).unwrap();
-        
+
+        builder
+            .put_ia_na(0x12345678, 3600, 7200, |b| {
+                b.put_ia_addr(&addr, 7200, 14400, |_| Ok(()))?;
+                Ok(())
+            })
+            .unwrap();
+
         let result = builder.build();
-        
+
         // Verify IA_NA option code
         assert_eq!(&result[0..2], &constants::OPTION_IA_NA.to_be_bytes());
-        
+
         // Verify structure contains IA_NA fields + nested IA_ADDR
-        assert!(result.len() > 20);  // At minimum: header(4) + iaid(4) + t1(4) + t2(4) + nested option
+        assert!(result.len() > 20); // At minimum: header(4) + iaid(4) + t1(4) + t2(4) + nested option
     }
 
     #[test]

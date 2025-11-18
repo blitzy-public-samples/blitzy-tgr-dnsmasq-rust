@@ -110,7 +110,6 @@
 use crate::dns::dnssec::blockdata::BlockData;
 use crate::error::DnsmasqError;
 use ring::signature;
-use std::convert::TryFrom;
 use std::fmt;
 use thiserror::Error;
 use tracing::{debug, error, trace, warn};
@@ -410,11 +409,11 @@ impl CryptoAlgorithm {
     /// Expected digest length in bytes, or 0 for EdDSA
     pub fn required_digest_len(&self) -> usize {
         match self {
-            Self::RsaSha1 | Self::RsaSha1Nsec3 => 20,  // SHA1
-            Self::RsaSha256 | Self::EcdsaP256Sha256 => 32,  // SHA256
-            Self::RsaSha512 => 64,  // SHA512
-            Self::EcdsaP384Sha384 => 48,  // SHA384
-            Self::Ed25519 | Self::Ed448 => 0,  // EdDSA uses full message
+            Self::RsaSha1 | Self::RsaSha1Nsec3 => 20,      // SHA1
+            Self::RsaSha256 | Self::EcdsaP256Sha256 => 32, // SHA256
+            Self::RsaSha512 => 64,                         // SHA512
+            Self::EcdsaP384Sha384 => 48,                   // SHA384
+            Self::Ed25519 | Self::Ed448 => 0,              // EdDSA uses full message
             _ => 0,
         }
     }
@@ -530,7 +529,8 @@ impl SignatureVerifier {
         message_digest: &[u8],
     ) -> Result<bool, CryptoError> {
         // Convert algorithm number to enum for type safety
-        let algo = CryptoAlgorithm::from_u8(algorithm).ok_or(CryptoError::UnsupportedAlgorithm { algorithm })?;
+        let algo = CryptoAlgorithm::from_u8(algorithm)
+            .ok_or(CryptoError::UnsupportedAlgorithm { algorithm })?;
 
         trace!(
             algorithm = algorithm,
@@ -672,20 +672,17 @@ impl SignatureVerifier {
         );
 
         // Select hash algorithm and verification padding
-        let verification_alg: &dyn signature::VerificationAlgorithm = match algorithm {
+        let verification_alg: &'static signature::RsaParameters = match algorithm {
             5 | 7 => &signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
-            8 => &signature::RSA_PKCS1_1024_8192_SHA256,
-            10 => &signature::RSA_PKCS1_1024_8192_SHA512,
+            8 => &signature::RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+            10 => &signature::RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
             _ => {
                 return Err(CryptoError::UnsupportedAlgorithm { algorithm });
             }
         };
 
         // Create public key from components
-        let public_key = signature::RsaPublicKeyComponents {
-            n: modulus,
-            e: exponent,
-        };
+        let public_key = signature::RsaPublicKeyComponents { n: modulus, e: exponent };
 
         // Verify signature
         match public_key.verify(verification_alg, message_digest, signature) {
@@ -755,11 +752,7 @@ impl SignatureVerifier {
             (key_bytes[0] as usize, 1)
         };
 
-        trace!(
-            exp_len = exp_len,
-            exp_start = exp_start,
-            "Parsed RSA exponent length"
-        );
+        trace!(exp_len = exp_len, exp_start = exp_start, "Parsed RSA exponent length");
 
         // Validate exponent length
         if exp_len == 0 {
@@ -868,13 +861,13 @@ impl SignatureVerifier {
         let (verification_alg, expected_key_len, expected_sig_len) = match algorithm {
             13 => (
                 &signature::ECDSA_P256_SHA256_FIXED,
-                64,  // P-256: 32-byte X + 32-byte Y
-                64,  // P-256: 32-byte R + 32-byte S
+                64, // P-256: 32-byte X + 32-byte Y
+                64, // P-256: 32-byte R + 32-byte S
             ),
             14 => (
                 &signature::ECDSA_P384_SHA384_FIXED,
-                96,  // P-384: 48-byte X + 48-byte Y
-                96,  // P-384: 48-byte R + 48-byte S
+                96, // P-384: 48-byte X + 48-byte Y
+                96, // P-384: 48-byte R + 48-byte S
             ),
             _ => {
                 return Err(CryptoError::UnsupportedAlgorithm { algorithm });
@@ -914,7 +907,7 @@ impl SignatureVerifier {
         // Parse public key (ring expects uncompressed point format: 0x04 || X || Y)
         // RFC 6605 omits the 0x04 prefix, so we need to prepend it
         let mut public_key_bytes = Vec::with_capacity(1 + key_bytes.len());
-        public_key_bytes.push(0x04);  // Uncompressed point indicator
+        public_key_bytes.push(0x04); // Uncompressed point indicator
         public_key_bytes.extend_from_slice(key_bytes);
 
         // Create public key
@@ -1065,7 +1058,7 @@ impl SignatureVerifier {
             8 | 13 => Some(&ring::digest::SHA256),
             10 => Some(&ring::digest::SHA512),
             14 => Some(&ring::digest::SHA384),
-            15 | 16 => None,  // EdDSA doesn't use a hash
+            15 | 16 => None, // EdDSA doesn't use a hash
             _ => None,
         }
     }
@@ -1122,15 +1115,15 @@ mod tests {
         assert!(SignatureVerifier::hash_for_algorithm(8).is_some());
         assert!(SignatureVerifier::hash_for_algorithm(10).is_some());
         assert!(SignatureVerifier::hash_for_algorithm(14).is_some());
-        assert!(SignatureVerifier::hash_for_algorithm(15).is_none());  // EdDSA
-        assert!(SignatureVerifier::hash_for_algorithm(255).is_none());  // Invalid
+        assert!(SignatureVerifier::hash_for_algorithm(15).is_none()); // EdDSA
+        assert!(SignatureVerifier::hash_for_algorithm(255).is_none()); // Invalid
     }
 
     #[test]
     fn test_verifier_creation() {
         let verifier = SignatureVerifier::new();
         let default_verifier = SignatureVerifier::default();
-        
+
         // Both should create valid verifiers (they're zero-sized types)
         assert_eq!(std::mem::size_of_val(&verifier), 0);
         assert_eq!(std::mem::size_of_val(&default_verifier), 0);
@@ -1151,16 +1144,16 @@ mod tests {
     #[test]
     fn test_rsa_key_parsing_short_exponent() {
         let verifier = SignatureVerifier::new();
-        
+
         // Create RSA key with short exponent (1-byte length)
-        let exponent = vec![0x01, 0x00, 0x01];  // 65537
-        let modulus = vec![0xFF; 128];  // 1024-bit modulus
-        
+        let exponent = vec![0x01, 0x00, 0x01]; // 65537
+        let modulus = vec![0xFF; 128]; // 1024-bit modulus
+
         let mut key_bytes = Vec::new();
-        key_bytes.push(exponent.len() as u8);  // Short length encoding
+        key_bytes.push(exponent.len() as u8); // Short length encoding
         key_bytes.extend_from_slice(&exponent);
         key_bytes.extend_from_slice(&modulus);
-        
+
         let result = verifier.parse_rsa_key(&key_bytes, 8);
         assert!(result.is_ok());
         let (exp, mod_result) = result.unwrap();
@@ -1171,18 +1164,18 @@ mod tests {
     #[test]
     fn test_rsa_key_parsing_extended_exponent() {
         let verifier = SignatureVerifier::new();
-        
+
         // Create RSA key with extended exponent length
-        let exponent = vec![0xFF; 300];  // Long exponent (> 255 bytes)
-        let modulus = vec![0xFF; 256];  // 2048-bit modulus
-        
+        let exponent = vec![0xFF; 300]; // Long exponent (> 255 bytes)
+        let modulus = vec![0xFF; 256]; // 2048-bit modulus
+
         let mut key_bytes = Vec::new();
-        key_bytes.push(0);  // Extended length indicator
-        key_bytes.push((exponent.len() >> 8) as u8);  // High byte
-        key_bytes.push((exponent.len() & 0xFF) as u8);  // Low byte
+        key_bytes.push(0); // Extended length indicator
+        key_bytes.push((exponent.len() >> 8) as u8); // High byte
+        key_bytes.push((exponent.len() & 0xFF) as u8); // Low byte
         key_bytes.extend_from_slice(&exponent);
         key_bytes.extend_from_slice(&modulus);
-        
+
         let result = verifier.parse_rsa_key(&key_bytes, 8);
         assert!(result.is_ok());
         let (exp, mod_result) = result.unwrap();
@@ -1193,7 +1186,7 @@ mod tests {
     #[test]
     fn test_rsa_key_parsing_too_short() {
         let verifier = SignatureVerifier::new();
-        
+
         // Key too short (< 3 bytes)
         let key_bytes = vec![0x03, 0x01];
         let result = verifier.parse_rsa_key(&key_bytes, 8);
@@ -1203,7 +1196,7 @@ mod tests {
     #[test]
     fn test_rsa_key_parsing_zero_exponent_length() {
         let verifier = SignatureVerifier::new();
-        
+
         // Zero exponent length (invalid)
         let key_bytes = vec![0x00, 0x00, 0x00, 0xFF, 0xFF];
         let result = verifier.parse_rsa_key(&key_bytes, 8);
@@ -1213,12 +1206,15 @@ mod tests {
     #[test]
     fn test_digest_length_validation() {
         let verifier = SignatureVerifier::new();
-        let key_data = BlockData::new(&[0x03, 0x01, 0x00, 0x01] + &vec![0xFF; 128]); // Valid RSA key
-        let signature = &vec![0xFF; 128];
-        let wrong_digest = &[0xFF; 16];  // Wrong length for SHA256
-        
+        // Create a valid RSA key by concatenating the exponent length and modulus
+        let mut key_bytes = vec![0x03, 0x01, 0x00, 0x01]; // Exponent length and exponent
+        key_bytes.extend_from_slice(&vec![0xFF; 128]); // Modulus
+        let key_data = BlockData::new(&key_bytes);
+        let signature = vec![0xFF; 128];
+        let wrong_digest = [0xFF; 16]; // Wrong length for SHA256
+
         // RSA/SHA256 (algorithm 8) requires 32-byte digest
-        let result = verifier.verify(8, &key_data, signature, wrong_digest);
+        let result = verifier.verify(8, &key_data, &signature, &wrong_digest);
         assert!(matches!(result, Err(CryptoError::DigestLengthMismatch { .. })));
     }
 }

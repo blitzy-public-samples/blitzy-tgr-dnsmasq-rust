@@ -82,9 +82,7 @@ pub struct CompressionMap {
 impl CompressionMap {
     /// Creates a new empty compression map.
     pub fn new() -> Self {
-        Self {
-            offsets: HashMap::new(),
-        }
+        Self { offsets: HashMap::new() }
     }
 
     /// Adds a domain name and all its suffixes to the compression map.
@@ -406,7 +404,7 @@ pub fn compress_name(
     for i in 0..labels.len() {
         eprintln!("[compress_name] Processing label {} of {}: '{}'", i, labels.len(), labels[i]);
         eprintln!("[compress_name] Buffer state before this label: {} bytes", buffer.len());
-        
+
         // Check if we can use a compression pointer for remaining labels
         if let Some(map) = compression_map.as_mut() {
             let remaining_wire = encode_labels_to_wire(&labels[i..])?;
@@ -420,15 +418,18 @@ pub fn compress_name(
                     let pointer = 0xC000 | (offset as u16);
                     buffer.put_u16(pointer);
                     eprintln!("[compress_name] Wrote compression pointer 0x{:04X}, final buffer length: {}", pointer, buffer.len());
-                    
+
                     // Add what we wrote to the compression map before returning
                     if i > 0 {
                         // We wrote some labels before using compression
                         let written_wire = &buffer[name_start_offset..buffer.len()];
-                        eprintln!("[compress_name] Adding partial name to map at offset {}", name_start_offset);
+                        eprintln!(
+                            "[compress_name] Adding partial name to map at offset {}",
+                            name_start_offset
+                        );
                         map.add_name(written_wire, name_start_offset);
                     }
-                    
+
                     return Ok(buffer.len() - initial_len);
                 }
             } else {
@@ -449,7 +450,12 @@ pub fn compress_name(
         let escaped = escape_label(label.as_bytes());
         buffer.put_u8(escaped.len() as u8);
         buffer.extend_from_slice(&escaped);
-        eprintln!("[compress_name] Wrote label '{}' ({} bytes), buffer now {} bytes", label, escaped.len() + 1, buffer.len());
+        eprintln!(
+            "[compress_name] Wrote label '{}' ({} bytes), buffer now {} bytes",
+            label,
+            escaped.len() + 1,
+            buffer.len()
+        );
     }
 
     // Write terminating zero
@@ -827,7 +833,7 @@ mod tests {
         // Offset 17: \x03ftp\xc0\x04  (ftp.example.com with pointer to offset 4)
         let mut packet = Vec::new();
         packet.extend_from_slice(b"\x03www\x07example\x03com\x00"); // 0-16
-        packet.extend_from_slice(b"\x03ftp");                        // 17-20
+        packet.extend_from_slice(b"\x03ftp"); // 17-20
         packet.push(0xC0); // Compression pointer marker          // 21
         packet.push(0x04); // Points to offset 4 (\x07example...) // 22
 
@@ -878,7 +884,7 @@ mod tests {
         // - 00: Normal label (max length 63)
         // - 11 (0xC0): Compression pointer
         // - 01, 10 (0x40, 0x80): Reserved/extended label types
-        // 
+        //
         // It's impossible to have a normal label longer than 63 bytes because
         // the length field is only 6 bits. Any value >= 64 sets the type bits
         // and becomes an extended label type, which must be rejected.
@@ -902,7 +908,7 @@ mod tests {
     fn test_decompress_name_too_long() {
         // Test that names exceeding MAXDNAME are rejected
         let mut packet = Vec::new();
-        
+
         // Create a name with many labels that exceeds MAXDNAME (1025)
         // Each label: 1 byte length + 63 bytes data = 64 bytes
         // We need: 1025 / 64 ≈ 17 labels to exceed MAXDNAME
