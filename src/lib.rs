@@ -38,6 +38,7 @@
 
 // Public API modules
 pub mod constants;
+pub mod dhcp;
 pub mod error;
 pub mod radv;
 
