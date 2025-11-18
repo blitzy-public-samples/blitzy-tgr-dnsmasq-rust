@@ -120,11 +120,16 @@
 //!
 //! ## Parsing a DNS Query Message
 //!
-//! ```rust,no_run
+//! ```rust
 //! use dnsmasq::dns::protocol::{DnsMessage, DomainName};
 //!
-//! // Receive UDP packet from client
-//! let packet_data: Vec<u8> = receive_udp_packet().await?;
+//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! // Simulated UDP packet data (in practice, received from network)
+//! let packet_data: Vec<u8> = vec![
+//!     0x12, 0x34, // Transaction ID
+//!     0x01, 0x00, // Flags: standard query
+//!     // ... (additional packet bytes would be here)
+//! ];
 //!
 //! // Parse DNS message with comprehensive validation
 //! let query = DnsMessage::from_bytes(&packet_data)?;
@@ -137,21 +142,32 @@
 //!     
 //!     println!("Query for {} type {}", domain, qtype);
 //! }
-//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ## Constructing a DNS Response Message
 //!
-//! ```rust,no_run
+//! ```rust
 //! use dnsmasq::dns::protocol::{DnsMessage, ResourceRecord, DomainName};
 //! use std::net::Ipv4Addr;
+//! use std::str::FromStr;
 //!
+//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! # // First, create a sample query to respond to
+//! # let packet_data: Vec<u8> = vec![
+//! #     0x12, 0x34, 0x01, 0x00,
+//! # ];
+//! # let query = DnsMessage::from_bytes(&packet_data)?;
+//! #
 //! // Create response matching query
 //! let mut response = DnsMessage::new_response(&query);
 //!
 //! // Add A record answer with 300 second TTL
 //! let answer = ResourceRecord::A {
-//!     name: query.questions[0].name.clone(),
+//!     name: query.questions.get(0)
+//!         .map(|q| q.name.clone())
+//!         .unwrap_or_else(|| DomainName::from_str("example.com").unwrap()),
 //!     ttl: 300,
 //!     address: Ipv4Addr::new(93, 184, 216, 34),
 //! };
@@ -159,14 +175,16 @@
 //!
 //! // Serialize to wire format for transmission
 //! let response_bytes = response.to_bytes()?;
-//! send_udp_packet(&response_bytes).await?;
-//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! // In practice: send_udp_packet(&response_bytes).await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ## Working with Domain Names
 //!
 //! ```rust,no_run
 //! use dnsmasq::dns::protocol::DomainName;
+//! use std::str::FromStr;
 //!
 //! // Parse domain name with validation
 //! let domain = DomainName::from_str("www.example.com")?;
@@ -243,30 +261,23 @@
 //!   record counts, maximum name component counts) to prevent memory exhaustion attacks.
 
 // Submodule declarations with public visibility for external consumption
-pub mod constants;
 pub mod compression;
+pub mod constants;
+pub mod message;
 pub mod name;
 pub mod record;
-pub mod message;
 
 // Re-export commonly used constants for ergonomic imports
 // Users can write `use dnsmasq::dns::protocol::NAMESERVER_PORT` instead of
 // `use dnsmasq::dns::protocol::constants::NAMESERVER_PORT`
-pub use constants::{
-    NAMESERVER_PORT,
-    T_A,
-    T_AAAA,
-    T_CNAME,
-    NOERROR,
-    SERVFAIL,
-};
+pub use constants::{NAMESERVER_PORT, NOERROR, SERVFAIL, T_A, T_AAAA, T_CNAME};
 
 // Re-export core types for ergonomic imports
 // Users can write `use dnsmasq::dns::protocol::DomainName` instead of
 // `use dnsmasq::dns::protocol::name::DomainName`
+pub use message::{DnsMessage, DnsQuery, DnsResponse};
 pub use name::DomainName;
 pub use record::ResourceRecord;
-pub use message::{DnsMessage, DnsQuery, DnsResponse};
 
 #[cfg(test)]
 mod tests {
@@ -277,11 +288,11 @@ mod tests {
     fn test_constant_exports() {
         // Verify port number constant
         assert_eq!(NAMESERVER_PORT, 53);
-        
+
         // Verify response code constants
         assert_eq!(NOERROR, 0);
         assert_eq!(SERVFAIL, 2);
-        
+
         // Verify resource record type constants
         assert_eq!(T_A, 1);
         assert_eq!(T_AAAA, 28);
@@ -293,19 +304,19 @@ mod tests {
     fn test_type_exports() {
         // This test verifies that the types are accessible via the re-exports
         // Actual functionality testing is done in the respective submodule tests
-        
+
         // Verify DomainName type is accessible
         let _name_type = std::any::type_name::<DomainName>();
-        
+
         // Verify ResourceRecord type is accessible
         let _record_type = std::any::type_name::<ResourceRecord>();
-        
+
         // Verify DnsMessage type is accessible
         let _message_type = std::any::type_name::<DnsMessage>();
-        
+
         // Verify DnsQuery type is accessible
         let _query_type = std::any::type_name::<DnsQuery>();
-        
+
         // Verify DnsResponse type is accessible
         let _response_type = std::any::type_name::<DnsResponse>();
     }
@@ -315,13 +326,13 @@ mod tests {
     fn test_module_organization() {
         // This test documents the module structure for maintainers
         // The protocol module should have exactly 5 submodules
-        
+
         // constants: DNS protocol constants (response codes, RR types, etc.)
         // compression: Name compression implementation
         // name: DomainName type and operations
         // record: ResourceRecord type and parsing
         // message: DnsMessage type and packet handling
-        
+
         // If this test fails, the module organization has changed and
         // documentation should be updated accordingly
     }

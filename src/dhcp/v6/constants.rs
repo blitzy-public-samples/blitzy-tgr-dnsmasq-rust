@@ -2015,7 +2015,7 @@ pub const STATUS_NOBINDING: u16 = 3;
 /// Per RFC 3315 Section 24.4
 pub const STATUS_NOTONCLIENT: u16 = 4;
 
-/// Not On Link status code (5) 
+/// Not On Link status code (5)
 ///
 /// Duplicate of STATUS_NOTONCLIENT (4). Both indicate client's addresses are not
 /// appropriate for the link. RFC 3315 defines both names for same status value.
