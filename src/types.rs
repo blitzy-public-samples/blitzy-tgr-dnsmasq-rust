@@ -115,14 +115,14 @@
 //! assert!(flags.contains(CacheFlags::FORWARD));
 //! ```
 
-use crate::constants::SMALLDNAME;
 use crate::error::DnsmasqError;
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug, Display, Formatter};
-use std::net::{IpAddr as StdIpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::SocketAddr;
+pub use std::net::IpAddr;
 use std::str::FromStr;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime};
 
 // ============================================================================
 // IP ADDRESS TYPE
@@ -163,7 +163,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 ///     IpAddr::V6(ipv6) => println!("IPv6: {}", ipv6),
 /// }
 /// ```
-pub use StdIpAddr as IpAddr;
+// IpAddr is already re-exported at the top of the file
 
 // ============================================================================
 // DOMAIN NAME TYPE
@@ -1105,7 +1105,10 @@ impl LeaseInfo {
 ///     println!("Remaining: {} seconds", remaining.as_secs());
 /// }
 /// ```
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+/// Note: This type is not serializable because `std::time::Instant` is relative
+/// to an arbitrary point in time and not meaningful across process restarts.
+/// Use `std::time::SystemTime` for timestamps that need to be persisted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Timestamp {
     instant: Instant,
 }
@@ -1228,8 +1231,8 @@ mod tests {
         assert!(flags.contains(CacheFlags::IPV4));
         assert!(!flags.contains(CacheFlags::IPV6));
         
-        flags.insert(CacheFlags::DNSSEC);
-        assert!(flags.contains(CacheFlags::DNSSEC));
+        flags.insert(CacheFlags::DNSSECOK);
+        assert!(flags.contains(CacheFlags::DNSSECOK));
         
         flags.remove(CacheFlags::IPV4);
         assert!(!flags.contains(CacheFlags::IPV4));
