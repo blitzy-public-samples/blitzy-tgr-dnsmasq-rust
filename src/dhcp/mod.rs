@@ -6,5 +6,8 @@
 //! This module provides DHCPv4 and DHCPv6 server implementations with full
 //! protocol support for address assignment, lease management, and option handling.
 
+/// DHCPv4 (Dynamic Host Configuration Protocol for IPv4) implementation
+pub mod v4;
+
 /// DHCPv6 (Dynamic Host Configuration Protocol for IPv6) implementation
 pub mod v6;
