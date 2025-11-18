@@ -16,10 +16,12 @@
 //! Utility modules for dnsmasq
 //!
 //! This module provides various utility functions and services:
+//! - `logging`: Non-blocking asynchronous logging with tracing integration
 //! - `metrics`: Performance metrics collection and reporting
 //! - `patterns`: Domain name pattern matching and validation
 //! - `random`: SURF cryptographic random number generator
 
+pub mod logging;
 pub mod metrics;
 pub mod patterns;
 pub mod random;
