@@ -10,7 +10,7 @@ fn test_port_constants() {
     assert_eq!(TFTP_PORT, 69, "TFTP port should be 69");
     assert_eq!(MIN_PORT, 1024, "Min port should be 1024");
     assert_eq!(MAX_PORT, 65535, "Max port should be 65535");
-    
+
     // Verify types
     let _: u16 = NAMESERVER_PORT;
     let _: u16 = TFTP_PORT;
@@ -27,7 +27,7 @@ fn test_size_constants() {
     assert_eq!(MAXDNAME, 1025, "Max domain name size should be 1025");
     assert_eq!(RRFIXEDSZ, 10, "RR fixed size should be 10");
     assert_eq!(MAXLABEL, 63, "Max label size should be 63");
-    
+
     // Verify types
     let _: usize = IN6ADDRSZ;
     let _: usize = INADDRSZ;
@@ -46,7 +46,7 @@ fn test_response_codes() {
     assert_eq!(NXDOMAIN, 3, "NXDOMAIN should be 3");
     assert_eq!(NOTIMP, 4, "NOTIMP should be 4");
     assert_eq!(REFUSED, 5, "REFUSED should be 5");
-    
+
     // Verify types
     let _: u8 = NOERROR;
     let _: u8 = FORMERR;
@@ -70,7 +70,7 @@ fn test_class_codes() {
     assert_eq!(C_CHAOS, 3, "C_CHAOS should be 3");
     assert_eq!(C_HESIOD, 4, "C_HESIOD should be 4");
     assert_eq!(C_ANY, 255, "C_ANY should be 255");
-    
+
     // Verify types
     let _: u16 = C_IN;
     let _: u16 = C_CHAOS;
@@ -97,7 +97,7 @@ fn test_resource_record_types() {
     assert_eq!(T_NSEC, 47, "NSEC record type should be 47");
     assert_eq!(T_DNSKEY, 48, "DNSKEY record type should be 48");
     assert_eq!(T_NSEC3, 50, "NSEC3 record type should be 50");
-    
+
     // Verify types
     let _: u16 = T_A;
     let _: u16 = T_AAAA;
@@ -160,7 +160,7 @@ fn test_extended_dns_errors() {
     let _: i32 = EDE_UNS_NS3_ITER;
     let _: i32 = EDE_UNABLE_POLICY;
     let _: i32 = EDE_SYNTHESIZED;
-    
+
     // Verify EDE_UNSET is negative
     assert_eq!(EDE_UNSET, -1, "EDE_UNSET should be -1");
     // Note: EDE_UNSET is -1, confirming it's negative as per specification
@@ -178,7 +178,7 @@ fn test_dns_header_flags() {
     let _: u8 = HB4_AD;
     let _: u8 = HB4_CD;
     let _: u8 = HB4_RCODE;
-    
+
     // Verify specific flag values
     assert_eq!(HB3_QR, 0x80, "QR flag should be 0x80");
     assert_eq!(HB3_AA, 0x04, "AA flag should be 0x04");
@@ -194,13 +194,13 @@ fn test_name_escape() {
 #[test]
 fn test_constant_types_comprehensive() {
     // Comprehensive type checking for all major constant categories
-    
+
     // Port numbers are u16
     let _port: u16 = NAMESERVER_PORT;
     let _port: u16 = TFTP_PORT;
     let _port: u16 = MIN_PORT;
     let _port: u16 = MAX_PORT;
-    
+
     // Sizes are usize
     let _size: usize = IN6ADDRSZ;
     let _size: usize = INADDRSZ;
@@ -208,23 +208,23 @@ fn test_constant_types_comprehensive() {
     let _size: usize = MAXDNAME;
     let _size: usize = RRFIXEDSZ;
     let _size: usize = MAXLABEL;
-    
+
     // Response codes and opcodes are u8
     let _code: u8 = NOERROR;
     let _code: u8 = QUERY;
-    
+
     // Class codes are u16
     let _class: u16 = C_IN;
-    
+
     // Record types are u16
     let _type: u16 = T_A;
-    
+
     // EDE codes are i32
     let _ede: i32 = EDE_UNSET;
-    
+
     // Header flags are u8
     let _flag: u8 = HB3_QR;
-    
+
     // NAME_ESCAPE is u8
     let _escape: u8 = NAME_ESCAPE;
 }
@@ -232,12 +232,12 @@ fn test_constant_types_comprehensive() {
 #[test]
 fn test_constant_values_match_rfcs() {
     // Verify values match RFC specifications
-    
+
     // RFC 1035 - Basic DNS
     assert_eq!(NAMESERVER_PORT, 53, "RFC 1035: DNS port");
     assert_eq!(PACKETSZ, 512, "RFC 1035: Default UDP packet size");
     assert_eq!(MAXLABEL, 63, "RFC 1035: Maximum label length");
-    
+
     // RFC 1035 - Response codes
     assert_eq!(NOERROR, 0, "RFC 1035: No error");
     assert_eq!(FORMERR, 1, "RFC 1035: Format error");
@@ -245,13 +245,13 @@ fn test_constant_values_match_rfcs() {
     assert_eq!(NXDOMAIN, 3, "RFC 1035: Non-existent domain");
     assert_eq!(NOTIMP, 4, "RFC 1035: Not implemented");
     assert_eq!(REFUSED, 5, "RFC 1035: Query refused");
-    
+
     // RFC 1035 - Classes
     assert_eq!(C_IN, 1, "RFC 1035: Internet class");
     assert_eq!(C_CHAOS, 3, "RFC 1035: CHAOS class");
     assert_eq!(C_HESIOD, 4, "RFC 1035: Hesiod class");
     assert_eq!(C_ANY, 255, "RFC 1035: ANY class");
-    
+
     // RFC 4034 - DNSSEC Resource Records
     assert_eq!(T_DNSKEY, 48, "RFC 4034: DNSKEY");
     assert_eq!(T_RRSIG, 46, "RFC 4034: RRSIG");
