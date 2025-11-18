@@ -32,7 +32,7 @@
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Build configuration programmatically
 //! let config = ConfigBuilder::new()
-//!     .port(53)
+//!     .dns_port(53)
 //!     .cache_size(150)
 //!     .build();
 //! # Ok(())
@@ -83,7 +83,7 @@ use std::path::Path;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = load_config(std::env::args()).await?;
-/// println!("DNS port: {}", config.dns.port);
+/// println!("DNS port: {}", config.network.port);
 /// # Ok(())
 /// # }
 /// ```
@@ -127,7 +127,7 @@ mod tests {
     #[tokio::test]
     async fn test_default_config() {
         let config = Config::default();
-        assert!(config.dns.port > 0);
+        assert!(config.network.port > 0);
     }
 
     #[tokio::test]
@@ -140,7 +140,7 @@ mod tests {
         // The test verifies the function is callable and returns the right type
         match result {
             Ok(config) => {
-                assert!(config.dns.port > 0);
+                assert!(config.network.port > 0);
             }
             Err(_) => {
                 // Expected in test environment without config file

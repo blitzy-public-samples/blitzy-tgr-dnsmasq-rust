@@ -111,7 +111,7 @@ impl ConfigParser {
         match key {
             // DNS options
             "port" => {
-                self.config.dns.port = value.parse().map_err(|_| ConfigError::InvalidPort {
+                self.config.network.port = value.parse().map_err(|_| ConfigError::InvalidPort {
                     directive: "port".to_string(),
                     port: value.to_string(),
                 })?;
@@ -130,31 +130,33 @@ impl ConfigParser {
                 self.config.dns.bogus_priv = true;
             }
             "log-queries" => {
-                self.config.dns.log_queries = true;
+                self.config.logging.log_queries = true;
             }
 
             // Server options
             "no-daemon" => {
-                self.config.server.daemon = false;
+                // NOTE: Daemon mode is handled by main.rs runtime, not Config struct
+                // This option is accepted for compatibility but stored separately
+                // TODO: Store in runtime configuration or command-line args
             }
             "user" => {
-                self.config.server.user = Some(value.to_string());
+                self.config.security.user = Some(value.to_string());
             }
             "group" => {
-                self.config.server.group = Some(value.to_string());
+                self.config.security.group = Some(value.to_string());
             }
             "interface" => {
-                self.config.server.interfaces.push(value.to_string());
+                self.config.network.interfaces.push(value.to_string());
             }
             "listen-address" => {
                 let addr = value.parse().map_err(|_| ConfigError::InvalidValue {
                     directive: "listen-address".to_string(),
                     reason: format!("Invalid IP address: {}", value),
                 })?;
-                self.config.server.listen_addresses.push(addr);
+                self.config.network.listen_addresses.push(addr);
             }
             "bind-interfaces" => {
-                self.config.server.bind_interfaces = true;
+                self.config.network.bind_interfaces = true;
             }
 
             // Include directives
@@ -169,8 +171,10 @@ impl ConfigParser {
 
             // DHCP options
             "dhcp-range" => {
-                self.config.dhcp.dhcp_enabled = true;
-                // TODO: Parse DHCP range
+                // TODO: Parse DHCP range value and determine if IPv4 or IPv6
+                // Add to self.config.dhcp.v4_ranges or v6_ranges accordingly
+                // Format: start-addr,end-addr[,netmask][,lease-time]
+                tracing::warn!("DHCP range parsing not yet implemented: {}", value);
             }
 
             // Platform options
@@ -241,7 +245,7 @@ impl Default for ConfigParser {
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = parse_config_file("/etc/dnsmasq.conf").await?;
-/// println!("DNS port: {}", config.dns.port);
+/// println!("DNS port: {}", config.network.port);
 /// # Ok(())
 /// # }
 /// ```
@@ -274,7 +278,7 @@ mod tests {
         temp_file.flush().unwrap();
 
         let config = parse_config_file(temp_file.path()).await.unwrap();
-        assert_eq!(config.dns.port, 5353);
+        assert_eq!(config.network.port, 5353);
         assert_eq!(config.dns.cache_size, 1000);
         assert!(config.dns.domain_needed);
     }
@@ -286,7 +290,7 @@ mod tests {
         temp_file.flush().unwrap();
 
         let config = parse_config_file(temp_file.path()).await.unwrap();
-        assert_eq!(config.dns.port, 53);
+        assert_eq!(config.network.port, 53);
     }
 
     #[tokio::test]

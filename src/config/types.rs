@@ -152,10 +152,10 @@
 //! assert!(config.validate().is_err());
 //! ```
 
-use crate::constants::{CACHESIZ, CHGRP, CHUSER, CONFFILE, DEFLEASE, LEASEFILE};
+use crate::constants::{CACHESIZ, CHGRP, CHUSER, DEFLEASE, LEASEFILE};
 use crate::types::{DomainName, MacAddress, ServerDetails};
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -208,7 +208,7 @@ use std::time::Duration;
 /// config.dhcp.v4_ranges.push(DhcpRange::new(/* ... */));
 /// config.security.user = Some("dnsmasq".to_string());
 /// ```
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Config {
     /// DNS subsystem configuration
     pub dns: DnsConfig,
@@ -231,21 +231,9 @@ pub struct Config {
 
     /// Helper script configuration
     pub scripts: ScriptConfig,
-}
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            dns: DnsConfig::default(),
-            dhcp: DhcpConfig::default(),
-            network: NetworkConfig::default(),
-            #[cfg(feature = "tftp")]
-            tftp: TftpConfig::default(),
-            logging: LoggingConfig::default(),
-            security: SecurityConfig::default(),
-            scripts: ScriptConfig::default(),
-        }
-    }
+    /// Platform integration configuration
+    pub platform: PlatformConfig,
 }
 
 impl Config {
@@ -284,8 +272,9 @@ impl Config {
         }
 
         // Validate network configuration
-        if self.network.port == 0 || self.network.port > 65535 {
-            return Err(format!("Invalid DNS port: {}", self.network.port));
+        // Note: port is u16, so it's already constrained to 0-65535
+        if self.network.port == 0 {
+            return Err(format!("Invalid DNS port: {} (must be > 0)", self.network.port));
         }
 
         // Validate DHCP lease time
@@ -304,6 +293,60 @@ impl Config {
             if range.start.is_ipv4() || range.end.is_ipv4() {
                 return Err(format!("DHCPv6 range {} contains IPv4 addresses", i));
             }
+        }
+
+        Ok(())
+    }
+
+    /// Applies command-line argument overrides to configuration.
+    ///
+    /// Command-line arguments take precedence over configuration file settings.
+    /// This maintains C dnsmasq behavior where CLI args override config file.
+    ///
+    /// # Arguments
+    ///
+    /// * `cli_args` - Parsed command-line arguments
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::InvalidValue` if CLI argument values are invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let mut config = Config::default();
+    /// let cli_args = CliArgs { port: Some(5353), ..Default::default() };
+    /// config.apply_cli_overrides(&cli_args)?;
+    /// assert_eq!(config.network.port, 5353);
+    /// ```
+    pub fn apply_cli_overrides(&mut self, cli_args: &crate::config::cli::CliArgs) -> Result<(), crate::error::ConfigError> {
+        // Apply port override
+        if let Some(port) = cli_args.port {
+            self.network.port = port;
+        }
+
+        // Apply cache size override
+        if let Some(cache_size) = cli_args.cache_size {
+            self.dns.cache_size = cache_size;
+        }
+
+        // Apply listen addresses (append to existing)
+        for addr in &cli_args.listen_addresses {
+            if !self.network.listen_addresses.contains(addr) {
+                self.network.listen_addresses.push(*addr);
+            }
+        }
+
+        // Apply interfaces (append to existing)
+        for interface in &cli_args.interfaces {
+            if !self.network.interfaces.contains(interface) {
+                self.network.interfaces.push(interface.clone());
+            }
+        }
+
+        // Apply verbose logging
+        if cli_args.verbose {
+            self.logging.log_queries = true;
         }
 
         Ok(())
@@ -1111,7 +1154,7 @@ impl Default for SecurityConfig {
 ///     script_path: Some(PathBuf::from("/usr/local/bin/dhcp-event.sh")),
 /// };
 /// ```
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ScriptConfig {
     /// Enable ARP event scripts.
     ///
@@ -1129,10 +1172,46 @@ pub struct ScriptConfig {
     pub script_path: Option<PathBuf>,
 }
 
-impl Default for ScriptConfig {
-    fn default() -> Self {
-        Self { enable_arp_script: false, script_path: None }
-    }
+// ============================================================================
+// PLATFORM INTEGRATION CONFIGURATION
+// ============================================================================
+
+/// Platform-specific integration settings.
+///
+/// Contains settings for system-level integration features like D-Bus IPC,
+/// ubus (OpenWrt), and other platform-specific functionality.
+///
+/// # C Equivalent
+///
+/// These settings were scattered across C `struct daemon` and controlled by
+/// HAVE_* preprocessor flags. Centralized here for clarity.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let platform_config = PlatformConfig {
+///     dbus_enabled: true,
+///     ..Default::default()
+/// };
+/// ```
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct PlatformConfig {
+    /// Enable D-Bus IPC interface.
+    ///
+    /// Requires `dbus` feature. Provides `uk.org.thekelleys.dnsmasq` service
+    /// for external control and monitoring.
+    ///
+    /// Default: false
+    #[cfg(feature = "dbus")]
+    pub dbus_enabled: bool,
+
+    /// Enable ubus interface (OpenWrt).
+    ///
+    /// Requires `ubus` feature. Provides ubus integration for OpenWrt systems.
+    ///
+    /// Default: false
+    #[cfg(feature = "ubus")]
+    pub ubus_enabled: bool,
 }
 
 // ============================================================================

@@ -95,9 +95,9 @@ pub fn validate_config(config: &Config) -> Result<()> {
 /// Validate DNS configuration
 fn validate_dns_config(config: &Config) -> Result<()> {
     // Validate port number
-    if config.dns.port == 0 {
+    if config.network.port == 0 {
         return Err(DnsmasqError::Config(ConfigError::ValidationFailed {
-            reason: ValidationError::InvalidPort(config.dns.port).to_string(),
+            reason: ValidationError::InvalidPort(config.network.port).to_string(),
         }));
     }
 
@@ -124,31 +124,54 @@ fn validate_dns_config(config: &Config) -> Result<()> {
 
 /// Validate DHCP configuration
 fn validate_dhcp_config(config: &Config) -> Result<()> {
-    // Validate DHCP ranges
-    for range in &config.dhcp.ranges {
-        // Ensure start and end are the same IP version
+    // Validate DHCPv4 ranges
+    for range in &config.dhcp.v4_ranges {
+        // Ensure both start and end are IPv4
         match (&range.start, &range.end) {
-            (std::net::IpAddr::V4(_), std::net::IpAddr::V6(_))
-            | (std::net::IpAddr::V6(_), std::net::IpAddr::V4(_)) => {
+            (std::net::IpAddr::V4(start), std::net::IpAddr::V4(end)) => {
+                // Ensure start < end
+                if start >= end {
+                    return Err(DnsmasqError::Config(ConfigError::ValidationFailed {
+                        reason: ValidationError::InvalidDhcpRange(format!(
+                            "Start address {} must be less than end address {}",
+                            start, end
+                        ))
+                        .to_string(),
+                    }));
+                }
+            }
+            _ => {
                 return Err(DnsmasqError::Config(ConfigError::ValidationFailed {
                     reason: ValidationError::InvalidDhcpRange(
-                        "Start and end addresses must be the same IP version".to_string(),
+                        "DHCPv4 ranges must contain IPv4 addresses only".to_string(),
                     )
                     .to_string(),
                 }));
             }
-            _ => {}
         }
+    }
 
-        // Ensure start < end (for IPv4)
-        if let (std::net::IpAddr::V4(start), std::net::IpAddr::V4(end)) = (&range.start, &range.end)
-        {
-            if start >= end {
+    // Validate DHCPv6 ranges
+    for range in &config.dhcp.v6_ranges {
+        // Ensure both start and end are IPv6
+        match (&range.start, &range.end) {
+            (std::net::IpAddr::V6(start), std::net::IpAddr::V6(end)) => {
+                // Ensure start <= end
+                if start > end {
+                    return Err(DnsmasqError::Config(ConfigError::ValidationFailed {
+                        reason: ValidationError::InvalidDhcpRange(format!(
+                            "Start address {} must be less than or equal to end address {}",
+                            start, end
+                        ))
+                        .to_string(),
+                    }));
+                }
+            }
+            _ => {
                 return Err(DnsmasqError::Config(ConfigError::ValidationFailed {
-                    reason: ValidationError::InvalidDhcpRange(format!(
-                        "Start address {} must be less than end address {}",
-                        start, end
-                    ))
+                    reason: ValidationError::InvalidDhcpRange(
+                        "DHCPv6 ranges must contain IPv6 addresses only".to_string(),
+                    )
                     .to_string(),
                 }));
             }
@@ -161,9 +184,9 @@ fn validate_dhcp_config(config: &Config) -> Result<()> {
 /// Validate server configuration
 fn validate_server_config(config: &Config) -> Result<()> {
     // Validate interfaces and listen addresses are not both empty if binding
-    if config.server.bind_interfaces
-        && config.server.interfaces.is_empty()
-        && config.server.listen_addresses.is_empty()
+    if config.network.bind_interfaces
+        && config.network.interfaces.is_empty()
+        && config.network.listen_addresses.is_empty()
     {
         return Err(DnsmasqError::Config(ConfigError::ValidationFailed {
             reason: "bind-interfaces requires at least one interface or listen-address".to_string(),
@@ -194,7 +217,7 @@ mod tests {
     #[test]
     fn test_invalid_port() {
         let mut config = Config::default();
-        config.dns.port = 0;
+        config.network.port = 0;
         assert!(validate_config(&config).is_err());
     }
 
@@ -215,10 +238,10 @@ mod tests {
     #[test]
     fn test_invalid_dhcp_range_mixed_ip_versions() {
         let mut config = Config::default();
-        config.dhcp.ranges.push(DhcpRange {
+        config.dhcp.v4_ranges.push(DhcpRange {
             start: "192.168.1.100".parse::<IpAddr>().unwrap(),
             end: "fe80::1".parse::<IpAddr>().unwrap(),
-            lease_time: None,
+            lease_time_override: None,
             interface: None,
         });
         assert!(validate_config(&config).is_err());
@@ -227,10 +250,10 @@ mod tests {
     #[test]
     fn test_invalid_dhcp_range_start_greater_than_end() {
         let mut config = Config::default();
-        config.dhcp.ranges.push(DhcpRange {
+        config.dhcp.v4_ranges.push(DhcpRange {
             start: "192.168.1.200".parse::<IpAddr>().unwrap(),
             end: "192.168.1.100".parse::<IpAddr>().unwrap(),
-            lease_time: None,
+            lease_time_override: None,
             interface: None,
         });
         assert!(validate_config(&config).is_err());
@@ -239,9 +262,9 @@ mod tests {
     #[test]
     fn test_bind_interfaces_without_interface() {
         let mut config = Config::default();
-        config.server.bind_interfaces = true;
-        config.server.interfaces.clear();
-        config.server.listen_addresses.clear();
+        config.network.bind_interfaces = true;
+        config.network.interfaces.clear();
+        config.network.listen_addresses.clear();
         assert!(validate_config(&config).is_err());
     }
 

@@ -89,7 +89,7 @@ mod tests {
         let reloader = ConfigReloader::new(config, path);
 
         let current_config = reloader.get_config().await;
-        assert_eq!(current_config.dns.port, 53);
+        assert_eq!(current_config.network.port, 53);
     }
 
     #[tokio::test]
@@ -109,7 +109,7 @@ mod tests {
 
         // Verify configuration was updated
         let current_config = config.read().await;
-        assert_eq!(current_config.dns.port, 5353);
+        assert_eq!(current_config.network.port, 5353);
         assert_eq!(current_config.dns.cache_size, 1000);
     }
 
@@ -122,7 +122,7 @@ mod tests {
         temp_file.write_all(b"port=invalid\n").unwrap();
         temp_file.flush().unwrap();
 
-        let original_port = config.read().await.dns.port;
+        let original_port = config.read().await.network.port;
 
         let reloader = ConfigReloader::new(config.clone(), temp_file.path().to_path_buf());
 
@@ -132,7 +132,7 @@ mod tests {
 
         // Verify configuration was NOT updated
         let current_config = config.read().await;
-        assert_eq!(current_config.dns.port, original_port);
+        assert_eq!(current_config.network.port, original_port);
     }
 
     #[tokio::test]
