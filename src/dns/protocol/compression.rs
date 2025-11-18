@@ -41,14 +41,7 @@
 
 use crate::dns::protocol::constants::{MAXDNAME, MAXLABEL, NAME_ESCAPE};
 use crate::error::DnsError;
-use bytes::{BufMut, Bytes, BytesMut};
-use nom::{
-    bytes::complete::take,
-    combinator::map,
-    error::{Error as NomError, ErrorKind, ParseError},
-    number::complete::be_u8,
-    IResult,
-};
+use bytes::{BufMut, BytesMut};
 use std::collections::HashMap;
 
 /// Maximum number of compression pointer hops allowed per RFC 1035 to prevent infinite loops.
@@ -129,6 +122,22 @@ impl CompressionMap {
             pos += 1 + label_len;
             current_offset += 1 + label_len;
         }
+    }
+
+    /// Finds an exact match for the given wire-format name.
+    ///
+    /// Returns the packet offset where this exact name was previously recorded,
+    /// allowing a compression pointer to be used instead of writing the full name.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Wire-format domain name to search for
+    ///
+    /// # Returns
+    ///
+    /// The packet offset if an exact match is found, or None otherwise.
+    pub fn find_exact(&self, name: &[u8]) -> Option<usize> {
+        self.offsets.get(name).copied()
     }
 
     /// Finds a compression pointer offset for the given name suffix.
@@ -377,9 +386,10 @@ pub fn decompress_name(packet: &[u8], offset: usize) -> Result<(usize, String), 
 pub fn compress_name(
     name: &str,
     buffer: &mut BytesMut,
-    compression_map: Option<&mut CompressionMap>,
+    mut compression_map: Option<&mut CompressionMap>,
 ) -> Result<usize, DnsError> {
     let initial_len = buffer.len();
+    eprintln!("[compress_name] Starting compression of '{}' at offset {}", name, initial_len);
 
     // Handle empty name (root)
     if name.is_empty() || name == "." {
@@ -390,28 +400,39 @@ pub fn compress_name(
     // Split name into labels
     let labels: Vec<&str> = name.trim_end_matches('.').split('.').collect();
 
-    let mut labels_written = 0;
+    // Track where we started writing for the compression map
+    let name_start_offset = buffer.len();
 
     for i in 0..labels.len() {
+        eprintln!("[compress_name] Processing label {} of {}: '{}'", i, labels.len(), labels[i]);
+        eprintln!("[compress_name] Buffer state before this label: {} bytes", buffer.len());
+        
         // Check if we can use a compression pointer for remaining labels
-        if let Some(ref mut map) = compression_map {
-            let remaining_name = labels[i..].join(".");
+        if let Some(map) = compression_map.as_mut() {
             let remaining_wire = encode_labels_to_wire(&labels[i..])?;
+            eprintln!("[compress_name] Checking map for exact match starting at label {}", i);
 
-            if let Some(offset) = map.find_suffix(&remaining_wire) {
+            if let Some(offset) = map.find_exact(&remaining_wire) {
+                eprintln!("[compress_name] Found exact match in map at offset {}, writing compression pointer", offset);
                 // Write compression pointer (14-bit offset with top 2 bits set)
                 if offset <= 0x3FFF {
                     // Maximum 14-bit value
                     let pointer = 0xC000 | (offset as u16);
                     buffer.put_u16(pointer);
+                    eprintln!("[compress_name] Wrote compression pointer 0x{:04X}, final buffer length: {}", pointer, buffer.len());
+                    
+                    // Add what we wrote to the compression map before returning
+                    if i > 0 {
+                        // We wrote some labels before using compression
+                        let written_wire = &buffer[name_start_offset..buffer.len()];
+                        eprintln!("[compress_name] Adding partial name to map at offset {}", name_start_offset);
+                        map.add_name(written_wire, name_start_offset);
+                    }
+                    
                     return Ok(buffer.len() - initial_len);
                 }
-            }
-
-            // Record this position for future compression
-            let current_offset = buffer.len();
-            if i < labels.len() {
-                map.add_name(&remaining_wire, current_offset);
+            } else {
+                eprintln!("[compress_name] Exact match not found in map");
             }
         }
 
@@ -428,12 +449,20 @@ pub fn compress_name(
         let escaped = escape_label(label.as_bytes());
         buffer.put_u8(escaped.len() as u8);
         buffer.extend_from_slice(&escaped);
-
-        labels_written += 1;
+        eprintln!("[compress_name] Wrote label '{}' ({} bytes), buffer now {} bytes", label, escaped.len() + 1, buffer.len());
     }
 
     // Write terminating zero
     buffer.put_u8(0);
+    eprintln!("[compress_name] Wrote terminating zero, final buffer length: {}", buffer.len());
+
+    // Add the complete name to the compression map AFTER writing everything
+    // (if we used compression, we would have returned early above)
+    if let Some(map) = compression_map.as_mut() {
+        let written_wire = &buffer[name_start_offset..buffer.len()];
+        eprintln!("[compress_name] Adding complete name to map at offset {}", name_start_offset);
+        map.add_name(written_wire, name_start_offset);
+    }
 
     Ok(buffer.len() - initial_len)
 }
@@ -843,12 +872,45 @@ mod tests {
     }
 
     #[test]
-    fn test_decompress_label_too_long() {
-        // Label length of 64 (exceeds MAXLABEL of 63)
+    fn test_decompress_extended_label_type() {
+        // A byte value of 64 (0x40) has the extended label type bit set.
+        // Per RFC 1035, label type bits:
+        // - 00: Normal label (max length 63)
+        // - 11 (0xC0): Compression pointer
+        // - 01, 10 (0x40, 0x80): Reserved/extended label types
+        // 
+        // It's impossible to have a normal label longer than 63 bytes because
+        // the length field is only 6 bits. Any value >= 64 sets the type bits
+        // and becomes an extended label type, which must be rejected.
         let mut packet = Vec::new();
-        packet.push(64); // Invalid length
+        packet.push(64); // 0x40 = extended label type (01)
         packet.extend_from_slice(&vec![b'a'; 64]);
         packet.push(0);
+
+        let result = decompress_name(&packet, 0);
+
+        assert!(result.is_err());
+        match result {
+            Err(DnsError::ParseFailed { reason, .. }) => {
+                assert!(reason.contains("unsupported label type"));
+            }
+            _ => panic!("expected parse failed error for extended label type"),
+        }
+    }
+
+    #[test]
+    fn test_decompress_name_too_long() {
+        // Test that names exceeding MAXDNAME are rejected
+        let mut packet = Vec::new();
+        
+        // Create a name with many labels that exceeds MAXDNAME (1025)
+        // Each label: 1 byte length + 63 bytes data = 64 bytes
+        // We need: 1025 / 64 ≈ 17 labels to exceed MAXDNAME
+        for _ in 0..20 {
+            packet.push(63); // Maximum valid label length
+            packet.extend_from_slice(&vec![b'a'; 63]);
+        }
+        packet.push(0); // Terminator
 
         let result = decompress_name(&packet, 0);
 
@@ -857,7 +919,7 @@ mod tests {
             Err(DnsError::InvalidName { reason, .. }) => {
                 assert!(reason.contains("exceeds maximum"));
             }
-            _ => panic!("expected invalid name error"),
+            _ => panic!("expected invalid name error for name exceeding MAXDNAME"),
         }
     }
 
@@ -934,9 +996,11 @@ mod tests {
         let label = b"test.com";
         let escaped = escape_label(label);
         // Should contain NAME_ESCAPE followed by ('.' + 1)
+        // The dot is at position 4 in the original.
+        // Since no characters before it are escaped, it's still at position 4 in escaped output.
         let dot_pos = label.iter().position(|&b| b == b'.').unwrap();
-        assert_eq!(escaped[dot_pos * 2], NAME_ESCAPE);
-        assert_eq!(escaped[dot_pos * 2 + 1], b'.' + 1);
+        assert_eq!(escaped[dot_pos], NAME_ESCAPE);
+        assert_eq!(escaped[dot_pos + 1], b'.' + 1);
 
         // Test escaping of escape byte itself
         let label = &[NAME_ESCAPE];
