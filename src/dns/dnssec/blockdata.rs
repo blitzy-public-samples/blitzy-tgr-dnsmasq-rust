@@ -194,16 +194,12 @@ impl BlockData {
     /// - Overhead: (ceil(N / BLOCK_SIZE) * BLOCK_SIZE) - N (0 to BLOCK_SIZE-1 bytes)
     pub fn new(data: &[u8]) -> Self {
         let total_len = data.len();
-        
+
         // Calculate number of blocks needed: ceil(len / BLOCK_SIZE)
-        let num_blocks = if total_len == 0 {
-            0
-        } else {
-            total_len.div_ceil(BLOCK_SIZE)
-        };
+        let num_blocks = if total_len == 0 { 0 } else { total_len.div_ceil(BLOCK_SIZE) };
 
         let mut blocks = Vec::with_capacity(num_blocks);
-        
+
         // Chunk data into BLOCK_SIZE segments
         for chunk in data.chunks(BLOCK_SIZE) {
             let mut block = [0u8; BLOCK_SIZE];
@@ -256,10 +252,7 @@ impl BlockData {
     ///
     /// Uses tokio::io::AsyncReadExt::read_exact() to ensure exactly `len` bytes are read.
     /// If EOF is reached before `len` bytes, read_exact() returns UnexpectedEof error.
-    pub async fn from_reader<R: AsyncReadExt + Unpin>(
-        reader: &mut R,
-        len: usize,
-    ) -> Result<Self> {
+    pub async fn from_reader<R: AsyncReadExt + Unpin>(reader: &mut R, len: usize) -> Result<Self> {
         let mut buffer = vec![0u8; len];
         reader.read_exact(&mut buffer).await?;
         Ok(Self::new(&buffer))
@@ -293,7 +286,7 @@ impl BlockData {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let signature = vec![0u8; 128];
     /// let blockdata = BlockData::new(&signature);
-    /// 
+    ///
     /// let mut file = File::create("/var/cache/dnsmasq/sig.dat").await?;
     /// blockdata.to_writer(&mut file).await?;
     /// # Ok(())
@@ -306,17 +299,17 @@ impl BlockData {
     /// partially written if total_len is not a multiple of BLOCK_SIZE.
     pub async fn to_writer<W: AsyncWriteExt + Unpin>(&self, writer: &mut W) -> Result<()> {
         let mut remaining = self.total_len;
-        
+
         for block in &self.blocks {
             let write_len = std::cmp::min(remaining, BLOCK_SIZE);
             writer.write_all(&block[..write_len]).await?;
             remaining -= write_len;
-            
+
             if remaining == 0 {
                 break;
             }
         }
-        
+
         Ok(())
     }
 
@@ -357,7 +350,7 @@ impl BlockData {
             let copy_len = std::cmp::min(remaining, BLOCK_SIZE);
             result.extend_from_slice(&block[..copy_len]);
             remaining -= copy_len;
-            
+
             if remaining == 0 {
                 break;
             }
@@ -420,17 +413,10 @@ impl BlockData {
         self.total_len += new_data_len;
 
         // Calculate space remaining in last block (if any)
-        let last_block_used = if old_len == 0 {
-            0
-        } else {
-            old_len % BLOCK_SIZE
-        };
-        
-        let last_block_remaining = if old_len == 0 || last_block_used == 0 {
-            0
-        } else {
-            BLOCK_SIZE - last_block_used
-        };
+        let last_block_used = if old_len == 0 { 0 } else { old_len % BLOCK_SIZE };
+
+        let last_block_remaining =
+            if old_len == 0 || last_block_used == 0 { 0 } else { BLOCK_SIZE - last_block_used };
 
         let mut data_remaining = new_data_len;
         let mut data_offset = 0;
@@ -441,7 +427,7 @@ impl BlockData {
             let fill_len = std::cmp::min(last_block_remaining, data_remaining);
             last_block[last_block_used..last_block_used + fill_len]
                 .copy_from_slice(&additional_data[..fill_len]);
-            
+
             data_offset += fill_len;
             data_remaining -= fill_len;
         }
@@ -450,12 +436,13 @@ impl BlockData {
         while data_remaining > 0 {
             let mut block = [0u8; BLOCK_SIZE];
             let copy_len = std::cmp::min(data_remaining, BLOCK_SIZE);
-            block[..copy_len].copy_from_slice(&additional_data[data_offset..data_offset + copy_len]);
-            
+            block[..copy_len]
+                .copy_from_slice(&additional_data[data_offset..data_offset + copy_len]);
+
             self.blocks.push(block);
             data_offset += copy_len;
             data_remaining -= copy_len;
-            
+
             // Update statistics for new block
             GLOBAL_STATS.increment(1);
         }
@@ -575,10 +562,10 @@ impl Drop for BlockData {
 pub struct BlockDataStats {
     /// Current number of blocks in use across all BlockData instances.
     current_count: AtomicUsize,
-    
+
     /// High-water mark: maximum blocks in use simultaneously.
     high_water_mark: AtomicUsize,
-    
+
     /// Total number of blocks allocated since initialization (cumulative).
     total_allocated: AtomicUsize,
 }
@@ -680,10 +667,10 @@ impl BlockDataStats {
 
         // Increment current count
         let new_count = self.current_count.fetch_add(count, Ordering::Relaxed) + count;
-        
+
         // Update high-water mark if necessary
         self.high_water_mark.fetch_max(new_count, Ordering::Relaxed);
-        
+
         // Increment total allocated
         self.total_allocated.fetch_add(count, Ordering::Relaxed);
     }
@@ -699,7 +686,7 @@ impl BlockDataStats {
         if count == 0 {
             return;
         }
-        
+
         self.current_count.fetch_sub(count, Ordering::Relaxed);
     }
 
@@ -802,7 +789,7 @@ mod tests {
         let mut bd = BlockData::new(&initial);
         let additional = vec![4u8, 5, 6];
         bd.expand(&additional).unwrap();
-        
+
         assert_eq!(bd.len(), 6);
         let expected = vec![1u8, 2, 3, 4, 5, 6];
         assert_eq!(bd.retrieve(), expected);
@@ -814,10 +801,10 @@ mod tests {
         let mut bd = BlockData::new(&initial);
         let additional = vec![0xBBu8; 10]; // Will span into second block
         bd.expand(&additional).unwrap();
-        
+
         assert_eq!(bd.len(), 48);
         assert_eq!(bd.blocks.len(), 2);
-        
+
         let retrieved = bd.retrieve();
         assert_eq!(&retrieved[..38], &vec![0xAAu8; 38][..]);
         assert_eq!(&retrieved[38..], &vec![0xBBu8; 10][..]);
@@ -829,7 +816,7 @@ mod tests {
         let mut bd = BlockData::new(&initial);
         let additional = vec![2u8; 100]; // Will require multiple new blocks
         bd.expand(&additional).unwrap();
-        
+
         assert_eq!(bd.len(), 110);
         let retrieved = bd.retrieve();
         assert_eq!(&retrieved[..10], &vec![1u8; 10][..]);
@@ -840,7 +827,7 @@ mod tests {
     async fn test_blockdata_from_reader() {
         let data = vec![0x42u8; 256];
         let mut cursor = std::io::Cursor::new(data.clone());
-        
+
         let bd = BlockData::from_reader(&mut cursor, 256).await.unwrap();
         assert_eq!(bd.len(), 256);
         assert_eq!(bd.retrieve(), data);
@@ -850,10 +837,10 @@ mod tests {
     async fn test_blockdata_to_writer() {
         let data = vec![0x99u8; 128];
         let bd = BlockData::new(&data);
-        
+
         let mut output = Vec::new();
         bd.to_writer(&mut output).await.unwrap();
-        
+
         assert_eq!(output, data);
     }
 
@@ -861,15 +848,15 @@ mod tests {
     async fn test_blockdata_roundtrip_io() {
         let original = vec![0x55u8; 200];
         let bd = BlockData::new(&original);
-        
+
         // Write to buffer
         let mut buffer = Vec::new();
         bd.to_writer(&mut buffer).await.unwrap();
-        
+
         // Read back
         let mut cursor = std::io::Cursor::new(buffer);
         let bd2 = BlockData::from_reader(&mut cursor, 200).await.unwrap();
-        
+
         assert_eq!(bd2.retrieve(), original);
     }
 
@@ -877,7 +864,7 @@ mod tests {
     fn test_blockdata_as_bytes_single_block() {
         let data = vec![1u8, 2, 3, 4, 5];
         let bd = BlockData::new(&data);
-        
+
         let bytes = bd.as_bytes();
         assert!(bytes.is_some());
         assert_eq!(bytes.unwrap(), &data[..]);
@@ -887,7 +874,7 @@ mod tests {
     fn test_blockdata_as_bytes_multiple_blocks() {
         let data = vec![0u8; 100]; // Multiple blocks
         let bd = BlockData::new(&data);
-        
+
         let bytes = bd.as_bytes();
         assert!(bytes.is_none()); // Should return None for multi-block data
     }
@@ -895,21 +882,21 @@ mod tests {
     #[test]
     fn test_blockdata_stats_increment_decrement() {
         let stats = BlockDataStats::new();
-        
+
         assert_eq!(stats.current_count(), 0);
         assert_eq!(stats.high_water_mark(), 0);
         assert_eq!(stats.total_allocated(), 0);
-        
+
         stats.increment(10);
         assert_eq!(stats.current_count(), 10);
         assert_eq!(stats.high_water_mark(), 10);
         assert_eq!(stats.total_allocated(), 10);
-        
+
         stats.increment(5);
         assert_eq!(stats.current_count(), 15);
         assert_eq!(stats.high_water_mark(), 15);
         assert_eq!(stats.total_allocated(), 15);
-        
+
         stats.decrement(10);
         assert_eq!(stats.current_count(), 5);
         assert_eq!(stats.high_water_mark(), 15); // HWM doesn't decrease
@@ -920,7 +907,7 @@ mod tests {
     fn test_blockdata_stats_bytes() {
         let stats = BlockDataStats::new();
         stats.increment(10);
-        
+
         assert_eq!(stats.current_bytes(), 10 * BLOCK_SIZE);
         assert_eq!(stats.hwm_bytes(), 10 * BLOCK_SIZE);
         assert_eq!(stats.allocated_bytes(), 10 * BLOCK_SIZE);
@@ -930,7 +917,7 @@ mod tests {
     fn test_blockdata_stats_report() {
         let stats = BlockDataStats::new();
         stats.increment(5);
-        
+
         let report = stats.report();
         assert!(report.contains("pool memory in use"));
         assert!(report.contains(&(5 * BLOCK_SIZE).to_string()));
@@ -940,11 +927,11 @@ mod tests {
     fn test_blockdata_drop_updates_stats() {
         // Create isolated stats instance for testing
         let stats = BlockDataStats::new();
-        
+
         // Manually simulate allocation
         stats.increment(3);
         assert_eq!(stats.current_count(), 3);
-        
+
         // Manually simulate drop
         stats.decrement(3);
         assert_eq!(stats.current_count(), 0);
