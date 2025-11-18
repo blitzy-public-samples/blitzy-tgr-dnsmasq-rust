@@ -64,7 +64,7 @@ tracing-appender = "0.2"
 
 # Platform-specific dependencies for Linux
 [target.'cfg(target_os = "linux")'.dependencies]
-nix = { version = "0.29", features = ["socket", "net", "signal", "process", "user"] }
+nix = { version = "0.29", features = ["socket", "net", "signal", "process", "user", "inotify"] }
 netlink-packet-route = { version = "0.20", optional = true }
 rtnetlink = { version = "0.15", optional = true }
 caps = "0.5"
@@ -128,6 +128,9 @@ dnssec = ["ring"]
 # HAVE_DBUS - D-Bus IPC interface
 dbus = ["zbus"]
 
+# HAVE_UBUS - OpenWrt ubus IPC interface
+ubus = []
+
 # HAVE_LUASCRIPT - Lua scripting support
 lua-scripts = ["mlua"]
 
@@ -159,6 +162,7 @@ doh = ["rustls", "webpki"]
 all-features = [
     "dnssec",
     "dbus",
+    "ubus",
     "lua-scripts",
     "idn",
     "tftp",

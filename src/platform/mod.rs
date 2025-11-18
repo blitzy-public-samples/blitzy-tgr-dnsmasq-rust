@@ -295,9 +295,6 @@
 //! async runtime. Signal handling is async-signal-safe using tokio's signal
 //! infrastructure. D-Bus and systemd integrations use thread-safe primitives.
 
-// Import PlatformError for use by all platform submodules
-use crate::error::PlatformError;
-
 // Core platform services (always available on all platforms)
 
 /// POSIX signal handling with tokio async integration.

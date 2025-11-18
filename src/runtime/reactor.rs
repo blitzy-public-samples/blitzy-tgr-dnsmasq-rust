@@ -124,9 +124,9 @@
 //! - BSD kqueue(2): <https://man.freebsd.org/cgi/man.cgi?query=kqueue>
 
 use crate::error::Result;
-use std::os::unix::io::{FromRawFd, RawFd};
 #[cfg(test)]
 use std::os::unix::io::IntoRawFd;
+use std::os::unix::io::{FromRawFd, RawFd};
 use tokio::net::{TcpStream, UdpSocket};
 use tracing::{debug, instrument, trace, warn};
 
@@ -192,7 +192,7 @@ impl ReactorConfig {
     /// # Arguments
     ///
     /// * `size` - Buffer size in bytes. Should be at least 512 bytes for minimum DNS message
-    ///            size. Values larger than 65535 are unlikely to be useful for UDP.
+    ///   size. Values larger than 65535 are unlikely to be useful for UDP.
     ///
     /// # Example
     ///
@@ -222,14 +222,16 @@ impl ReactorConfig {
     /// ```
     pub fn build(self) -> Result<Self> {
         if self.buffer_size < 512 {
-            return Err(crate::error::DnsmasqError::Other(
-                format!("Buffer size {} is too small, minimum is 512 bytes", self.buffer_size)
-            ));
+            return Err(crate::error::DnsmasqError::Other(format!(
+                "Buffer size {} is too small, minimum is 512 bytes",
+                self.buffer_size
+            )));
         }
         if self.buffer_size > 65535 {
-            return Err(crate::error::DnsmasqError::Other(
-                format!("Buffer size {} exceeds UDP maximum of 65535 bytes", self.buffer_size)
-            ));
+            return Err(crate::error::DnsmasqError::Other(format!(
+                "Buffer size {} exceeds UDP maximum of 65535 bytes",
+                self.buffer_size
+            )));
         }
         Ok(self)
     }
@@ -359,10 +361,7 @@ pub async fn wrap_raw_fd_udp(fd: RawFd) -> Result<UdpSocket> {
             Ok(socket)
         }
         Err(e) => {
-            warn!(
-                "Failed to wrap fd {} as tokio UdpSocket: {}",
-                fd, e
-            );
+            warn!("Failed to wrap fd {} as tokio UdpSocket: {}", fd, e);
             Err(crate::error::DnsmasqError::Io(e))
         }
     }
@@ -467,10 +466,7 @@ pub async fn wrap_raw_fd_tcp(fd: RawFd) -> Result<TcpStream> {
             Ok(stream)
         }
         Err(e) => {
-            warn!(
-                "Failed to wrap fd {} as tokio TcpStream: {}",
-                fd, e
-            );
+            warn!("Failed to wrap fd {} as tokio TcpStream: {}", fd, e);
             Err(crate::error::DnsmasqError::Io(e))
         }
     }
@@ -584,26 +580,19 @@ mod tests {
 
     #[test]
     fn test_reactor_config_builder() {
-        let config = ReactorConfig::new()
-            .with_buffer_size(8192)
-            .build()
-            .unwrap();
+        let config = ReactorConfig::new().with_buffer_size(8192).build().unwrap();
         assert_eq!(config.buffer_size(), 8192);
     }
 
     #[test]
     fn test_reactor_config_validation_too_small() {
-        let result = ReactorConfig::new()
-            .with_buffer_size(256)
-            .build();
+        let result = ReactorConfig::new().with_buffer_size(256).build();
         assert!(result.is_err());
     }
 
     #[test]
     fn test_reactor_config_validation_too_large() {
-        let result = ReactorConfig::new()
-            .with_buffer_size(100000)
-            .build();
+        let result = ReactorConfig::new().with_buffer_size(100000).build();
         assert!(result.is_err());
     }
 
@@ -614,10 +603,10 @@ mod tests {
         // Set to non-blocking mode (required by tokio)
         std_socket.set_nonblocking(true).unwrap();
         let fd = std_socket.into_raw_fd();
-        
+
         // Wrap it in tokio (transfers ownership)
         let tokio_socket = wrap_raw_fd_udp(fd).await.unwrap();
-        
+
         // Verify we can use it
         assert!(tokio_socket.local_addr().is_ok());
     }
@@ -626,14 +615,13 @@ mod tests {
     async fn test_check_readiness_no_data() {
         // Create a socket with no incoming data
         let socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
-        
+
         // check_readiness() waits for data, so we use a timeout to verify
         // it doesn't return immediately when no data is available
-        let result = tokio::time::timeout(
-            tokio::time::Duration::from_millis(100),
-            check_readiness(&socket)
-        ).await;
-        
+        let result =
+            tokio::time::timeout(tokio::time::Duration::from_millis(100), check_readiness(&socket))
+                .await;
+
         // Should timeout because socket.readable() waits indefinitely without data
         assert!(result.is_err(), "check_readiness should timeout when no data is available");
     }

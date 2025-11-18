@@ -1063,6 +1063,14 @@ pub enum PlatformError {
         reason: String,
     },
 
+    /// Systemd protocol error (tuple variant for compatibility).
+    #[error("Systemd protocol error: {0}")]
+    SystemdProtocol(String),
+
+    /// Systemd notify error (tuple variant for compatibility).
+    #[error("Systemd notify error: {0}")]
+    SystemdNotify(String),
+
     /// Inotify file monitoring error.
     #[error("Inotify error for '{path}': {reason}")]
     InotifyError {
@@ -1072,6 +1080,10 @@ pub enum PlatformError {
         reason: String,
     },
 
+    /// File monitoring error (tuple variant for compatibility).
+    #[error("File monitoring error: {0}")]
+    FileMonitoring(String),
+
     /// Signal handling setup error.
     #[error("Signal handling setup failed: {reason}")]
     SignalError {
@@ -1079,12 +1091,20 @@ pub enum PlatformError {
         reason: String,
     },
 
+    /// Signal handler error (tuple variant for compatibility).
+    #[error("Signal handler error: {0}")]
+    SignalHandler(String),
+
     /// Privilege dropping failed.
     #[error("Privilege drop failed: {reason}")]
     PrivilegeDropFailed {
         /// The reason for the privilege drop failure
         reason: String,
     },
+
+    /// Privilege drop error (tuple variant for compatibility).
+    #[error("Privilege drop error: {0}")]
+    PrivilegeDrop(String),
 
     /// PID file operation failed.
     #[error("PID file operation failed for '{path}': {reason}")]

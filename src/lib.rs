@@ -37,13 +37,17 @@
 #![warn(rust_2018_idioms)]
 
 // Public API modules
+pub mod config;
 pub mod constants;
 pub mod dhcp;
 pub mod dns;
 pub mod error;
+pub mod network;
+pub mod platform;
 pub mod radv;
 pub mod runtime;
 pub mod tftp;
+pub mod types;
 pub mod util;
 
 // Re-export commonly used types

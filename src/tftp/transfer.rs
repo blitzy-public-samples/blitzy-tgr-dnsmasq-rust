@@ -103,13 +103,13 @@
 //! ```
 
 use crate::error::Result;
-use bytes::{Bytes, BytesMut, BufMut};
+use bytes::{BufMut, Bytes, BytesMut};
+use std::io::SeekFrom;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
-use std::io::SeekFrom;
 
 /// TFTP transfer inactivity timeout (120 seconds).
 ///
@@ -404,13 +404,12 @@ impl TransferState {
 
         // Seek to the appropriate file position
         // This allows retransmission of earlier blocks without maintaining a cache
-        self.file
-            .seek(SeekFrom::Start(position))
-            .await
-            .map_err(|e| crate::error::TftpError::IoError {
+        self.file.seek(SeekFrom::Start(position)).await.map_err(|e| {
+            crate::error::TftpError::IoError {
                 path: self.file_path.display().to_string(),
                 reason: format!("Failed to seek to offset {}: {}", position, e),
-            })?;
+            }
+        })?;
 
         // Allocate buffer for reading block data
         // In netascii mode, read extra bytes to account for potential expansion
@@ -424,11 +423,8 @@ impl TransferState {
         let mut buffer = vec![0u8; read_size];
 
         // Read up to read_size bytes from file
-        let n = self
-            .file
-            .read(&mut buffer)
-            .await
-            .map_err(|e| crate::error::TftpError::IoError {
+        let n =
+            self.file.read(&mut buffer).await.map_err(|e| crate::error::TftpError::IoError {
                 path: self.file_path.display().to_string(),
                 reason: format!("Failed to read block {}: {}", block, e),
             })?;
@@ -854,19 +850,12 @@ mod tests {
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "test data").unwrap();
         let path = temp_file.path().to_path_buf();
-        
+
         let file = File::open(&path).await.unwrap();
         let peer: SocketAddr = "127.0.0.1:12345".parse().unwrap();
-        
-        let transfer = TransferState::new(
-            file,
-            peer,
-            512,
-            1,
-            Duration::from_secs(120),
-            false,
-            path.clone(),
-        );
+
+        let transfer =
+            TransferState::new(file, peer, 512, 1, Duration::from_secs(120), false, path.clone());
 
         assert_eq!(transfer.block_current(), 0);
         assert_eq!(transfer.block_high(), 0);
@@ -882,19 +871,12 @@ mod tests {
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "Hello, TFTP!").unwrap();
         let path = temp_file.path().to_path_buf();
-        
+
         let file = File::open(&path).await.unwrap();
         let peer: SocketAddr = "127.0.0.1:12345".parse().unwrap();
-        
-        let mut transfer = TransferState::new(
-            file,
-            peer,
-            512,
-            1,
-            Duration::from_secs(120),
-            false,
-            path.clone(),
-        );
+
+        let mut transfer =
+            TransferState::new(file, peer, 512, 1, Duration::from_secs(120), false, path.clone());
 
         let data = transfer.get_block(1).await.unwrap();
         assert_eq!(&data[..], b"Hello, TFTP!");
@@ -908,10 +890,10 @@ mod tests {
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "Line1\nLine2\nLine3").unwrap();
         let path = temp_file.path().to_path_buf();
-        
+
         let file = File::open(&path).await.unwrap();
         let peer: SocketAddr = "127.0.0.1:12345".parse().unwrap();
-        
+
         let mut transfer = TransferState::new(
             file,
             peer,
@@ -932,19 +914,12 @@ mod tests {
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "test").unwrap();
         let path = temp_file.path().to_path_buf();
-        
+
         let file = File::open(&path).await.unwrap();
         let peer: SocketAddr = "127.0.0.1:12345".parse().unwrap();
-        
-        let mut transfer = TransferState::new(
-            file,
-            peer,
-            512,
-            8,
-            Duration::from_secs(120),
-            false,
-            path.clone(),
-        );
+
+        let mut transfer =
+            TransferState::new(file, peer, 512, 8, Duration::from_secs(120), false, path.clone());
 
         // Send block 1
         let _ = transfer.get_block(1).await.unwrap();
@@ -966,10 +941,10 @@ mod tests {
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "test").unwrap();
         let path = temp_file.path().to_path_buf();
-        
+
         let file = File::open(&path).await.unwrap();
         let peer: SocketAddr = "127.0.0.1:12345".parse().unwrap();
-        
+
         let mut transfer = TransferState::new(
             file,
             peer,
@@ -981,7 +956,7 @@ mod tests {
         );
 
         assert!(!transfer.is_timeout());
-        
+
         // Wait for timeout
         tokio::time::sleep(Duration::from_millis(20)).await;
         assert!(transfer.is_timeout());
