@@ -8,3 +8,6 @@
 
 /// DHCPv6 protocol constants (ports, message types, option codes, status codes, DUID types)
 pub mod constants;
+
+/// DHCPv6 options builder for safe packet construction
+pub mod options;
