@@ -163,7 +163,7 @@ fn test_extended_dns_errors() {
     
     // Verify EDE_UNSET is negative
     assert_eq!(EDE_UNSET, -1, "EDE_UNSET should be -1");
-    assert!(EDE_UNSET < 0, "EDE_UNSET should be negative");
+    // Note: EDE_UNSET is -1, confirming it's negative as per specification
 }
 
 #[test]
