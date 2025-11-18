@@ -781,7 +781,7 @@ mod tests {
         map.add_name(name, 12);
 
         // Should be able to find suffixes
-        assert!(map.len() > 0);
+        assert!(!map.is_empty());
 
         // Clear and verify
         map.clear();
@@ -890,7 +890,7 @@ mod tests {
         // and becomes an extended label type, which must be rejected.
         let mut packet = Vec::new();
         packet.push(64); // 0x40 = extended label type (01)
-        packet.extend_from_slice(&vec![b'a'; 64]);
+        packet.extend_from_slice(&[b'a'; 64]);
         packet.push(0);
 
         let result = decompress_name(&packet, 0);
@@ -914,7 +914,7 @@ mod tests {
         // We need: 1025 / 64 ≈ 17 labels to exceed MAXDNAME
         for _ in 0..20 {
             packet.push(63); // Maximum valid label length
-            packet.extend_from_slice(&vec![b'a'; 63]);
+            packet.extend_from_slice(&[b'a'; 63]);
         }
         packet.push(0); // Terminator
 

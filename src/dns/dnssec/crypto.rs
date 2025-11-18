@@ -1122,7 +1122,7 @@ mod tests {
     #[test]
     fn test_verifier_creation() {
         let verifier = SignatureVerifier::new();
-        let default_verifier = SignatureVerifier::default();
+        let default_verifier = SignatureVerifier;
 
         // Both should create valid verifiers (they're zero-sized types)
         assert_eq!(std::mem::size_of_val(&verifier), 0);
@@ -1208,7 +1208,7 @@ mod tests {
         let verifier = SignatureVerifier::new();
         // Create a valid RSA key by concatenating the exponent length and modulus
         let mut key_bytes = vec![0x03, 0x01, 0x00, 0x01]; // Exponent length and exponent
-        key_bytes.extend_from_slice(&vec![0xFF; 128]); // Modulus
+        key_bytes.extend_from_slice(&[0xFF; 128]); // Modulus
         let key_data = BlockData::new(&key_bytes);
         let signature = vec![0xFF; 128];
         let wrong_digest = [0xFF; 16]; // Wrong length for SHA256
