@@ -82,7 +82,7 @@
 //! - Automatic memory management via RAII
 //! - Type-safe checksum calculation
 
-use std::io::{self, Cursor, Write};
+use std::io::{self, Write};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::Path;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -92,9 +92,7 @@ use bitflags::bitflags;
 use byteorder::{LittleEndian, NetworkEndian, WriteBytesExt};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
-use tracing::{debug, error, info, warn};
-
-use crate::constants::EDNS_PKTSZ;
+use tracing::{debug, error, info};
 
 /// Pcap magic number for native byte order libpcap files
 const PCAP_MAGIC: u32 = 0xa1b2_c3d4;
@@ -115,6 +113,7 @@ const IPPROTO_UDP: u8 = 17;
 const IPPROTO_ICMPV6: u8 = 58;
 
 /// IP protocol number for ICMP
+#[allow(dead_code)]
 const IPPROTO_ICMP: u8 = 1;
 
 /// Default IP TTL value
@@ -219,13 +218,13 @@ impl PcapGlobalHeader {
     /// Serialize header to bytes for file writing.
     fn to_bytes(&self) -> io::Result<Vec<u8>> {
         let mut buf = Vec::with_capacity(24);
-        buf.write_u32::<LittleEndian>(self.magic_number)?;
-        buf.write_u16::<LittleEndian>(self.version_major)?;
-        buf.write_u16::<LittleEndian>(self.version_minor)?;
-        buf.write_u32::<LittleEndian>(self.thiszone)?;
-        buf.write_u32::<LittleEndian>(self.sigfigs)?;
-        buf.write_u32::<LittleEndian>(self.snaplen)?;
-        buf.write_u32::<LittleEndian>(self.network)?;
+        WriteBytesExt::write_u32::<LittleEndian>(&mut buf, self.magic_number)?;
+        WriteBytesExt::write_u16::<LittleEndian>(&mut buf, self.version_major)?;
+        WriteBytesExt::write_u16::<LittleEndian>(&mut buf, self.version_minor)?;
+        WriteBytesExt::write_u32::<LittleEndian>(&mut buf, self.thiszone)?;
+        WriteBytesExt::write_u32::<LittleEndian>(&mut buf, self.sigfigs)?;
+        WriteBytesExt::write_u32::<LittleEndian>(&mut buf, self.snaplen)?;
+        WriteBytesExt::write_u32::<LittleEndian>(&mut buf, self.network)?;
         Ok(buf)
     }
 }
@@ -265,10 +264,10 @@ impl PcapRecordHeader {
     /// Serialize header to bytes for file writing.
     fn to_bytes(&self) -> io::Result<Vec<u8>> {
         let mut buf = Vec::with_capacity(16);
-        buf.write_u32::<LittleEndian>(self.ts_sec)?;
-        buf.write_u32::<LittleEndian>(self.ts_usec)?;
-        buf.write_u32::<LittleEndian>(self.incl_len)?;
-        buf.write_u32::<LittleEndian>(self.orig_len)?;
+        WriteBytesExt::write_u32::<LittleEndian>(&mut buf, self.ts_sec)?;
+        WriteBytesExt::write_u32::<LittleEndian>(&mut buf, self.ts_usec)?;
+        WriteBytesExt::write_u32::<LittleEndian>(&mut buf, self.incl_len)?;
+        WriteBytesExt::write_u32::<LittleEndian>(&mut buf, self.orig_len)?;
         Ok(buf)
     }
 }
@@ -347,16 +346,16 @@ impl Ipv4Header {
     /// Serialize header to bytes.
     fn to_bytes(&self) -> io::Result<Vec<u8>> {
         let mut buf = Vec::with_capacity(20);
-        buf.write_u8(self.version_ihl)?;
-        buf.write_u8(self.tos)?;
-        buf.write_u16::<NetworkEndian>(self.total_length)?;
-        buf.write_u16::<NetworkEndian>(self.identification)?;
-        buf.write_u16::<NetworkEndian>(self.flags_fragment)?;
-        buf.write_u8(self.ttl)?;
-        buf.write_u8(self.protocol)?;
-        buf.write_u16::<NetworkEndian>(self.checksum)?;
-        buf.write_all(&self.src_addr.octets())?;
-        buf.write_all(&self.dst_addr.octets())?;
+        WriteBytesExt::write_u8(&mut buf, self.version_ihl)?;
+        WriteBytesExt::write_u8(&mut buf, self.tos)?;
+        WriteBytesExt::write_u16::<NetworkEndian>(&mut buf, self.total_length)?;
+        WriteBytesExt::write_u16::<NetworkEndian>(&mut buf, self.identification)?;
+        WriteBytesExt::write_u16::<NetworkEndian>(&mut buf, self.flags_fragment)?;
+        WriteBytesExt::write_u8(&mut buf, self.ttl)?;
+        WriteBytesExt::write_u8(&mut buf, self.protocol)?;
+        WriteBytesExt::write_u16::<NetworkEndian>(&mut buf, self.checksum)?;
+        Write::write_all(&mut buf, &self.src_addr.octets())?;
+        Write::write_all(&mut buf, &self.dst_addr.octets())?;
         Ok(buf)
     }
 }
@@ -388,12 +387,12 @@ impl Ipv6Header {
     /// Serialize header to bytes.
     fn to_bytes(&self) -> io::Result<Vec<u8>> {
         let mut buf = Vec::with_capacity(40);
-        buf.write_u32::<NetworkEndian>(self.version_class_flow)?;
-        buf.write_u16::<NetworkEndian>(self.payload_length)?;
-        buf.write_u8(self.next_header)?;
-        buf.write_u8(self.hop_limit)?;
-        buf.write_all(&self.src_addr.octets())?;
-        buf.write_all(&self.dst_addr.octets())?;
+        WriteBytesExt::write_u32::<NetworkEndian>(&mut buf, self.version_class_flow)?;
+        WriteBytesExt::write_u16::<NetworkEndian>(&mut buf, self.payload_length)?;
+        WriteBytesExt::write_u8(&mut buf, self.next_header)?;
+        WriteBytesExt::write_u8(&mut buf, self.hop_limit)?;
+        Write::write_all(&mut buf, &self.src_addr.octets())?;
+        Write::write_all(&mut buf, &self.dst_addr.octets())?;
         Ok(buf)
     }
 }
@@ -421,10 +420,10 @@ impl UdpHeader {
     /// Serialize header to bytes.
     fn to_bytes(&self) -> io::Result<Vec<u8>> {
         let mut buf = Vec::with_capacity(8);
-        buf.write_u16::<NetworkEndian>(self.src_port)?;
-        buf.write_u16::<NetworkEndian>(self.dst_port)?;
-        buf.write_u16::<NetworkEndian>(self.length)?;
-        buf.write_u16::<NetworkEndian>(self.checksum)?;
+        WriteBytesExt::write_u16::<NetworkEndian>(&mut buf, self.src_port)?;
+        WriteBytesExt::write_u16::<NetworkEndian>(&mut buf, self.dst_port)?;
+        WriteBytesExt::write_u16::<NetworkEndian>(&mut buf, self.length)?;
+        WriteBytesExt::write_u16::<NetworkEndian>(&mut buf, self.checksum)?;
         Ok(buf)
     }
 }
@@ -439,8 +438,10 @@ pub struct PcapWriter {
     /// Packet counter for statistics
     packet_count: AtomicU32,
     /// Maximum snapshot length
+    #[allow(dead_code)]
     snaplen: u32,
     /// Whether file is a FIFO
+    #[allow(dead_code)]
     is_fifo: bool,
 }
 
@@ -926,4 +927,233 @@ pub async fn dump_packet_icmp(
     dst: &SocketAddr,
 ) -> io::Result<()> {
     writer.write_packet_icmp(mask, packet, src, dst).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{Ipv4Addr, Ipv6Addr};
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_pcap_global_header_creation() {
+        let header = PcapGlobalHeader::new(65535);
+        // Copy fields to avoid packed struct alignment issues
+        let magic = header.magic_number;
+        let ver_major = header.version_major;
+        let ver_minor = header.version_minor;
+        let snaplen = header.snaplen;
+        let network = header.network;
+        
+        assert_eq!(magic, 0xa1b2c3d4);
+        assert_eq!(ver_major, 2);
+        assert_eq!(ver_minor, 4);
+        assert_eq!(snaplen, 65535);
+        assert_eq!(network, DLT_RAW); // 101 - Raw IP packets without link layer
+    }
+
+    #[tokio::test]
+    async fn test_pcap_global_header_serialization() {
+        let header = PcapGlobalHeader::new(65535);
+        let bytes = header.to_bytes().unwrap();
+        
+        assert_eq!(bytes.len(), 24);
+        // Magic number in little-endian
+        assert_eq!(&bytes[0..4], &[0xd4, 0xc3, 0xb2, 0xa1]);
+        // Version 2.4
+        assert_eq!(&bytes[4..6], &[0x02, 0x00]);
+        assert_eq!(&bytes[6..8], &[0x04, 0x00]);
+    }
+
+    #[tokio::test]
+    async fn test_pcap_record_header_creation() {
+        let header = PcapRecordHeader::new(100);
+        // Copy fields to avoid packed struct alignment issues
+        let ts_sec = header.ts_sec;
+        let incl_len = header.incl_len;
+        let orig_len = header.orig_len;
+        
+        // Timestamp is set automatically to current time
+        assert!(ts_sec > 0);
+        assert_eq!(incl_len, 100);
+        assert_eq!(orig_len, 100);
+    }
+
+    #[tokio::test]
+    async fn test_ipv4_header_creation() {
+        let src = Ipv4Addr::new(192, 168, 1, 1);
+        let dst = Ipv4Addr::new(192, 168, 1, 2);
+        let header = Ipv4Header::new(src, dst, IPPROTO_UDP, 100);
+        
+        assert_eq!(header.version_ihl, 0x45); // Version 4, IHL 5
+        assert_eq!(header.total_length, 20 + 100); // Header + payload
+        assert_eq!(header.protocol, IPPROTO_UDP);
+        assert_eq!(header.ttl, IP_DEFAULT_TTL);
+    }
+
+    #[tokio::test]
+    async fn test_ipv4_checksum_calculation() {
+        let src = Ipv4Addr::new(10, 0, 0, 1);
+        let dst = Ipv4Addr::new(10, 0, 0, 2);
+        let mut header = Ipv4Header::new(src, dst, IPPROTO_UDP, 50);
+        
+        // Calculate checksum
+        header.calculate_checksum();
+        
+        // Copy checksum to avoid packed struct alignment issues
+        let checksum = header.checksum;
+        
+        // Checksum should be non-zero for a valid packet
+        assert_ne!(checksum, 0);
+    }
+
+    #[tokio::test]
+    async fn test_ipv6_header_creation() {
+        let src = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1);
+        let dst = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 2);
+        let header = Ipv6Header::new(src, dst, IPPROTO_UDP, 100);
+        
+        assert_eq!(header.version_class_flow, 0x60000000); // Version 6
+        assert_eq!(header.payload_length, 100);
+        assert_eq!(header.next_header, IPPROTO_UDP);
+        assert_eq!(header.hop_limit, IP_DEFAULT_TTL);
+    }
+
+    #[tokio::test]
+    async fn test_udp_header_creation() {
+        let header = UdpHeader::new(12345, 53, 100);
+        assert_eq!(header.src_port, 12345);
+        assert_eq!(header.dst_port, 53);
+        assert_eq!(header.length, 8 + 100); // UDP header + payload
+    }
+
+    #[tokio::test]
+    async fn test_dump_flags() {
+        assert!(DumpMask::QUERY.contains(DumpMask::QUERY));
+        assert!(DumpMask::REPLY.contains(DumpMask::REPLY));
+        assert!(!DumpMask::QUERY.contains(DumpMask::REPLY));
+        
+        let both = DumpMask::QUERY | DumpMask::REPLY;
+        assert!(both.contains(DumpMask::QUERY));
+        assert!(both.contains(DumpMask::REPLY));
+    }
+
+    #[tokio::test]
+    async fn test_pcap_writer_creation() {
+        let temp_dir = TempDir::new().unwrap();
+        let pcap_path = temp_dir.path().join("test.pcap");
+        
+        let result = PcapWriter::new(&pcap_path, 65535).await;
+        assert!(result.is_ok());
+        
+        assert!(pcap_path.exists());
+        let metadata = tokio::fs::metadata(&pcap_path).await.unwrap();
+        assert!(metadata.len() >= 24); // At least global header
+    }
+
+    #[tokio::test]
+    async fn test_dump_ipv4_packet() {
+        let temp_dir = TempDir::new().unwrap();
+        let pcap_path = temp_dir.path().join("test_ipv4.pcap");
+        
+        let mut writer = PcapWriter::new(&pcap_path, 65535).await.unwrap();
+        let src = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)), 12345);
+        let dst = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+        
+        let result = writer.write_packet_udp(DumpMask::QUERY, b"test", &src, &dst).await;
+        assert!(result.is_ok());
+        assert_eq!(writer.packet_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_dump_ipv6_packet() {
+        let temp_dir = TempDir::new().unwrap();
+        let pcap_path = temp_dir.path().join("test_ipv6.pcap");
+        
+        let mut writer = PcapWriter::new(&pcap_path, 65535).await.unwrap();
+        let src = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)), 54321);
+        let dst = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888)), 53);
+        
+        let result = writer.write_packet_udp(DumpMask::QUERY, b"ipv6", &src, &dst).await;
+        assert!(result.is_ok());
+        assert_eq!(writer.packet_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_multiple_packets() {
+        let temp_dir = TempDir::new().unwrap();
+        let pcap_path = temp_dir.path().join("test_multi.pcap");
+        
+        let mut writer = PcapWriter::new(&pcap_path, 65535).await.unwrap();
+        
+        for i in 0..5 {
+            let src = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1000 + i);
+            let dst = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+            let payload = format!("packet {}", i);
+            writer.write_packet_udp(DumpMask::QUERY, payload.as_bytes(), &src, &dst).await.unwrap();
+        }
+        
+        assert_eq!(writer.packet_count(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_empty_payload() {
+        let temp_dir = TempDir::new().unwrap();
+        let pcap_path = temp_dir.path().join("test_empty.pcap");
+        
+        let mut writer = PcapWriter::new(&pcap_path, 65535).await.unwrap();
+        let src = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 5000);
+        let dst = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 6000);
+        
+        let result = writer.write_packet_udp(DumpMask::QUERY, b"", &src, &dst).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_large_payload() {
+        let temp_dir = TempDir::new().unwrap();
+        let pcap_path = temp_dir.path().join("test_large.pcap");
+        
+        let mut writer = PcapWriter::new(&pcap_path, 65535).await.unwrap();
+        let src = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(172, 16, 0, 1)), 7000);
+        let dst = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(172, 16, 0, 2)), 8000);
+        let large_payload = vec![0x42u8; 1024];
+        
+        let result = writer.write_packet_udp(DumpMask::REPLY, &large_payload, &src, &dst).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_packet_count_increments() {
+        let temp_dir = TempDir::new().unwrap();
+        let pcap_path = temp_dir.path().join("test_count.pcap");
+        
+        let mut writer = PcapWriter::new(&pcap_path, 65535).await.unwrap();
+        assert_eq!(writer.packet_count(), 0);
+        
+        let src = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)), 1000);
+        let dst = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(2, 2, 2, 2)), 2000);
+        
+        writer.write_packet_udp(DumpMask::QUERY, b"test1", &src, &dst).await.unwrap();
+        assert_eq!(writer.packet_count(), 1);
+        
+        writer.write_packet_udp(DumpMask::REPLY, b"test2", &src, &dst).await.unwrap();
+        assert_eq!(writer.packet_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_dump_init_public_api() {
+        let temp_dir = TempDir::new().unwrap();
+        let pcap_path = temp_dir.path().join("test_api.pcap");
+        
+        let result = dump_init(&pcap_path, 65535).await;
+        assert!(result.is_ok());
+        
+        let mut writer = result.unwrap();
+        let src = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1)), 5353);
+        let dst = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 1)), 5353);
+        
+        writer.write_packet_udp(DumpMask::QUERY, b"mdns", &src, &dst).await.unwrap();
+        assert_eq!(writer.packet_count(), 1);
+    }
 }

@@ -19,9 +19,11 @@
 //! - `logging`: Non-blocking asynchronous logging with tracing integration
 //! - `metrics`: Performance metrics collection and reporting
 //! - `patterns`: Domain name pattern matching and validation
+//! - `pcap`: Packet capture in libpcap format for debugging
 //! - `random`: SURF cryptographic random number generator
 
 pub mod logging;
 pub mod metrics;
 pub mod patterns;
+pub mod pcap;
 pub mod random;
