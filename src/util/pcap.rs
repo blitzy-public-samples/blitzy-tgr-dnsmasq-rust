@@ -84,7 +84,6 @@
 
 use std::io::{self, Cursor, Write};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::SystemTime;
@@ -96,8 +95,6 @@ use tokio::io::AsyncWriteExt;
 use tracing::{debug, error, info, warn};
 
 use crate::constants::EDNS_PKTSZ;
-use crate::error::PlatformError;
-use crate::types::IpAddr as DnsmasqIpAddr;
 
 /// Pcap magic number for native byte order libpcap files
 const PCAP_MAGIC: u32 = 0xa1b2_c3d4;
