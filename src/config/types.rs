@@ -319,7 +319,10 @@ impl Config {
     /// config.apply_cli_overrides(&cli_args)?;
     /// assert_eq!(config.network.port, 5353);
     /// ```
-    pub fn apply_cli_overrides(&mut self, cli_args: &crate::config::cli::CliArgs) -> Result<(), crate::error::ConfigError> {
+    pub fn apply_cli_overrides(
+        &mut self,
+        cli_args: &crate::config::cli::CliArgs,
+    ) -> Result<(), crate::error::ConfigError> {
         // Apply port override
         if let Some(port) = cli_args.port {
             self.network.port = port;
@@ -1108,11 +1111,7 @@ pub struct SecurityConfig {
 
 impl Default for SecurityConfig {
     fn default() -> Self {
-        Self {
-            user: Some(CHUSER.to_string()),
-            group: Some(CHGRP.to_string()),
-            chroot: None,
-        }
+        Self { user: Some(CHUSER.to_string()), group: Some(CHGRP.to_string()), chroot: None }
     }
 }
 

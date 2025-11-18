@@ -98,8 +98,8 @@
 
 use crate::error::NetworkError;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use tokio::task::spawn_blocking;
 use tracing::{debug, instrument, warn};
 
@@ -159,11 +159,7 @@ impl ConnmarkAllowlist {
     /// let allowlist = ConnmarkAllowlist::new(100, 0xFFFF, vec!["*.vpn.example.com".to_string()]);
     /// ```
     pub fn new(mark: u32, mask: u32, patterns: Vec<String>) -> Self {
-        Self {
-            mark,
-            mask,
-            patterns,
-        }
+        Self { mark, mask, patterns }
     }
 
     /// Check if a mark matches this allowlist entry.
@@ -210,9 +206,7 @@ impl ConntrackHandler {
     pub fn new() -> Result<Self, NetworkError> {
         // We don't pre-open a persistent socket here; instead we open one per query
         // in spawn_blocking to avoid holding file descriptors across async boundaries.
-        Ok(Self {
-            warned: Arc::new(AtomicBool::new(false)),
-        })
+        Ok(Self { warned: Arc::new(AtomicBool::new(false)) })
     }
 
     /// Query netfilter conntrack table for connection tracking mark.
@@ -250,7 +244,7 @@ impl ConntrackHandler {
     /// ```rust,ignore
     /// let peer = "192.168.1.100:54321".parse::<SocketAddr>()?;
     /// let local = "192.168.1.1:53".parse::<SocketAddr>()?;
-    /// 
+    ///
     /// if let Some(mark) = handler.get_conntrack_mark(peer, local, Protocol::Udp).await? {
     ///     if mark == 100 {
     ///         // Forward to VPN DNS server
@@ -298,10 +292,7 @@ impl ConntrackHandler {
         warned: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> Result<Option<u32>, NetworkError> {
         // Construct netlink conntrack query
-        debug!(
-            "Querying conntrack: peer={}, local={}, protocol={:?}",
-            peer, local, protocol
-        );
+        debug!("Querying conntrack: peer={}, local={}, protocol={:?}", peer, local, protocol);
 
         // Determine address family
         let (_af, _is_ipv6) = match (peer, local) {
@@ -378,14 +369,10 @@ impl Default for ConntrackHandler {
 ///
 /// Reference: Linux kernel include/uapi/linux/netfilter/nfnetlink_conntrack.h
 #[allow(dead_code)]
-fn build_conntrack_query(
-    _peer: SocketAddr,
-    _local: SocketAddr,
-    _protocol: Protocol,
-) -> Vec<u8> {
+fn build_conntrack_query(_peer: SocketAddr, _local: SocketAddr, _protocol: Protocol) -> Vec<u8> {
     // Full implementation would construct netlink message here
     // For now, return empty vector as placeholder for the structure
-    
+
     // Message would include:
     // 1. struct nlmsghdr with:
     //    - nlmsg_len: total message length
@@ -428,7 +415,7 @@ fn parse_conntrack_response(_msg: &[u8]) -> Option<u32> {
     // 2. struct nfgenmsg (validate family, version)
     // 3. Iterate through netlink attributes to find CTA_MARK
     // 4. Extract u32 mark value from attribute data
-    
+
     None
 }
 
@@ -445,10 +432,10 @@ mod tests {
     #[test]
     fn test_connmark_allowlist_matches() {
         let allowlist = ConnmarkAllowlist::new(100, 0xFFFF, vec!["*.example.com".to_string()]);
-        
+
         assert!(allowlist.matches(100));
         assert!(!allowlist.matches(200));
-        
+
         // Test with mask
         let allowlist2 = ConnmarkAllowlist::new(0x100, 0xFF00, vec![]);
         assert!(allowlist2.matches(0x1FF)); // Lower 8 bits ignored
@@ -459,7 +446,7 @@ mod tests {
     fn test_connmark_allowlist_new() {
         let patterns = vec!["*.vpn.example.com".to_string()];
         let allowlist = ConnmarkAllowlist::new(100, 0xFFFF, patterns.clone());
-        
+
         assert_eq!(allowlist.mark, 100);
         assert_eq!(allowlist.mask, 0xFFFF);
         assert_eq!(allowlist.patterns, patterns);
@@ -479,7 +466,7 @@ mod tests {
         let handler = ConntrackHandler::new().unwrap();
         let peer: SocketAddr = "192.168.1.100:54321".parse().unwrap();
         let local: SocketAddr = "192.168.1.1:53".parse().unwrap();
-        
+
         let result = handler.get_conntrack_mark(peer, local, Protocol::Udp).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), None);
@@ -491,7 +478,7 @@ mod tests {
         let handler = ConntrackHandler::new().unwrap();
         let peer_v4: SocketAddr = "192.168.1.100:54321".parse().unwrap();
         let local_v6: SocketAddr = "[::1]:53".parse().unwrap();
-        
+
         let result = handler.get_conntrack_mark(peer_v4, local_v6, Protocol::Udp).await;
         assert!(result.is_err());
     }
