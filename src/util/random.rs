@@ -49,7 +49,7 @@
 //! # Usage
 //!
 //! ```rust
-//! use dnsmasq::util::random::{SurfRng, rand_init};
+//! use dnsmasq::util::random::{SurfRng, rand_init, rand16};
 //!
 //! // Initialize RNG from system entropy
 //! let rng = rand_init().expect("Failed to initialize RNG");
@@ -413,8 +413,8 @@ fn surf(state: &mut SurfState) {
     let mut sum: u32 = 0;
     
     // Initialize temporary state: t[i] = in[i] ^ seed[12 + i]
-    for i in 0..12 {
-        t[i] = state.in_state[i] ^ state.seed[12 + i];
+    for (i, item) in t.iter_mut().enumerate() {
+        *item = state.in_state[i] ^ state.seed[12 + i];
     }
     
     // Initialize output: out[i] = seed[24 + i]
@@ -550,7 +550,7 @@ thread_local! {
     /// Initialized lazily on first use. Provides backward compatibility
     /// with C implementation's global state model while maintaining
     /// thread safety through thread-local storage.
-    static GLOBAL_RNG: RefCell<Option<SurfRng>> = RefCell::new(None);
+    static GLOBAL_RNG: RefCell<Option<SurfRng>> = const { RefCell::new(None) };
 }
 
 /// Initialize global RNG instance if not already initialized.

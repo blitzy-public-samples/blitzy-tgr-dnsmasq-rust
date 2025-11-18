@@ -321,7 +321,7 @@ mod tests {
         let interface = DnsmasqInterface::new();
         let servers = vec!["8.8.8.8".to_string(), "8.8.4.4".to_string()];
 
-        interface.set_servers(servers.clone()).await;
+        interface.set_servers(servers.clone()).await.expect("Failed to set servers");
 
         let stored_servers = interface.servers.read().await;
         assert_eq!(*stored_servers, servers);

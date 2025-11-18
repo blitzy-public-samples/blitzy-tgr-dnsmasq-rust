@@ -98,8 +98,8 @@
 //! assert!(domain.len() <= 255);
 //!
 //! // MAC address from multiple formats
-//! let mac = MacAddress::from_str("00:11:22:33:44:55")?;
-//! let mac2 = MacAddress::from_str("00-11-22-33-44-55")?;
+//! let mac = MacAddress::parse("00:11:22:33:44:55")?;
+//! let mac2 = MacAddress::parse("00-11-22-33-44-55")?;
 //! assert_eq!(mac, mac2);
 //!
 //! // Type-safe DNS record types
@@ -128,41 +128,41 @@ use std::time::{Duration, Instant, SystemTime};
 // IP ADDRESS TYPE
 // ============================================================================
 
-/// Re-export of `std::net::IpAddr` for unified IPv4/IPv6 address handling.
-///
-/// Replaces C's `union all_addr` with Rust's type-safe enum that discriminates
-/// between IPv4 and IPv6 at compile time. This eliminates the need for manual
-/// type tracking through flags (F_IPV4/F_IPV6) as the enum carries its variant
-/// information automatically.
-///
-/// # C Equivalent
-///
-/// ```c
-/// union all_addr {
-///     struct in_addr addr4;       // IPv4: 4 bytes
-///     struct in6_addr addr6;      // IPv6: 16 bytes
-///     // ... other variants for CNAME, DNSS EC data
-/// };
-/// ```
-///
-/// # Rust Advantages
-///
-/// - Type-safe variant access with compile-time checks
-/// - Impossible to access IPv4 data as IPv6 or vice versa
-/// - Pattern matching ensures exhaustive handling
-/// - Smaller discriminant overhead (1 byte vs manual flag field)
-///
-/// # Usage
-///
-/// ```rust,ignore
-/// use std::net::IpAddr;
-///
-/// let addr: IpAddr = "192.0.2.1".parse().unwrap();
-/// match addr {
-///     IpAddr::V4(ipv4) => println!("IPv4: {}", ipv4),
-///     IpAddr::V6(ipv6) => println!("IPv6: {}", ipv6),
-/// }
-/// ```
+// Re-export of `std::net::IpAddr` for unified IPv4/IPv6 address handling.
+//
+// Replaces C's `union all_addr` with Rust's type-safe enum that discriminates
+// between IPv4 and IPv6 at compile time. This eliminates the need for manual
+// type tracking through flags (F_IPV4/F_IPV6) as the enum carries its variant
+// information automatically.
+//
+// # C Equivalent
+//
+// ```c
+// union all_addr {
+//     struct in_addr addr4;       // IPv4: 4 bytes
+//     struct in6_addr addr6;      // IPv6: 16 bytes
+//     // ... other variants for CNAME, DNSS EC data
+// };
+// ```
+//
+// # Rust Advantages
+//
+// - Type-safe variant access with compile-time checks
+// - Impossible to access IPv4 data as IPv6 or vice versa
+// - Pattern matching ensures exhaustive handling
+// - Smaller discriminant overhead (1 byte vs manual flag field)
+//
+// # Usage
+//
+// ```rust,ignore
+// use std::net::IpAddr;
+//
+// let addr: IpAddr = "192.0.2.1".parse().unwrap();
+// match addr {
+//     IpAddr::V4(ipv4) => println!("IPv4: {}", ipv4),
+//     IpAddr::V6(ipv6) => println!("IPv6: {}", ipv6),
+// }
+// ```
 // IpAddr is already re-exported at the top of the file
 
 // ============================================================================
@@ -320,13 +320,6 @@ impl DomainName {
         Ok(Self { inner })
     }
     
-    /// Creates a domain name from a string slice, equivalent to `new()`.
-    ///
-    /// Provided for `FromStr` trait compatibility.
-    pub fn from_str(name: &str) -> Result<Self, DnsmasqError> {
-        Self::new(name)
-    }
-    
     /// Returns the domain name as a string slice.
     ///
     /// # Examples
@@ -451,9 +444,9 @@ impl FromStr for DomainName {
 /// use dnsmasq::types::MacAddress;
 ///
 /// // Parse from different formats
-/// let mac1 = MacAddress::from_str("00:11:22:33:44:55")?;
-/// let mac2 = MacAddress::from_str("00-11-22-33-44-55")?;
-/// let mac3 = MacAddress::from_str("001122334455")?;
+/// let mac1 = MacAddress::parse("00:11:22:33:44:55")?;
+/// let mac2 = MacAddress::parse("00-11-22-33-44-55")?;
+/// let mac3 = MacAddress::parse("001122334455")?;
 /// assert_eq!(mac1, mac2);
 /// assert_eq!(mac2, mac3);
 ///
@@ -503,7 +496,7 @@ impl MacAddress {
     /// - String length is invalid for any supported format
     /// - Contains non-hexadecimal characters
     /// - Separators are inconsistent
-    pub fn from_str(s: &str) -> Result<Self, DnsmasqError> {
+    pub fn parse(s: &str) -> Result<Self, DnsmasqError> {
         let s = s.trim();
         
         // Remove common separators and validate
@@ -545,7 +538,7 @@ impl MacAddress {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// let mac = MacAddress::from_str("00:11:22:33:44:55")?;
+    /// let mac = MacAddress::parse("00:11:22:33:44:55")?;
     /// assert_eq!(mac.octets(), &[0x00, 0x11, 0x22, 0x33, 0x44, 0x55]);
     /// ```
     pub fn octets(&self) -> &[u8; 6] {
@@ -579,7 +572,7 @@ impl FromStr for MacAddress {
     type Err = DnsmasqError;
     
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::from_str(s)
+        Self::parse(s)
     }
 }
 
@@ -985,7 +978,7 @@ impl ServerDetails {
 ///
 /// let lease = LeaseInfo::new(
 ///     "192.168.1.100".parse()?,
-///     MacAddress::from_str("00:11:22:33:44:55")?,
+///     MacAddress::parse("00:11:22:33:44:55")?,
 ///     Some("client-pc"),
 ///     SystemTime::now() + Duration::from_secs(86400)  // 24 hours
 /// )?;
@@ -1206,9 +1199,9 @@ mod tests {
     
     #[test]
     fn test_mac_address_parsing() {
-        let mac1 = MacAddress::from_str("00:11:22:33:44:55").unwrap();
-        let mac2 = MacAddress::from_str("00-11-22-33-44-55").unwrap();
-        let mac3 = MacAddress::from_str("001122334455").unwrap();
+        let mac1 = MacAddress::parse("00:11:22:33:44:55").unwrap();
+        let mac2 = MacAddress::parse("00-11-22-33-44-55").unwrap();
+        let mac3 = MacAddress::parse("001122334455").unwrap();
         
         assert_eq!(mac1, mac2);
         assert_eq!(mac2, mac3);

@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn test_mac_address_from_str() {
-        let mac = MacAddress::from_str("00:11:22:33:44:55").unwrap();
+        let mac = "00:11:22:33:44:55".parse::<MacAddress>().unwrap();
         assert_eq!(mac.as_bytes(), &[0x00, 0x11, 0x22, 0x33, 0x44, 0x55]);
     }
 
