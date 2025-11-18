@@ -216,6 +216,34 @@ pub struct SurfRng {
 }
 
 impl SurfRng {
+    /// Create a new SURF RNG initialized from system entropy.
+    ///
+    /// This is the primary constructor for `SurfRng`. It automatically
+    /// seeds the generator from the system entropy source using either
+    /// the getrandom syscall (preferred) or /dev/urandom (fallback).
+    ///
+    /// # Returns
+    ///
+    /// A new `SurfRng` instance seeded with cryptographic-quality entropy.
+    ///
+    /// # Errors
+    ///
+    /// * `RandomError::SystemEntropyFailed` - getrandom syscall failed
+    /// * `RandomError::EntropySourceOpen` - Failed to open /dev/urandom
+    /// * `RandomError::EntropySourceRead` - Failed to read sufficient entropy
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use dnsmasq::util::random::SurfRng;
+    ///
+    /// let rng = SurfRng::new().expect("Failed to initialize RNG");
+    /// let random_value = rng.rand32();
+    /// ```
+    pub fn new() -> Result<Self, RandomError> {
+        rand_init()
+    }
+
     /// Create a new SURF RNG from entropy bytes.
     ///
     /// # Arguments
