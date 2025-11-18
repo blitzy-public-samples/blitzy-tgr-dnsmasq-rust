@@ -97,17 +97,15 @@
 #![cfg(all(target_os = "linux", feature = "conntrack"))]
 
 use crate::error::NetworkError;
-use std::mem;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use tokio::task::spawn_blocking;
-use tracing::{debug, error, instrument, warn};
+use tracing::{debug, instrument, warn};
 
 // Import libc and nix types for netlink socket operations
 use nix::libc;
-use nix::sys::socket::{
-    bind, recvfrom, sendto, socket, AddressFamily, MsgFlags, NetlinkAddr, SockFlag, SockProtocol,
-    SockType,
-};
+use nix::sys::socket::{socket, AddressFamily, SockFlag, SockProtocol, SockType};
 
 /// Transport protocol for conntrack queries.
 ///
@@ -123,10 +121,11 @@ pub enum Protocol {
 
 impl Protocol {
     /// Convert to libc protocol number.
-    fn to_libc(&self) -> i32 {
+    #[allow(dead_code)]
+    fn to_libc(self) -> i32 {
         match self {
-            Protocol::Udp => libc::IPPROTO_UDP as i32,
-            Protocol::Tcp => libc::IPPROTO_TCP as i32,
+            Protocol::Udp => libc::IPPROTO_UDP,
+            Protocol::Tcp => libc::IPPROTO_TCP,
         }
     }
 }
@@ -192,7 +191,7 @@ impl ConnmarkAllowlist {
 /// `nfct_open()`/`nfct_close()` pattern from the C implementation.
 pub struct ConntrackHandler {
     /// Flag to suppress repeated error logging
-    warned: std::sync::atomic::AtomicBool,
+    warned: Arc<AtomicBool>,
 }
 
 impl ConntrackHandler {
@@ -212,7 +211,7 @@ impl ConntrackHandler {
         // We don't pre-open a persistent socket here; instead we open one per query
         // in spawn_blocking to avoid holding file descriptors across async boundaries.
         Ok(Self {
-            warned: std::sync::atomic::AtomicBool::new(false),
+            warned: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -305,7 +304,7 @@ impl ConntrackHandler {
         );
 
         // Determine address family
-        let (af, is_ipv6) = match (peer, local) {
+        let (_af, _is_ipv6) = match (peer, local) {
             (SocketAddr::V4(_), SocketAddr::V4(_)) => (AddressFamily::Inet, false),
             (SocketAddr::V6(_), SocketAddr::V6(_)) => (AddressFamily::Inet6, true),
             _ => {
@@ -318,9 +317,10 @@ impl ConntrackHandler {
 
         // Open netlink socket for conntrack queries
         // NETLINK_NETFILTER = 12 in Linux
+        #[allow(dead_code)]
         const NETLINK_NETFILTER: i32 = 12;
 
-        let sock_fd = socket(
+        let _sock_fd = socket(
             AddressFamily::Netlink,
             SockType::Raw,
             SockFlag::SOCK_CLOEXEC,
@@ -343,8 +343,7 @@ impl ConntrackHandler {
         // A production implementation would use the netlink-packet-conntrack crate
         // or manually construct the netfilter conntrack netlink messages.
 
-        // Close socket
-        nix::unistd::close(sock_fd).ok();
+        // Socket is automatically closed when _sock_fd goes out of scope (RAII)
 
         // Log warning on first failure
         if !warned.load(std::sync::atomic::Ordering::Relaxed) {
@@ -380,9 +379,9 @@ impl Default for ConntrackHandler {
 /// Reference: Linux kernel include/uapi/linux/netfilter/nfnetlink_conntrack.h
 #[allow(dead_code)]
 fn build_conntrack_query(
-    peer: SocketAddr,
-    local: SocketAddr,
-    protocol: Protocol,
+    _peer: SocketAddr,
+    _local: SocketAddr,
+    _protocol: Protocol,
 ) -> Vec<u8> {
     // Full implementation would construct netlink message here
     // For now, return empty vector as placeholder for the structure
@@ -420,7 +419,7 @@ fn build_conntrack_query(
 ///
 /// Reference: Linux kernel include/uapi/linux/netfilter/nf_conntrack_common.h
 #[allow(dead_code)]
-fn parse_conntrack_response(msg: &[u8]) -> Option<u32> {
+fn parse_conntrack_response(_msg: &[u8]) -> Option<u32> {
     // Full implementation would parse netlink message here
     // Would extract CTA_MARK attribute from response message
     //
