@@ -310,11 +310,9 @@ impl ConfigParser {
         let path = path.as_ref();
 
         // Canonicalize path for cycle detection
-        let canonical_path = tokio::fs::canonicalize(path).await.map_err(|_e| {
-            ConfigError::FileNotFound {
-                path: path.display().to_string(),
-            }
-        })?;
+        let canonical_path = tokio::fs::canonicalize(path)
+            .await
+            .map_err(|_e| ConfigError::FileNotFound { path: path.display().to_string() })?;
 
         // Check for include cycles
         if !self.visited_files.insert(canonical_path.clone()) {
@@ -328,18 +326,13 @@ impl ConfigParser {
         if self.include_depth >= MAX_INCLUDE_DEPTH {
             return Err(ConfigError::IncludeFailed {
                 path: path.display().to_string(),
-                reason: format!(
-                    "Maximum include depth ({}) exceeded",
-                    MAX_INCLUDE_DEPTH
-                ),
+                reason: format!("Maximum include depth ({}) exceeded", MAX_INCLUDE_DEPTH),
             });
         }
 
         // Open file for reading
-        let file = File::open(&canonical_path).await.map_err(|_e| {
-            ConfigError::FileNotFound {
-                path: canonical_path.display().to_string(),
-            }
+        let file = File::open(&canonical_path).await.map_err(|_e| ConfigError::FileNotFound {
+            path: canonical_path.display().to_string(),
         })?;
 
         // Track current file for error reporting
@@ -472,8 +465,8 @@ impl ConfigParser {
 
         loop {
             line.clear();
-            let bytes_read = reader.read_line(&mut line).await.map_err(|e| {
-                ConfigError::ParseError {
+            let bytes_read =
+                reader.read_line(&mut line).await.map_err(|e| ConfigError::ParseError {
                     file_path: self
                         .current_file
                         .as_ref()
@@ -481,8 +474,7 @@ impl ConfigParser {
                         .unwrap_or_else(|| "<string>".to_string()),
                     line_number: self.current_line,
                     reason: format!("I/O error: {}", e),
-                }
-            })?;
+                })?;
 
             if bytes_read == 0 {
                 break; // EOF
@@ -499,10 +491,7 @@ impl ConfigParser {
                         .map(|p| p.display().to_string())
                         .unwrap_or_else(|| "<string>".to_string()),
                     line_number: self.current_line,
-                    reason: format!(
-                        "Line too long (exceeds {} bytes)",
-                        MAX_CONFIG_LINE_LENGTH
-                    ),
+                    reason: format!("Line too long (exceeds {} bytes)", MAX_CONFIG_LINE_LENGTH),
                 });
             }
 
@@ -667,7 +656,7 @@ impl ConfigParser {
         // Reached end without finding closing quote
         Err(ConfigError::ParseError {
             file_path: "<string>".to_string(), // Will be overridden by caller
-            line_number: 0,                     // Will be overridden by caller
+            line_number: 0,                    // Will be overridden by caller
             reason: format!("Missing closing quote: {}", quote_char),
         })
     }
@@ -680,8 +669,7 @@ impl ConfigParser {
     fn strip_comment(line: &str) -> &str {
         // Find # that starts a comment (preceded by whitespace or at start)
         if let Some(pos) = line.find('#') {
-            if pos == 0 || line.as_bytes().get(pos - 1).is_some_and(|&b| b.is_ascii_whitespace())
-            {
+            if pos == 0 || line.as_bytes().get(pos - 1).is_some_and(|&b| b.is_ascii_whitespace()) {
                 return &line[..pos];
             }
         }
@@ -730,10 +718,9 @@ impl ConfigParser {
             if let Some(path) = option_value {
                 return self.handle_include_directive(option_name, path);
             } else {
-                return Err(self.make_parse_error(format!(
-                    "Missing path for {} directive",
-                    option_name
-                )));
+                return Err(
+                    self.make_parse_error(format!("Missing path for {} directive", option_name))
+                );
             }
         }
 
@@ -757,7 +744,7 @@ impl ConfigParser {
             "bogus-priv" => self.config.dns.bogus_priv = true,
             "dnssec" => self.config.dns.dnssec_enabled = true,
 
-            // DHCP options  
+            // DHCP options
             "dhcp-range" => self.parse_dhcp_range(option_value)?,
             "dhcp-host" => self.parse_dhcp_host(option_value)?,
             "dhcp-option" => self.parse_dhcp_option(option_value)?,
@@ -836,9 +823,9 @@ impl ConfigParser {
 
     fn parse_port_option(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
         if let Some(port_str) = value {
-            let port = port_str.parse::<u16>().map_err(|_| {
-                self.make_parse_error(format!("Invalid port number: {}", port_str))
-            })?;
+            let port = port_str
+                .parse::<u16>()
+                .map_err(|_| self.make_parse_error(format!("Invalid port number: {}", port_str)))?;
             self.config.network.port = port;
         } else {
             return Err(self.make_parse_error("Missing port number".to_string()));
@@ -848,9 +835,9 @@ impl ConfigParser {
 
     fn parse_listen_address(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
         if let Some(addr_str) = value {
-            let addr = addr_str.parse().map_err(|_| {
-                self.make_parse_error(format!("Invalid IP address: {}", addr_str))
-            })?;
+            let addr = addr_str
+                .parse()
+                .map_err(|_| self.make_parse_error(format!("Invalid IP address: {}", addr_str)))?;
             self.config.network.listen_addresses.push(addr);
         } else {
             return Err(self.make_parse_error("Missing IP address".to_string()));
@@ -869,9 +856,9 @@ impl ConfigParser {
 
     fn parse_cache_size(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
         if let Some(size_str) = value {
-            let size = size_str.parse::<usize>().map_err(|_| {
-                self.make_parse_error(format!("Invalid cache size: {}", size_str))
-            })?;
+            let size = size_str
+                .parse::<usize>()
+                .map_err(|_| self.make_parse_error(format!("Invalid cache size: {}", size_str)))?;
             self.config.dns.cache_size = size;
         } else {
             return Err(self.make_parse_error("Missing cache size".to_string()));
