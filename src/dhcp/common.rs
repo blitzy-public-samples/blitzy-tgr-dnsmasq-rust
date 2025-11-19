@@ -94,7 +94,7 @@
 //! - Tag matching: Iterator-based with short-circuit evaluation
 
 use crate::error::DhcpError;
-use crate::types::IpAddr;
+use crate::types::{IpAddr, MacAddress};
 
 use bytes::BytesMut;
 use nom::{
@@ -320,12 +320,6 @@ pub struct DhcpOpt {
     /// Only valid when DHOPT_MATCH flag is set.
     pub wildcard_mask: Option<u32>,
 }
-
-/// MAC address (6-byte Ethernet address).
-///
-/// Type alias for 6-byte array representing Ethernet MAC address.
-/// Used by `parse_mac_address()` function.
-pub type MacAddress = [u8; 6];
 
 /// Network ID tag for client classification.
 ///
@@ -838,7 +832,9 @@ pub fn parse_mac_address(s: &str) -> Result<MacAddress, DhcpError> {
         return Ok(mac);
     }
     
-    Err(DhcpError::InvalidMacAddress(s.to_string()))
+    Err(DhcpError::ParseFailed {
+        reason: format!("Invalid MAC address format: '{}'", s),
+    })
 }
 
 /// Parse colon-separated MAC address (aa:bb:cc:dd:ee:ff).
@@ -852,7 +848,7 @@ fn parse_mac_colon(input: &str) -> IResult<&str, MacAddress> {
         return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::TooLarge)));
     }
     
-    Ok((input, [bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]]))
+    Ok((input, MacAddress::from_bytes([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]])))
 }
 
 /// Parse hyphen-separated MAC address (aa-bb-cc-dd-ee-ff).
@@ -866,7 +862,7 @@ fn parse_mac_hyphen(input: &str) -> IResult<&str, MacAddress> {
         return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::TooLarge)));
     }
     
-    Ok((input, [bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]]))
+    Ok((input, MacAddress::from_bytes([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]])))
 }
 
 /// Parse dot-separated MAC address (aabb.ccdd.eeff).
@@ -880,14 +876,14 @@ fn parse_mac_dot(input: &str) -> IResult<&str, MacAddress> {
         return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::TooLarge)));
     }
     
-    let mac = [
+    let mac = MacAddress::from_bytes([
         (parts[0] >> 8) as u8,
         (parts[0] & 0xFF) as u8,
         (parts[1] >> 8) as u8,
         (parts[1] & 0xFF) as u8,
         (parts[2] >> 8) as u8,
         (parts[2] & 0xFF) as u8,
-    ];
+    ]);
     
     Ok((input, mac))
 }
@@ -906,7 +902,7 @@ fn parse_mac_continuous(input: &str) -> IResult<&str, MacAddress> {
             .map_err(|_| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::HexDigit)))?;
     }
     
-    Ok(("", mac))
+    Ok(("", MacAddress::from_bytes(mac)))
 }
 
 /// Check if a network ID tag matches a list of tags.
