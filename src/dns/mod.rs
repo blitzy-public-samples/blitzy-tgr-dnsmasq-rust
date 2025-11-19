@@ -20,5 +20,6 @@
 //! the C implementation with memory-safe Rust code.
 
 pub mod dnssec;
+pub mod edns0;
 pub mod matcher;
 pub mod protocol;
