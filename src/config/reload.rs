@@ -166,7 +166,8 @@ use tracing::{debug, error, info, instrument, warn};
 /// Represents the current phase of configuration reload for logging and error handling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ReloadState {
-    /// Idle, waiting for reload trigger
+    /// Idle, waiting for reload trigger (not actively used in current implementation)
+    #[allow(dead_code)]
     Idle,
     /// Reading configuration files from disk
     Reading,
@@ -420,13 +421,17 @@ impl ConfigReloader {
     /// Performs field-by-field comparison and logs changes for audit trail.
     /// Helps administrators understand what changed during reload.
     fn log_config_diff(&self, old: &Config, new: &Config) {
-        // DNS configuration changes
-        if old.dns.port != new.dns.port {
+        // Track if any changes were detected
+        let mut changes_detected = false;
+
+        // DNS port configuration changes (port is in NetworkConfig)
+        if old.network.port != new.network.port {
             info!(
-                old_port = old.dns.port,
-                new_port = new.dns.port,
+                old_port = old.network.port,
+                new_port = new.network.port,
                 "DNS port changed"
             );
+            changes_detected = true;
         }
 
         if old.dns.cache_size != new.dns.cache_size {
@@ -435,6 +440,7 @@ impl ConfigReloader {
                 new_size = new.dns.cache_size,
                 "DNS cache size changed"
             );
+            changes_detected = true;
         }
 
         if old.dns.dnssec_enabled != new.dns.dnssec_enabled {
@@ -443,6 +449,7 @@ impl ConfigReloader {
                 new_value = new.dns.dnssec_enabled,
                 "DNSSEC validation setting changed"
             );
+            changes_detected = true;
         }
 
         // Network configuration changes
@@ -452,6 +459,7 @@ impl ConfigReloader {
                 new_port = new.network.port,
                 "Network listen port changed"
             );
+            changes_detected = true;
         }
 
         if old.network.interfaces != new.network.interfaces {
@@ -460,15 +468,22 @@ impl ConfigReloader {
                 new_interfaces = ?new.network.interfaces,
                 "Network interfaces changed"
             );
+            changes_detected = true;
         }
 
         // DHCP configuration changes
-        if old.dhcp.enabled != new.dhcp.enabled {
+        // Check if DHCP is enabled by checking if there are any configured ranges
+        // Replaces C: daemon->dhcp || daemon->doing_dhcp6
+        let old_dhcp_enabled = !old.dhcp.v4_ranges.is_empty() || !old.dhcp.v6_ranges.is_empty();
+        let new_dhcp_enabled = !new.dhcp.v4_ranges.is_empty() || !new.dhcp.v6_ranges.is_empty();
+        
+        if old_dhcp_enabled != new_dhcp_enabled {
             info!(
-                old_value = old.dhcp.enabled,
-                new_value = new.dhcp.enabled,
+                old_value = old_dhcp_enabled,
+                new_value = new_dhcp_enabled,
                 "DHCP server enabled setting changed"
             );
+            changes_detected = true;
         }
 
         // Security configuration changes
@@ -478,10 +493,11 @@ impl ConfigReloader {
                 new_user = ?new.security.user,
                 "User for privilege dropping changed"
             );
+            changes_detected = true;
         }
 
-        // If no changes detected, log that fact
-        if old == new {
+        // Log summary based on whether changes were detected
+        if !changes_detected {
             info!("Configuration reloaded with no changes detected");
         } else {
             info!("Configuration reloaded with changes applied");
@@ -537,7 +553,7 @@ mod tests {
     async fn test_config_reloader_creation() {
         let config = Arc::new(RwLock::new(Config::default()));
         let path = PathBuf::from("/etc/dnsmasq.conf");
-        let reloader = ConfigReloader::new(config.clone(), path);
+        let _reloader = ConfigReloader::new(config.clone(), path);
 
         let current_config = config.read().await;
         assert_eq!(current_config.network.port, 53);
