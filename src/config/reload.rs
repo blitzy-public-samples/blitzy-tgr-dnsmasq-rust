@@ -9,7 +9,7 @@
 //!
 //! This module handles dynamic configuration reload triggered by SIGHUP signal.
 
-use crate::config::{parse_config_file, Config};
+use crate::config::{parse_file, Config};
 use crate::error::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -56,7 +56,7 @@ impl ConfigReloader {
         tracing::info!("Reloading configuration from {:?}", self.config_path);
 
         // Parse new configuration
-        let new_config = parse_config_file(&self.config_path).await?;
+        let new_config = parse_file(&self.config_path).await?;
 
         // Validate new configuration
         crate::config::validator::validate_config(&new_config)?;
