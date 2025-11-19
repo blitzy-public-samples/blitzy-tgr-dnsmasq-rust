@@ -977,6 +977,14 @@ mod tests {
         let flags = LinuxNetworkPlatform::parse_interface_flags(0x1 | 0x1000);
         assert!(flags.contains(InterfaceFlags::UP));
         assert!(flags.contains(InterfaceFlags::MULTICAST));
+
+        // Test all flags (InterfaceFlags::all() returns all possible flags)
+        let all_flags = InterfaceFlags::all();
+        assert!(all_flags.contains(InterfaceFlags::UP));
+        assert!(all_flags.contains(InterfaceFlags::LOOPBACK));
+        assert!(all_flags.contains(InterfaceFlags::POINT_TO_POINT));
+        assert!(all_flags.contains(InterfaceFlags::MULTICAST));
+        assert!(all_flags.contains(InterfaceFlags::BROADCAST));
     }
 
     #[test]
