@@ -513,6 +513,22 @@ pub struct DnsConfig {
     ///
     /// Default: 300 seconds (5 minutes)
     pub neg_ttl: u32,
+
+    /// Don't read /etc/resolv.conf for upstream servers.
+    ///
+    /// Replaces C option bit OPT_NO_RESOLV. When true, only use servers
+    /// explicitly configured via --server options.
+    ///
+    /// Default: false
+    pub no_resolv: bool,
+
+    /// Don't poll /etc/resolv.conf for changes.
+    ///
+    /// Replaces C option bit OPT_NO_POLL. When true, don't watch resolv.conf
+    /// for modifications to update upstream server list.
+    ///
+    /// Default: false
+    pub no_poll: bool,
 }
 
 impl Default for DnsConfig {
@@ -531,6 +547,8 @@ impl Default for DnsConfig {
             local_ttl: 0,
             max_ttl: 0,
             neg_ttl: 300,
+            no_resolv: false,
+            no_poll: false,
         }
     }
 }
@@ -871,6 +889,14 @@ pub struct NetworkConfig {
     ///
     /// Default: 53
     pub port: u16,
+
+    /// Dynamically update interface bindings.
+    ///
+    /// Replaces C option bit OPT_CLEVERBIND. When true, monitors interface
+    /// addresses and automatically updates bindings when interfaces come/go.
+    ///
+    /// Default: false
+    pub bind_dynamic: bool,
 }
 
 impl Default for NetworkConfig {
@@ -881,6 +907,7 @@ impl Default for NetworkConfig {
             except_interfaces: Vec::new(),
             bind_interfaces: false,
             port: 53,
+            bind_dynamic: false,
         }
     }
 }
@@ -1193,7 +1220,7 @@ pub struct ScriptConfig {
 ///     ..Default::default()
 /// };
 /// ```
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PlatformConfig {
     /// Enable D-Bus IPC interface.
     ///
@@ -1211,6 +1238,35 @@ pub struct PlatformConfig {
     /// Default: false
     #[cfg(feature = "ubus")]
     pub ubus_enabled: bool,
+
+    /// Run as daemon (background process).
+    ///
+    /// Replaces C option bit OPT_NO_DAEMON (inverted). When true, fork to
+    /// background and detach from terminal. When false, run in foreground.
+    ///
+    /// Default: true
+    pub daemon_mode: bool,
+
+    /// Path to PID file.
+    ///
+    /// Replaces C `char *runfile`. Written after daemonizing with process ID.
+    /// None = no PID file.
+    ///
+    /// Default: None
+    pub pid_file: Option<PathBuf>,
+}
+
+impl Default for PlatformConfig {
+    fn default() -> Self {
+        Self {
+            #[cfg(feature = "dbus")]
+            dbus_enabled: false,
+            #[cfg(feature = "ubus")]
+            ubus_enabled: false,
+            daemon_mode: true,
+            pid_file: None,
+        }
+    }
 }
 
 // ============================================================================
