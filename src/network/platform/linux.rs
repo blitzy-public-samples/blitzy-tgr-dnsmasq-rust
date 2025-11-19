@@ -49,23 +49,25 @@ use crate::error::{NetworkError, Result};
 use crate::network::platform::common::{
     InterfaceEvent, InterfaceFlags, NetworkInterface, NetworkPlatform,
 };
-use crate::types::MacAddress;
 
 use async_trait::async_trait;
-use futures::stream::{Stream, StreamExt};
+use futures::stream::Stream;
+use futures::TryStreamExt;
 use netlink_packet_route::{
-    address::AddressMessage, link::LinkMessage, neighbour::NeighbourMessage, AddressFamily, Nla,
+    address::{AddressAttribute, AddressMessage},
+    neighbour::{NeighbourAddress, NeighbourAttribute},
+    AddressFamily,
 };
 use nix::libc;
 use rtnetlink::{new_connection, Handle};
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{debug, error, info, instrument, trace, warn};
+use tracing::{debug, error, info, instrument, trace};
 
 /// Linux network platform implementation using rtnetlink.
 ///
@@ -184,9 +186,8 @@ impl LinuxNetworkPlatform {
         // This task processes incoming messages and routes them to appropriate handles.
         // Replaces C poll() loop in netlink_multicast (netlink.c lines 574-619).
         let connection_task = tokio::spawn(async move {
-            if let Err(e) = connection.await {
-                error!("Netlink connection task failed: {}", e);
-            }
+            connection.await;
+            error!("Netlink connection task terminated unexpectedly");
         });
 
         info!("Linux network platform initialized with rtnetlink");
@@ -269,27 +270,35 @@ impl LinuxNetworkPlatform {
     /// ```
     ///
     /// Rust replacement with safe iteration and type checking.
+    /// AddressAttribute variants in netlink-packet-route 0.21 contain IpAddr directly,
+    /// so we simply extract and return it.
     fn parse_address_from_nla(msg: &AddressMessage) -> Option<IpAddr> {
+        // IPv4 addresses: Prefer IFA_LOCAL (for point-to-point) over IFA_ADDRESS
+        // IPv6 addresses: Use IFA_ADDRESS
+        // See RTM_NEWADDR processing in C netlink.c lines 495-540
+        
+        let mut local_addr = None;
+        let mut regular_addr = None;
+        
         for nla in msg.attributes.iter() {
-            match (msg.header.family, nla) {
-                // IPv4: Prefer IFA_LOCAL over IFA_ADDRESS
-                (AddressFamily::Inet, Nla::Local(bytes)) if bytes.len() == 4 => {
-                    let ip = Ipv4Addr::new(bytes[0], bytes[1], bytes[2], bytes[3]);
-                    return Some(IpAddr::V4(ip));
+            match nla {
+                AddressAttribute::Local(addr) => {
+                    local_addr = Some(*addr);
                 }
-                (AddressFamily::Inet, Nla::Address(bytes)) if bytes.len() == 4 => {
-                    let ip = Ipv4Addr::new(bytes[0], bytes[1], bytes[2], bytes[3]);
-                    return Some(IpAddr::V4(ip));
+                AddressAttribute::Address(addr) => {
+                    regular_addr = Some(*addr);
                 }
-                // IPv6: Use IFA_ADDRESS
-                (AddressFamily::Inet6, Nla::Address(bytes)) if bytes.len() == 16 => {
-                    let ip = Ipv6Addr::from(<[u8; 16]>::try_from(&bytes[..]).unwrap());
-                    return Some(IpAddr::V6(ip));
-                }
-                _ => continue,
+                _ => {}
             }
         }
-        None
+        
+        // For IPv4, prefer local address (matches C behavior)
+        // For IPv6, use regular address
+        match msg.header.family {
+            AddressFamily::Inet => local_addr.or(regular_addr),
+            AddressFamily::Inet6 => regular_addr,
+            _ => None,
+        }
     }
 }
 
@@ -339,13 +348,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
             .handle
             .link()
             .get()
-            .execute()
-            .map_err(|e| {
-                error!("Failed to enumerate links: {}", e);
-                NetworkError::InterfaceEnumerationFailed {
-                    reason: format!("RTM_GETLINK failed: {}", e),
-                }
-            })?;
+            .execute();
 
         // Build interface map by index
         let mut interface_map: HashMap<u32, NetworkInterface> = HashMap::new();
@@ -358,7 +361,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
             }
         })? {
             let index = link.header.index;
-            let flags = Self::parse_interface_flags(link.header.flags);
+            let flags = Self::parse_interface_flags(link.header.flags.bits());
 
             // Extract interface name from NLA_IFNAME attribute
             let name = link
@@ -372,22 +375,6 @@ impl NetworkPlatform for LinuxNetworkPlatform {
                     }
                 })
                 .unwrap_or_else(|| format!("if{}", index));
-
-            // Extract MAC address from NLA_ADDRESS attribute
-            let mac = link
-                .attributes
-                .iter()
-                .find_map(|nla| {
-                    if let netlink_packet_route::link::LinkAttribute::Address(bytes) = nla {
-                        if bytes.len() == 6 {
-                            MacAddress::from_bytes(bytes).ok()
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                });
 
             trace!(
                 interface = %name,
@@ -406,7 +393,9 @@ impl NetworkPlatform for LinuxNetworkPlatform {
                     index,
                     flags,
                     addresses: Vec::new(),
-                    mac,
+                    netmask: None,
+                    broadcast: None,
+                    mtu: 0, // Will be populated if needed
                 },
             );
         }
@@ -418,13 +407,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
             .handle
             .address()
             .get()
-            .execute()
-            .map_err(|e| {
-                error!("Failed to enumerate addresses: {}", e);
-                NetworkError::InterfaceEnumerationFailed {
-                    reason: format!("RTM_GETADDR failed: {}", e),
-                }
-            })?;
+            .execute();
 
         // Match addresses to interfaces
         while let Some(addr_msg) = addresses.try_next().await.map_err(|e| {
@@ -526,7 +509,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
     #[instrument(skip(self), name = "subscribe_to_changes")]
     async fn subscribe_to_changes(
         &self,
-    ) -> Pin<Box<dyn Stream<Item = InterfaceEvent> + Send + 'static>> {
+    ) -> Result<Pin<Box<dyn Stream<Item = InterfaceEvent> + Send + 'static>>> {
         debug!("Subscribing to network interface changes");
 
         // Create channel for event stream
@@ -549,13 +532,12 @@ impl NetworkPlatform for LinuxNetworkPlatform {
                 interval.tick().await;
 
                 // Query current interface state
-                let addresses_result = handle.address().get().execute();
+                let mut addr_stream = handle.address().get().execute();
+                
+                let mut current_interfaces: HashMap<u32, Vec<IpAddr>> = HashMap::new();
 
-                if let Ok(mut addr_stream) = addresses_result {
-                    let mut current_interfaces: HashMap<u32, Vec<IpAddr>> = HashMap::new();
-
-                    // Collect current addresses
-                    while let Ok(Some(addr_msg)) = addr_stream.try_next().await {
+                // Collect current addresses
+                while let Ok(Some(addr_msg)) = addr_stream.try_next().await {
                         let index = addr_msg.header.index;
 
                         if let Some(ip_addr) = Self::parse_address_from_nla(&addr_msg) {
@@ -645,12 +627,11 @@ impl NetworkPlatform for LinuxNetworkPlatform {
                         }
                     }
 
-                    previous_interfaces = current_interfaces;
-                }
+                previous_interfaces = current_interfaces;
             }
         });
 
-        Box::pin(ReceiverStream::new(rx))
+        Ok(Box::pin(ReceiverStream::new(rx)))
     }
 
     /// Map interface index to interface name.
@@ -687,7 +668,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
     /// }
     /// ```
     #[instrument(skip(self), fields(index = index))]
-    async fn index_to_name(&self, index: u32) -> Option<String> {
+    async fn index_to_name(&self, index: u32) -> Result<String> {
         let cache = self.interface_cache.lock().await;
         let name = cache.get(&index).cloned();
 
@@ -695,34 +676,35 @@ impl NetworkPlatform for LinuxNetworkPlatform {
             // Cache miss - query kernel directly
             drop(cache);
 
-            if let Ok(mut links) = self.handle.link().get().match_index(index).execute() {
-                if let Ok(Some(link)) = links.try_next().await {
-                    // Extract name and update cache
-                    let interface_name = link
-                        .attributes
-                        .iter()
-                        .find_map(|nla| {
-                            if let netlink_packet_route::link::LinkAttribute::IfName(n) = nla {
-                                Some(n.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or_else(|| format!("if{}", index));
+            let mut links = self.handle.link().get().match_index(index).execute();
+            if let Ok(Some(link)) = links.try_next().await {
+                // Extract name and update cache
+                let interface_name = link
+                    .attributes
+                    .iter()
+                    .find_map(|nla| {
+                        if let netlink_packet_route::link::LinkAttribute::IfName(n) = nla {
+                            Some(n.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_else(|| format!("if{}", index));
 
-                    let mut cache = self.interface_cache.lock().await;
-                    cache.insert(index, interface_name.clone());
+                let mut cache = self.interface_cache.lock().await;
+                cache.insert(index, interface_name.clone());
 
-                    trace!(index, name = %interface_name, "Cached interface name");
-                    return Some(interface_name);
-                }
+                trace!(index, name = %interface_name, "Cached interface name");
+                return Ok(interface_name);
             }
 
             debug!(index, "Interface index not found");
-            None
+            Err(NetworkError::InterfaceNotFound {
+                interface: format!("index {}", index),
+            })?
         } else {
             trace!(index, name = ?name, "Interface name from cache");
-            name
+            Ok(name.unwrap())
         }
     }
 
@@ -771,21 +753,14 @@ impl NetworkPlatform for LinuxNetworkPlatform {
     /// }
     /// ```
     #[instrument(skip(self), name = "enumerate_arp_entries")]
-    async fn enumerate_arp_entries(&self) -> Result<Vec<(IpAddr, MacAddress)>> {
+    async fn enumerate_arp_entries(&self) -> Result<Vec<(IpAddr, [u8; 6])>> {
         debug!("Enumerating ARP/neighbor table entries");
 
         let mut neighbours = self
             .handle
             .neighbours()
             .get()
-            .execute()
-            .map_err(|e| {
-                error!("Failed to enumerate neighbors: {}", e);
-                NetworkError::NetlinkFailed {
-                    operation: "RTM_GETNEIGH".to_string(),
-                    reason: format!("Neighbor query failed: {}", e),
-                }
-            })?;
+            .execute();
 
         let mut entries = Vec::new();
 
@@ -797,31 +772,29 @@ impl NetworkPlatform for LinuxNetworkPlatform {
             }
         })? {
             let mut ip_addr: Option<IpAddr> = None;
-            let mut mac_addr: Option<MacAddress> = None;
+            let mut mac_addr: Option<[u8; 6]> = None;
 
             // Parse NDA_DST (destination IP) and NDA_LLADDR (link-layer address / MAC)
+            // NeighbourAttribute::Destination contains a NeighbourAddress enum (Inet/Inet6)
+            // NeighbourAttribute::LinkLocalAddress contains MAC as Vec<u8>
             for nla in neigh_msg.attributes.iter() {
                 match nla {
-                    Nla::Destination(bytes) => {
-                        // Parse IP address based on family
-                        match neigh_msg.header.family {
-                            AddressFamily::Inet if bytes.len() == 4 => {
-                                ip_addr = Some(IpAddr::V4(Ipv4Addr::new(
-                                    bytes[0], bytes[1], bytes[2], bytes[3],
-                                )));
+                    NeighbourAttribute::Destination(neighbour_addr) => {
+                        // NeighbourAddress enum contains Ipv4Addr or Ipv6Addr directly
+                        match neighbour_addr {
+                            NeighbourAddress::Inet(ipv4) => {
+                                ip_addr = Some(IpAddr::V4(*ipv4));
                             }
-                            AddressFamily::Inet6 if bytes.len() == 16 => {
-                                if let Ok(arr) = <[u8; 16]>::try_from(&bytes[..]) {
-                                    ip_addr = Some(IpAddr::V6(Ipv6Addr::from(arr)));
-                                }
+                            NeighbourAddress::Inet6(ipv6) => {
+                                ip_addr = Some(IpAddr::V6(*ipv6));
                             }
                             _ => {}
                         }
                     }
-                    Nla::LinkLocalAddress(bytes) if bytes.len() == 6 => {
-                        // Parse MAC address from NDA_LLADDR
-                        if let Ok(mac) = MacAddress::from_bytes(bytes) {
-                            mac_addr = Some(mac);
+                    NeighbourAttribute::LinkLocalAddress(bytes) if bytes.len() == 6 => {
+                        // Parse MAC address from NDA_LLADDR (6-byte Vec<u8>)
+                        if let Ok(mac_bytes) = <[u8; 6]>::try_from(&bytes[..]) {
+                            mac_addr = Some(mac_bytes);
                         }
                     }
                     _ => {}
@@ -830,7 +803,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
 
             // Only include entries with both IP and MAC
             if let (Some(ip), Some(mac)) = (ip_addr, mac_addr) {
-                trace!(ip = %ip, mac = %mac, "Parsed ARP/NDP entry");
+                trace!(ip = %ip, mac = ?mac, "Parsed ARP/NDP entry");
                 entries.push((ip, mac));
             }
         }
@@ -877,73 +850,73 @@ impl NetworkPlatform for LinuxNetworkPlatform {
     ///     println!("Address is valid for DHCP allocation");
     /// }
     /// ```
-    async fn is_valid_address(&self, addr: IpAddr) -> bool {
+    async fn is_valid_address(&self, addr: &IpAddr, _interface: &NetworkInterface) -> Result<bool> {
         match addr {
             IpAddr::V4(v4) => {
                 // Reject loopback (127.0.0.0/8)
                 if v4.is_loopback() {
                     trace!(address = %addr, "Rejected: loopback address");
-                    return false;
+                    return Ok(false);
                 }
 
                 // Reject link-local (169.254.0.0/16)
                 if v4.is_link_local() {
                     trace!(address = %addr, "Rejected: link-local address");
-                    return false;
+                    return Ok(false);
                 }
 
                 // Reject multicast (224.0.0.0/4)
                 if v4.is_multicast() {
                     trace!(address = %addr, "Rejected: multicast address");
-                    return false;
+                    return Ok(false);
                 }
 
                 // Reject broadcast (255.255.255.255)
                 if v4.is_broadcast() {
                     trace!(address = %addr, "Rejected: broadcast address");
-                    return false;
+                    return Ok(false);
                 }
 
                 // Reject unspecified (0.0.0.0)
                 if v4.is_unspecified() {
                     trace!(address = %addr, "Rejected: unspecified address");
-                    return false;
+                    return Ok(false);
                 }
 
                 // Reject documentation addresses (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24)
                 if v4.is_documentation() {
                     trace!(address = %addr, "Rejected: documentation address");
-                    return false;
+                    return Ok(false);
                 }
 
-                true
+                Ok(true)
             }
             IpAddr::V6(v6) => {
                 // Reject loopback (::1)
                 if v6.is_loopback() {
                     trace!(address = %addr, "Rejected: loopback address");
-                    return false;
+                    return Ok(false);
                 }
 
                 // Reject link-local (fe80::/10)
                 if (v6.segments()[0] & 0xffc0) == 0xfe80 {
                     trace!(address = %addr, "Rejected: link-local address");
-                    return false;
+                    return Ok(false);
                 }
 
                 // Reject multicast (ff00::/8)
                 if v6.is_multicast() {
                     trace!(address = %addr, "Rejected: multicast address");
-                    return false;
+                    return Ok(false);
                 }
 
                 // Reject unspecified (::)
                 if v6.is_unspecified() {
                     trace!(address = %addr, "Rejected: unspecified address");
-                    return false;
+                    return Ok(false);
                 }
 
-                true
+                Ok(true)
             }
         }
     }
@@ -993,34 +966,56 @@ mod tests {
 
         runtime.block_on(async {
             if let Ok(platform) = LinuxNetworkPlatform::new().await {
+                // Create a dummy NetworkInterface for testing (interface parameter is unused in validation)
+                let dummy_interface = NetworkInterface {
+                    name: "eth0".to_string(),
+                    index: 1,
+                    addresses: vec![],
+                    netmask: None,
+                    broadcast: None,
+                    mtu: 1500,
+                    flags: InterfaceFlags::UP,
+                };
+
                 // Valid addresses
                 assert!(platform
-                    .is_valid_address("192.168.1.1".parse().unwrap())
-                    .await);
+                    .is_valid_address(&"192.168.1.1".parse().unwrap(), &dummy_interface)
+                    .await
+                    .unwrap());
                 assert!(platform
-                    .is_valid_address("10.0.0.1".parse().unwrap())
-                    .await);
+                    .is_valid_address(&"10.0.0.1".parse().unwrap(), &dummy_interface)
+                    .await
+                    .unwrap());
                 assert!(platform
-                    .is_valid_address("2001:db8::1".parse().unwrap())
-                    .await);
+                    .is_valid_address(&"2001:db8::1".parse().unwrap(), &dummy_interface)
+                    .await
+                    .unwrap());
 
                 // Invalid addresses
                 assert!(!platform
-                    .is_valid_address("127.0.0.1".parse().unwrap())
-                    .await); // loopback
+                    .is_valid_address(&"127.0.0.1".parse().unwrap(), &dummy_interface)
+                    .await
+                    .unwrap()); // loopback
                 assert!(!platform
-                    .is_valid_address("169.254.1.1".parse().unwrap())
-                    .await); // link-local
-                assert!(!platform.is_valid_address("::1".parse().unwrap()).await); // loopback
+                    .is_valid_address(&"169.254.1.1".parse().unwrap(), &dummy_interface)
+                    .await
+                    .unwrap()); // link-local
                 assert!(!platform
-                    .is_valid_address("fe80::1".parse().unwrap())
-                    .await); // link-local
+                    .is_valid_address(&"::1".parse().unwrap(), &dummy_interface)
+                    .await
+                    .unwrap()); // loopback
                 assert!(!platform
-                    .is_valid_address("224.0.0.1".parse().unwrap())
-                    .await); // multicast
+                    .is_valid_address(&"fe80::1".parse().unwrap(), &dummy_interface)
+                    .await
+                    .unwrap()); // link-local
                 assert!(!platform
-                    .is_valid_address("255.255.255.255".parse().unwrap())
-                    .await); // broadcast
+                    .is_valid_address(&"224.0.0.1".parse().unwrap(), &dummy_interface)
+                    .await
+                    .unwrap()); // multicast
+                assert!(!platform
+                    .is_valid_address(&"255.255.255.255".parse().unwrap(), &dummy_interface)
+                    .await
+                    .unwrap()); // broadcast
             }
         });
     }
@@ -1055,7 +1050,7 @@ mod tests {
             // Enumerate to populate cache
             if platform.enumerate_interfaces().await.is_ok() {
                 // Loopback is typically interface 1
-                if let Some(name) = platform.index_to_name(1).await {
+                if let Ok(name) = platform.index_to_name(1).await {
                     assert_eq!(name, "lo", "Interface 1 should be loopback");
                 }
             }
