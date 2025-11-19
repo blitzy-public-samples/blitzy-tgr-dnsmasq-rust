@@ -60,14 +60,13 @@
 //! }
 //! ```
 
-use crate::config::types::{Config, DhcpContext, SecurityConfig, StaticLease, NetworkConfig};
+use crate::config::types::{Config, StaticLease};
 use crate::error::ConfigError;
 use crate::constants::MAXLEASES;
 use crate::types::DomainName;
-use std::collections::{HashSet, HashMap};
+use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
-use regex::Regex;
 use tracing::{warn, error, info};
 use nix::unistd::{User, Group};
 
@@ -221,21 +220,18 @@ impl<'a> ConfigValidator<'a> {
     /// }
     /// ```
     pub fn validate(&mut self) -> ValidationResult {
-        // Validate DNS configuration
-        if let Some(dns_port) = self.config.dns.port {
-            self.validate_port(dns_port, "DNS port")?;
-        }
+        // Validate network configuration (DNS port)
+        self.validate_port(self.config.network.port, "DNS port")?;
 
         // Validate upstream DNS servers
-        for server in &self.config.dns.servers {
-            self.validate_ip_address(server, "upstream DNS server")?;
-        }
-
-        // Validate domain names in domain-specific servers
-        for (domain, servers) in &self.config.dns.server_for_domain {
-            self.validate_hostname(domain, "domain-specific server domain")?;
-            for server in servers {
-                self.validate_ip_address(server, &format!("server for domain {}", domain))?;
+        for server in &self.config.dns.upstream_servers {
+            // ServerDetails.addr is a SocketAddr, validate the IP
+            let ip_addr = server.addr().ip();
+            self.validate_ip_address(&ip_addr, "upstream DNS server")?;
+            
+            // Validate domain restriction if present
+            if let Some(domain) = server.domain() {
+                self.validate_hostname(domain.as_str(), "server domain restriction")?;
             }
         }
 
@@ -244,19 +240,13 @@ impl<'a> ConfigValidator<'a> {
             self.validate_cache_size(self.config.dns.cache_size)?;
         }
 
-        // Validate local domains
-        for domain in &self.config.dns.local_domains {
-            self.validate_hostname(domain, "local domain")?;
+        // Validate domain filters
+        for domain in &self.config.dns.domain_filters {
+            self.validate_hostname(domain.as_str(), "domain filter")?;
         }
 
-        // Validate address records
-        for (name, address) in &self.config.dns.address_records {
-            self.validate_hostname(name, "address record hostname")?;
-            self.validate_ip_address(address, &format!("address record for {}", name))?;
-        }
-
-        // Validate DHCP configuration
-        if self.config.dhcp.enabled {
+        // Validate DHCP configuration (DHCP is enabled if ranges are configured)
+        if !self.config.dhcp.v4_ranges.is_empty() || !self.config.dhcp.v6_ranges.is_empty() {
             self.validate_dhcp_pools()?;
             
             // Validate static leases
@@ -309,9 +299,8 @@ impl<'a> ConfigValidator<'a> {
                 // Check for reserved/invalid IPv4 addresses
                 if ipv4.is_unspecified() {
                     return Err(ConfigError::InvalidValue {
-                        field: context.to_string(),
-                        value: addr.to_string(),
-                        reason: "IPv4 address 0.0.0.0 is not valid in this context".to_string(),
+                        directive: context.to_string(),
+                        reason: format!("IPv4 address 0.0.0.0 is not valid for {}", context),
                     });
                 }
 
@@ -324,9 +313,8 @@ impl<'a> ConfigValidator<'a> {
                 // Check for reserved/invalid IPv6 addresses
                 if ipv6.is_unspecified() {
                     return Err(ConfigError::InvalidValue {
-                        field: context.to_string(),
-                        value: addr.to_string(),
-                        reason: "IPv6 address :: is not valid in this context".to_string(),
+                        directive: context.to_string(),
+                        reason: format!("IPv6 address :: is not valid for {}", context),
                     });
                 }
             }
@@ -361,9 +349,8 @@ impl<'a> ConfigValidator<'a> {
     pub fn validate_hostname(&self, hostname: &str, context: &str) -> ValidationResult {
         // Use DomainName type for validation
         DomainName::new(hostname).map_err(|e| ConfigError::InvalidValue {
-            field: context.to_string(),
-            value: hostname.to_string(),
-            reason: format!("Invalid hostname: {}", e),
+            directive: context.to_string(),
+            reason: format!("Invalid hostname '{}': {}", hostname, e),
         })?;
 
         Ok(())
@@ -438,44 +425,44 @@ impl<'a> ConfigValidator<'a> {
     ) -> ValidationResult {
         if must_exist {
             if !path.exists() {
-                return Err(ConfigError::Io(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    format!("{}: file not found: {}", context, path.display()),
-                )));
+                return Err(ConfigError::ValidationFailed {
+                    reason: format!("{}: file not found: {}", context, path.display()),
+                });
             }
 
             // Check readability
-            let metadata = std::fs::metadata(path).map_err(ConfigError::Io)?;
+            let metadata = std::fs::metadata(path).map_err(|e| {
+                ConfigError::ValidationFailed {
+                    reason: format!("{}: cannot access file: {}", context, e),
+                }
+            })?;
 
             if metadata.is_file() {
                 // For files, attempt to open for reading
-                std::fs::File::open(path).map_err(|e| {
-                    ConfigError::Io(std::io::Error::new(
-                        e.kind(),
-                        format!("{}: cannot read file: {}", context, path.display()),
-                    ))
+                std::fs::File::open(path).map_err(|_| {
+                    ConfigError::ValidationFailed {
+                        reason: format!("{}: cannot read file: {}", context, path.display()),
+                    }
                 })?;
             } else if metadata.is_dir() {
                 // For directories, check execute permission
-                std::fs::read_dir(path).map_err(|e| {
-                    ConfigError::Io(std::io::Error::new(
-                        e.kind(),
-                        format!("{}: cannot access directory: {}", context, path.display()),
-                    ))
+                std::fs::read_dir(path).map_err(|_| {
+                    ConfigError::ValidationFailed {
+                        reason: format!("{}: cannot access directory: {}", context, path.display()),
+                    }
                 })?;
             }
         } else {
             // For paths that don't need to exist, validate parent directory exists
             if let Some(parent) = path.parent() {
                 if !parent.exists() {
-                    return Err(ConfigError::Io(std::io::Error::new(
-                        std::io::ErrorKind::NotFound,
-                        format!(
+                    return Err(ConfigError::ValidationFailed {
+                        reason: format!(
                             "{}: parent directory not found: {}",
                             context,
                             parent.display()
                         ),
-                    )));
+                    });
                 }
             }
         }
@@ -506,10 +493,11 @@ impl<'a> ConfigValidator<'a> {
         let mut ipv4_ranges: Vec<(Ipv4Addr, Ipv4Addr, &str)> = Vec::new();
         let mut ipv6_ranges: Vec<(Ipv6Addr, Ipv6Addr, &str)> = Vec::new();
 
-        for context in &self.config.dhcp.contexts {
+        // Validate DHCPv4 ranges
+        for range in &self.config.dhcp.v4_ranges {
             // Validate address range
-            let start_ip = &context.start_ip;
-            let end_ip = &context.end_ip;
+            let start_ip = &range.start;
+            let end_ip = &range.end;
 
             // Validate IP address family match
             match (start_ip, end_ip) {
@@ -517,9 +505,8 @@ impl<'a> ConfigValidator<'a> {
                     // Validate start < end
                     if start >= end {
                         return Err(ConfigError::InvalidIpRange {
-                            field: format!("DHCP range {}", context.interface.as_deref().unwrap_or("unknown")),
-                            start: start_ip.to_string(),
-                            end: end_ip.to_string(),
+                            directive: format!("DHCP range {}", range.interface.as_deref().unwrap_or("unknown")),
+                            value: format!("{} - {}", start_ip, end_ip),
                             reason: "start address must be less than end address".to_string(),
                         });
                     }
@@ -541,16 +528,51 @@ impl<'a> ConfigValidator<'a> {
                     ipv4_ranges.push((
                         *start,
                         *end,
-                        context.interface.as_deref().unwrap_or("unknown"),
+                        range.interface.as_deref().unwrap_or("unknown"),
                     ));
                 }
+                _ => {
+                    return Err(ConfigError::InvalidIpRange {
+                        directive: format!("DHCP range {}", range.interface.as_deref().unwrap_or("unknown")),
+                        value: format!("{} - {}", start_ip, end_ip),
+                        reason: "DHCPv4 range must contain IPv4 addresses".to_string(),
+                    });
+                }
+            }
+
+            // Validate lease time (if overridden for this range)
+            if let Some(lease_time) = range.lease_time_override {
+                let lease_secs = lease_time.as_secs();
+                if lease_secs < 300 {
+                    // Less than 5 minutes
+                    self.warnings.push(ValidationWarning::UnusualLeaseTime {
+                        seconds: lease_secs as u32,
+                        interface: range.interface.clone().unwrap_or_else(|| "unknown".to_string()),
+                    });
+                } else if lease_secs > 604800 {
+                    // More than 7 days
+                    self.warnings.push(ValidationWarning::UnusualLeaseTime {
+                        seconds: lease_secs as u32,
+                        interface: range.interface.clone().unwrap_or_else(|| "unknown".to_string()),
+                    });
+                }
+            }
+        }
+
+        // Validate DHCPv6 ranges
+        for range in &self.config.dhcp.v6_ranges {
+            // Validate address range
+            let start_ip = &range.start;
+            let end_ip = &range.end;
+
+            // Validate IP address family match
+            match (start_ip, end_ip) {
                 (IpAddr::V6(start), IpAddr::V6(end)) => {
                     // Validate start < end (lexicographic comparison)
                     if start >= end {
                         return Err(ConfigError::InvalidIpRange {
-                            field: format!("DHCPv6 range {}", context.interface.as_deref().unwrap_or("unknown")),
-                            start: start_ip.to_string(),
-                            end: end_ip.to_string(),
+                            directive: format!("DHCPv6 range {}", range.interface.as_deref().unwrap_or("unknown")),
+                            value: format!("{} - {}", start_ip, end_ip),
                             reason: "start address must be less than end address".to_string(),
                         });
                     }
@@ -559,32 +581,32 @@ impl<'a> ConfigValidator<'a> {
                     ipv6_ranges.push((
                         *start,
                         *end,
-                        context.interface.as_deref().unwrap_or("unknown"),
+                        range.interface.as_deref().unwrap_or("unknown"),
                     ));
                 }
                 _ => {
                     return Err(ConfigError::InvalidIpRange {
-                        field: format!("DHCP range {}", context.interface.as_deref().unwrap_or("unknown")),
-                        start: start_ip.to_string(),
-                        end: end_ip.to_string(),
-                        reason: "start and end addresses must be same IP version".to_string(),
+                        directive: format!("DHCP range {}", range.interface.as_deref().unwrap_or("unknown")),
+                        value: format!("{} - {}", start_ip, end_ip),
+                        reason: "DHCPv6 range must contain IPv6 addresses".to_string(),
                     });
                 }
             }
 
-            // Validate lease time
-            if let Some(lease_time) = context.lease_time {
-                if lease_time < 300 {
+            // Validate lease time (if overridden for this range)
+            if let Some(lease_time) = range.lease_time_override {
+                let lease_secs = lease_time.as_secs();
+                if lease_secs < 300 {
                     // Less than 5 minutes
                     self.warnings.push(ValidationWarning::UnusualLeaseTime {
-                        seconds: lease_time,
-                        interface: context.interface.clone().unwrap_or_else(|| "unknown".to_string()),
+                        seconds: lease_secs as u32,
+                        interface: range.interface.clone().unwrap_or_else(|| "unknown".to_string()),
                     });
-                } else if lease_time > 604800 {
+                } else if lease_secs > 604800 {
                     // More than 7 days
                     self.warnings.push(ValidationWarning::UnusualLeaseTime {
-                        seconds: lease_time,
-                        interface: context.interface.clone().unwrap_or_else(|| "unknown".to_string()),
+                        seconds: lease_secs as u32,
+                        interface: range.interface.clone().unwrap_or_else(|| "unknown".to_string()),
                     });
                 }
             }
@@ -599,7 +621,6 @@ impl<'a> ConfigValidator<'a> {
                 // Check if ranges overlap
                 if !(end1 < start2 || end2 < start1) {
                     return Err(ConfigError::ValidationFailed {
-                        field: "DHCP ranges".to_string(),
                         reason: format!(
                             "Overlapping IPv4 DHCP ranges: {}-{} on {} and {}-{} on {}",
                             start1, end1, iface1, start2, end2, iface2
@@ -618,7 +639,6 @@ impl<'a> ConfigValidator<'a> {
                 // Check if ranges overlap
                 if !(end1 < start2 || end2 < start1) {
                     return Err(ConfigError::ValidationFailed {
-                        field: "DHCPv6 ranges".to_string(),
                         reason: format!(
                             "Overlapping IPv6 DHCP ranges: {}-{} on {} and {}-{} on {}",
                             start1, end1, iface1, start2, end2, iface2
@@ -650,51 +670,45 @@ impl<'a> ConfigValidator<'a> {
     /// validator.validate_cross_dependencies()?;
     /// ```
     pub fn validate_cross_dependencies(&mut self) -> ValidationResult {
-        // TFTP validation
-        if self.config.tftp.enabled {
-            if self.config.tftp.root.is_none() {
-                return Err(ConfigError::ValidationFailed {
-                    field: "tftp_root".to_string(),
-                    reason: "TFTP enabled but tftp_root not configured".to_string(),
-                });
+        // TFTP validation: if TFTP is actually configured (tftp_prefix is Some),
+        // validate the settings. Having tftp_prefix as None is valid (TFTP disabled).
+        #[cfg(feature = "tftp")]
+        {
+            if let Some(ref tftp_prefix) = self.config.tftp.tftp_prefix {
+                // Validate that tftp_prefix exists and is a directory
+                if !tftp_prefix.exists() {
+                    return Err(ConfigError::ValidationFailed {
+                        reason: format!("TFTP root directory does not exist: {:?}", tftp_prefix),
+                    });
+                }
+                if !tftp_prefix.is_dir() {
+                    return Err(ConfigError::ValidationFailed {
+                        reason: format!("TFTP root is not a directory: {:?}", tftp_prefix),
+                    });
+                }
             }
         }
 
-        // PXE requires TFTP
-        if self.config.dhcp.enabled {
-            // Check if any DHCP contexts have PXE boot configured
-            let has_pxe = self.config.dhcp.contexts.iter().any(|ctx| {
-                ctx.boot_file.is_some() || ctx.boot_server.is_some()
-            });
+        // Note: PXE boot validation would require additional fields in DhcpRange
+        // that are not currently present in the configuration structure.
+        // This validation is omitted until PXE-specific fields are added.
 
-            if has_pxe && !self.config.tftp.enabled {
-                warn!("PXE boot configured but TFTP not enabled - PXE may not work");
-            }
-        }
-
-        // DNSSEC validation
-        if self.config.dns.dnssec_enabled {
-            if self.config.dns.trust_anchors.is_empty() {
-                return Err(ConfigError::ValidationFailed {
-                    field: "dnssec".to_string(),
-                    reason: "DNSSEC enabled but no trust anchors configured".to_string(),
-                });
-            }
-        }
+        // Note: DNSSEC trust anchor validation is omitted here as trust anchors
+        // are typically loaded from a separate trust-anchors.conf file at runtime
+        // rather than being part of the main configuration structure.
 
         // Interface binding validation
         if self.config.network.bind_interfaces {
             if self.config.network.interfaces.is_empty() && 
                self.config.network.listen_addresses.is_empty() {
                 return Err(ConfigError::ValidationFailed {
-                    field: "bind_interfaces".to_string(),
                     reason: "bind-interfaces enabled but no interfaces or listen-addresses specified".to_string(),
                 });
             }
         }
 
         // Log queries requires DNS
-        if self.config.dns.log_queries && self.config.dns.port == Some(0) {
+        if self.config.logging.log_queries && self.config.network.port == 0 {
             warn!("log-queries enabled but DNS disabled (port=0)");
         }
 
@@ -756,24 +770,14 @@ impl<'a> ConfigValidator<'a> {
     /// - `Ok(())` if options are valid
     /// - `Err(ConfigError)` for invalid option values
     fn validate_dhcp_options(&self) -> ValidationResult {
-        // Validate option 6 (DNS servers)
-        if let Some(dns_servers) = self.config.dhcp.options.get(&6) {
-            for server_str in dns_servers.split(',') {
-                let addr: IpAddr = server_str.trim().parse().map_err(|_| {
-                    ConfigError::InvalidValue {
-                        field: "dhcp-option 6".to_string(),
-                        value: server_str.to_string(),
-                        reason: "Invalid DNS server IP address".to_string(),
-                    }
-                })?;
-                self.validate_ip_address(&addr, "DHCP option 6 (DNS server)")?;
-            }
-        }
-
-        // Validate option 15 (domain name)
-        if let Some(domain) = self.config.dhcp.options.get(&15) {
-            self.validate_hostname(domain, "DHCP option 15 (domain name)")?;
-        }
+        // NOTE: DHCP options are not stored in the Config struct.
+        // DHCP options are handled at the protocol level in the dhcp module.
+        // This function is a no-op placeholder for future validation if needed.
+        
+        // TODO: If DHCP options are added to Config in the future, validate them here:
+        // - Option 6 (DNS servers): validate IP addresses
+        // - Option 15 (domain name): validate hostname
+        // - Other options as needed
 
         Ok(())
     }
@@ -797,7 +801,6 @@ impl<'a> ConfigValidator<'a> {
         let overlap: Vec<_> = interface_set.intersection(&except_set).collect();
         if !overlap.is_empty() {
             return Err(ConfigError::ValidationFailed {
-                field: "interfaces".to_string(),
                 reason: format!(
                     "Interfaces specified in both 'interface' and 'except-interface': {:?}",
                     overlap
@@ -818,11 +821,9 @@ impl<'a> ConfigValidator<'a> {
         // Validate user exists
         if let Some(ref username) = self.config.security.user {
             User::from_name(username).map_err(|_| ConfigError::ValidationFailed {
-                field: "user".to_string(),
                 reason: format!("User '{}' does not exist on system", username),
             })?
             .ok_or_else(|| ConfigError::ValidationFailed {
-                field: "user".to_string(),
                 reason: format!("User '{}' does not exist on system", username),
             })?;
         }
@@ -830,11 +831,9 @@ impl<'a> ConfigValidator<'a> {
         // Validate group exists
         if let Some(ref groupname) = self.config.security.group {
             Group::from_name(groupname).map_err(|_| ConfigError::ValidationFailed {
-                field: "group".to_string(),
                 reason: format!("Group '{}' does not exist on system", groupname),
             })?
             .ok_or_else(|| ConfigError::ValidationFailed {
-                field: "group".to_string(),
                 reason: format!("Group '{}' does not exist on system", groupname),
             })?;
         }
@@ -866,14 +865,10 @@ impl<'a> ConfigValidator<'a> {
             self.validate_file_path(lease_file, "DHCP lease file", false)?;
         }
 
-        // Validate PID file parent directory (file created at runtime)
-        if let Some(ref pid_file) = self.config.general.pid_file {
-            self.validate_file_path(pid_file, "PID file", false)?;
-        }
-
-        // Validate TFTP root if TFTP enabled
-        if self.config.tftp.enabled {
-            if let Some(ref tftp_root) = self.config.tftp.root {
+        // Validate TFTP root if TFTP feature is enabled
+        #[cfg(feature = "tftp")]
+        {
+            if let Some(ref tftp_root) = self.config.tftp.tftp_prefix {
                 self.validate_file_path(tftp_root, "TFTP root directory", true)?;
             }
         }
@@ -895,9 +890,9 @@ impl<'a> ConfigValidator<'a> {
     pub fn validate_and_warn(&mut self) {
         // Check for many upstream servers
         const RECOMMENDED_MAX_SERVERS: usize = 5;
-        if self.config.dns.servers.len() > RECOMMENDED_MAX_SERVERS {
+        if self.config.dns.upstream_servers.len() > RECOMMENDED_MAX_SERVERS {
             self.warnings.push(ValidationWarning::ManyUpstreamServers {
-                count: self.config.dns.servers.len(),
+                count: self.config.dns.upstream_servers.len(),
                 recommended_max: RECOMMENDED_MAX_SERVERS,
             });
         }

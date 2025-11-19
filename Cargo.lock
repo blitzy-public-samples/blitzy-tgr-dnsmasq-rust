@@ -655,6 +655,7 @@ dependencies = [
  "nom",
  "notify",
  "proptest",
+ "regex",
  "ring",
  "rtnetlink",
  "rustls",

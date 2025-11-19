@@ -51,7 +51,7 @@ pub use self::cli::{parse_cli_args, CliArgs};
 pub use self::parser::{parse_config_file, ConfigParser};
 pub use self::reload::ConfigReloader;
 pub use self::types::{Config, ConfigBuilder, DhcpConfig, DnsConfig};
-pub use self::validator::{validate_config, ValidationError};
+pub use self::validator::{validate_config, ValidationResult, ValidationWarning};
 
 use crate::error::Result;
 use std::path::Path;
