@@ -146,6 +146,104 @@ impl DomainName {
         Self::from_str(s).map_err(|e| DnsError::InvalidName { name: s.to_string(), reason: e })
     }
 
+    /// Creates a new domain name pattern with wildcard support.
+    ///
+    /// This is a specialized constructor for creating domain patterns used in
+    /// matching logic (e.g., `*.example.com`). Unlike `new()`, this allows
+    /// wildcard characters (`*`) in labels for pattern matching purposes.
+    ///
+    /// # Arguments
+    ///
+    /// * `pattern` - Domain pattern string (may include wildcard labels like `*`)
+    ///
+    /// # Returns
+    ///
+    /// A DomainName that may contain wildcards, or a DnsError if basic validation fails.
+    ///
+    /// # Validation
+    ///
+    /// - Allows `*` as a complete label (e.g., `*.example.com` or `*.*.example.com`)
+    /// - Non-wildcard labels follow normal RFC 1035 rules
+    /// - Total length ≤ 255 bytes (including wildcards)
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let wildcard = DomainName::new_pattern("*.example.com")?;
+    /// let multi_wildcard = DomainName::new_pattern("*.*.example.com")?;
+    /// let normal = DomainName::new_pattern("example.com")?;
+    /// ```
+    pub fn new_pattern(pattern: &str) -> Result<Self, DnsError> {
+        // Basic length check
+        if pattern.is_empty() {
+            return Err(DnsError::InvalidName {
+                name: pattern.to_string(),
+                reason: "Domain pattern cannot be empty".to_string(),
+            });
+        }
+
+        if pattern.len() > MAX_NAME_LEN {
+            return Err(DnsError::InvalidName {
+                name: pattern.to_string(),
+                reason: format!(
+                    "Domain pattern exceeds maximum length {}: {} bytes",
+                    MAX_NAME_LEN,
+                    pattern.len()
+                ),
+            });
+        }
+
+        // Create the domain name with the pattern string
+        let name = DomainName {
+            name: pattern.trim_end_matches('.').to_string(),
+        };
+
+        // Validate each label, allowing '*' as a complete label
+        let labels: Vec<&str> = name.labels().collect();
+        for label in labels {
+            // Allow '*' as a complete label (wildcard)
+            if label == "*" {
+                continue;
+            }
+
+            // For non-wildcard labels, perform standard validation
+            // Check label length
+            if label.is_empty() {
+                return Err(DnsError::InvalidName {
+                    name: pattern.to_string(),
+                    reason: "Empty label found".to_string(),
+                });
+            }
+
+            if label.len() > MAX_LABEL_LEN {
+                return Err(DnsError::InvalidName {
+                    name: pattern.to_string(),
+                    reason: format!("Label '{}' exceeds maximum length {}", label, MAX_LABEL_LEN),
+                });
+            }
+
+            // Check for leading/trailing hyphens
+            if label.starts_with('-') || label.ends_with('-') {
+                return Err(DnsError::InvalidName {
+                    name: pattern.to_string(),
+                    reason: format!("Label '{}' has leading or trailing hyphen", label),
+                });
+            }
+
+            // Check character set (alphanumeric and hyphen only)
+            for ch in label.chars() {
+                if !ch.is_ascii_alphanumeric() && ch != '-' {
+                    return Err(DnsError::InvalidName {
+                        name: pattern.to_string(),
+                        reason: format!("Label '{}' contains invalid character '{}'", label, ch),
+                    });
+                }
+            }
+        }
+
+        Ok(name)
+    }
+
     /// Returns a string slice of the domain name in presentation format.
     ///
     /// Provides efficient access to the internal string without cloning.

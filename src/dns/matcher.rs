@@ -123,7 +123,6 @@ use crate::dns::protocol::name::DomainName;
 use crate::error::Result;
 use crate::types::ServerDetails;
 use std::collections::BTreeMap;
-use std::sync::Arc;
 use tracing::{debug, instrument, trace};
 
 /// Server configuration flags controlling upstream server behavior.
@@ -684,10 +683,13 @@ mod tests {
     #[test]
     fn test_wildcard_match() {
         let mut matcher = DomainMatcher::new();
-        let server = test_server("8.8.8.8:53", Some("*.example.com"));
+        // ServerDetails domain should not contain wildcard - wildcard is only in the pattern
+        let server = test_server("8.8.8.8:53", Some("example.com"));
 
+        // But the pattern key can contain wildcard
+        let pattern = DomainName::new_pattern("*.example.com").unwrap();
         matcher.add_pattern(
-            DomainName::new("*.example.com").unwrap(),
+            pattern,
             vec![server],
         ).unwrap();
 
@@ -762,11 +764,11 @@ mod tests {
         let mut matcher = DomainMatcher::new();
         
         let server1 = test_server("8.8.8.8:53", Some("example.com"));
-        let server2 = test_server("8.8.4.4:53", Some("*.example.com"));
+        let server2 = test_server("8.8.4.4:53", Some("example.com"));
         let server3 = test_server("1.1.1.1:53", Some("mail.example.com"));
 
         matcher.add_pattern(DomainName::new("example.com").unwrap(), vec![server1]).unwrap();
-        matcher.add_pattern(DomainName::new("*.example.com").unwrap(), vec![server2]).unwrap();
+        matcher.add_pattern(DomainName::new_pattern("*.example.com").unwrap(), vec![server2]).unwrap();
         matcher.add_pattern(DomainName::new("mail.example.com").unwrap(), vec![server3]).unwrap();
 
         let query = DomainName::new("mail.example.com").unwrap();
