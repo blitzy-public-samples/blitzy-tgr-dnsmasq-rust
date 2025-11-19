@@ -204,22 +204,12 @@
 //! - IP address parsing follows RFC 791 (IPv4) and RFC 4291 (IPv6)
 
 use crate::config::types::Config;
-use crate::constants::MAXDNAME;
 use crate::error::ConfigError;
-use nom::{
-    branch::alt,
-    bytes::complete::{tag, take_while, take_while1},
-    character::complete::{char, none_of},
-    combinator::{map, opt, recognize},
-    multi::many0,
-    sequence::{delimited, pair, preceded},
-    IResult,
-};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Maximum configuration file line length (4KB)
 ///
@@ -320,7 +310,7 @@ impl ConfigParser {
         let path = path.as_ref();
 
         // Canonicalize path for cycle detection
-        let canonical_path = tokio::fs::canonicalize(path).await.map_err(|e| {
+        let canonical_path = tokio::fs::canonicalize(path).await.map_err(|_e| {
             ConfigError::FileNotFound {
                 path: path.display().to_string(),
             }
@@ -346,7 +336,7 @@ impl ConfigParser {
         }
 
         // Open file for reading
-        let file = File::open(&canonical_path).await.map_err(|e| {
+        let file = File::open(&canonical_path).await.map_err(|_e| {
             ConfigError::FileNotFound {
                 path: canonical_path.display().to_string(),
             }
@@ -690,7 +680,7 @@ impl ConfigParser {
     fn strip_comment(line: &str) -> &str {
         // Find # that starts a comment (preceded by whitespace or at start)
         if let Some(pos) = line.find('#') {
-            if pos == 0 || line.as_bytes().get(pos - 1).map_or(false, |&b| b.is_ascii_whitespace())
+            if pos == 0 || line.as_bytes().get(pos - 1).is_some_and(|&b| b.is_ascii_whitespace())
             {
                 return &line[..pos];
             }
@@ -821,7 +811,7 @@ impl ConfigParser {
 
         if directive == "conf-file" {
             // Single file include
-            let path = PathBuf::from(path_str);
+            let _path = PathBuf::from(path_str);
             // Would call: self.parse_file(path).await?
             // For this synchronous context, we'll just log and continue
             info!(path = %path_str, "Would include configuration file");
