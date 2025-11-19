@@ -58,6 +58,7 @@
 use crate::dns::protocol::constants::T_DS;
 use crate::dns::protocol::name::DomainName;
 use crate::error::Result;
+use hex;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
