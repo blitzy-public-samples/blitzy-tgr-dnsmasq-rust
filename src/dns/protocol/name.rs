@@ -115,7 +115,7 @@ const MAX_NAME_LEN: usize = 255;
 ///
 /// When the "idn" feature is enabled, non-ASCII domain names are automatically encoded
 /// using Punycode (RFC 3492). For example, "münchen.de" becomes "xn--mnchen-3ya.de".
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DomainName {
     /// Internal representation in presentation format (dotted notation).
     /// Stored as String for ease of manipulation and display.
@@ -708,6 +708,20 @@ impl PartialEq for DomainName {
 }
 
 impl Eq for DomainName {}
+
+impl PartialOrd for DomainName {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for DomainName {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Case-insensitive comparison per RFC 1035 Section 3.1
+        // Convert both names to lowercase for consistent ordering
+        self.name.to_ascii_lowercase().cmp(&other.name.to_ascii_lowercase())
+    }
+}
 
 impl std::hash::Hash for DomainName {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
