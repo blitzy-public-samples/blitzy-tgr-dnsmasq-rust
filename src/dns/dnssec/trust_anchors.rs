@@ -436,6 +436,12 @@ pub struct TrustAnchorStore {
     anchors: BTreeMap<DomainName, Vec<TrustAnchor>>,
 }
 
+impl Default for TrustAnchorStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TrustAnchorStore {
     /// Creates a new empty trust anchor store.
     ///
@@ -831,7 +837,7 @@ impl TrustAnchorStore {
         // Add to appropriate zone in BTreeMap
         self.anchors
             .entry(domain)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(anchor);
 
         Ok(())

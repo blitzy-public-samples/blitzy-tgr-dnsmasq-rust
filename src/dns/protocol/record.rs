@@ -103,19 +103,20 @@
 
 use crate::dns::edns0::Edns0Option;
 use crate::dns::protocol::constants::{
-    C_IN, IN6ADDRSZ, INADDRSZ, RRFIXEDSZ, T_A, T_AAAA, T_CAA, T_CNAME, T_DNSKEY, T_DS, T_MX,
-    T_NAPTR, T_NS, T_NSEC, T_NSEC3, T_OPT, T_PTR, T_RRSIG, T_SOA, T_SRV, T_TXT,
+    IN6ADDRSZ, INADDRSZ,
 };
 use crate::dns::protocol::name::DomainName;
 use crate::error::{Result, DnsError};
 use crate::types::RecordType;
 
+#[cfg(test)]
+use crate::dns::protocol::constants::{C_IN, T_A};
+
 use bytes::{BufMut, Bytes, BytesMut};
 use nom::{
     bytes::complete::take,
-    combinator::map,
     error::{Error as NomError, ErrorKind},
-    multi::{length_data, many0},
+    multi::length_data,
     number::complete::{be_u16, be_u32, be_u8},
     sequence::tuple,
     Err as NomErr, IResult,
@@ -862,7 +863,7 @@ impl ResourceRecord {
                 // SOA record: mname + rname + serial + refresh + retry + expire + minimum
                 let (input, mname) = parse_domain_name_rdata(rdata_bytes, message)?;
                 let (input, rname) = parse_domain_name_rdata(input, message)?;
-                let (input, (serial, refresh, retry, expire, minimum)) =
+                let (_input, (serial, refresh, retry, expire, minimum)) =
                     tuple::<_, _, NomErrorType<'_>, _>((
                         be_u32::<_, NomErrorType<'_>>,
                         be_u32::<_, NomErrorType<'_>>,

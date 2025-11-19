@@ -49,23 +49,15 @@
 //! ```
 
 use crate::dns::protocol::constants::{
-    C_ANY, C_IN, EDNS0_OPTION_CLIENT_SUBNET, EDNS0_OPTION_MAC, EDNS0_OPTION_NOMCPEID,
-    EDNS0_OPTION_NOMDEVICEID, EDNS0_OPTION_UMBRELLA, EDE_BOGUS, EDE_DNSSEC_BOGUS, EDE_DNSSEC_IND,
-    EDE_FORGED, EDE_INDET, EDE_NETERR, EDE_NOT_AUTH, EDE_NOT_READY, EDE_NOT_SUP, EDE_NO_REACHABLE,
-    EDE_OTHER, EDE_PROHIBITED, EDE_RRSIG_MISS, EDE_SIG_EXP, EDE_SIG_NYV, EDE_STALE, EDE_SXNAME_MISS,
-    EDE_UNSET, EDE_USUPDNSKEY, EDE_USUPDS, IN6ADDRSZ, INADDRSZ, T_OPT, T_TKEY, T_TSIG,
+    EDNS0_OPTION_CLIENT_SUBNET, EDNS0_OPTION_MAC, EDNS0_OPTION_NOMCPEID,
+    EDNS0_OPTION_NOMDEVICEID, EDNS0_OPTION_UMBRELLA, IN6ADDRSZ, INADDRSZ, T_OPT, T_TKEY, T_TSIG,
 };
 use crate::error::{DnsError, Result};
-use crate::types::{IpAddr, MacAddress, Timestamp};
+use crate::types::{IpAddr, MacAddress};
 
-use bytes::{BufMut, Bytes, BytesMut};
-use nom::{
-    bytes::complete::take,
-    combinator::map,
-    number::complete::{be_u16, be_u32, be_u8},
-    sequence::tuple,
-    IResult,
-};
+#[cfg(test)]
+use crate::dns::protocol::constants::{EDE_DNSSEC_BOGUS, EDE_STALE};
+
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use tracing::{debug, instrument, trace, warn};
 
@@ -212,11 +204,11 @@ impl Edns0Option {
     /// Returns the wire-format serialized option data length
     pub fn data_len(&self) -> usize {
         match self {
-            Edns0Option::ClientSubnet { family, address, .. } => {
+            Edns0Option::ClientSubnet { family,  .. } => {
                 let addr_len = if *family == 1 {
-                    INADDRSZ as usize
+                    INADDRSZ
                 } else {
-                    IN6ADDRSZ as usize
+                    IN6ADDRSZ
                 };
                 4 + addr_len // family(2) + source(1) + scope(1) + address
             }
@@ -258,7 +250,7 @@ impl Edns0Option {
                 };
 
                 // Calculate number of bytes to include based on source netmask
-                let byte_count = ((*source_netmask as usize) + 7) / 8;
+                let byte_count = (*source_netmask as usize).div_ceil(8);
                 buf.extend_from_slice(&addr_bytes[..byte_count.min(addr_bytes.len())]);
             }
 
@@ -369,7 +361,7 @@ impl Edns0Option {
         let address = match family {
             1 => {
                 // IPv4
-                if addr_data.len() > INADDRSZ as usize {
+                if addr_data.len() > INADDRSZ {
                     return Err(DnsError::Edns0Failed {
                         reason: format!("IPv4 client subnet address too long: {} bytes", addr_data.len()),
                     }
@@ -381,7 +373,7 @@ impl Edns0Option {
             }
             2 => {
                 // IPv6
-                if addr_data.len() > IN6ADDRSZ as usize {
+                if addr_data.len() > IN6ADDRSZ {
                     return Err(DnsError::Edns0Failed {
                         reason: format!("IPv6 client subnet address too long: {} bytes", addr_data.len()),
                     }
