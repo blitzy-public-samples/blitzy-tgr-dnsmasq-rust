@@ -603,9 +603,10 @@ impl DomainName {
                 });
             }
 
-            // Check character set (alphanumeric and hyphen only)
+            // Check character set (alphanumeric, hyphen, and underscore)
+            // Note: Underscores are allowed for service names (RFC 2782) like _http._tcp
             for ch in label.chars() {
-                if !ch.is_ascii_alphanumeric() && ch != '-' {
+                if !ch.is_ascii_alphanumeric() && ch != '-' && ch != '_' {
                     return Err(DnsError::InvalidName {
                         name: self.name.clone(),
                         reason: format!("Invalid character '{}' in label '{}'", ch, label),
@@ -750,7 +751,14 @@ mod tests {
 
     #[test]
     fn test_invalid_characters() {
-        let result = DomainName::from_str("invalid_name.com");
+        // Test various invalid characters (underscores are now allowed for service names)
+        let result = DomainName::from_str("invalid name.com"); // space not allowed
+        assert!(result.is_err());
+        
+        let result = DomainName::from_str("invalid@name.com"); // @ not allowed
+        assert!(result.is_err());
+        
+        let result = DomainName::from_str("invalid!name.com"); // ! not allowed
         assert!(result.is_err());
     }
 
