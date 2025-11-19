@@ -48,7 +48,7 @@ pub mod validator;
 
 // Re-export commonly used items
 pub use self::cli::{parse_args, parse_args_from, CliArgs};
-pub use self::parser::{parse_config_file, ConfigParser};
+pub use self::parser::{parse_file, ConfigParser};
 pub use self::reload::ConfigReloader;
 pub use self::types::{Config, ConfigBuilder, DhcpConfig, DnsConfig};
 pub use self::validator::{validate_config, ValidationResult, ValidationWarning};
@@ -102,7 +102,7 @@ where
 
     // Load and parse configuration file
     let mut config = if Path::new(config_path).exists() {
-        parse_config_file(config_path).await?
+        parse_file(config_path).await?
     } else {
         Config::default()
     };
