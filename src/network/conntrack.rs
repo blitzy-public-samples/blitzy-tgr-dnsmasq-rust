@@ -425,8 +425,8 @@ mod tests {
 
     #[test]
     fn test_protocol_to_libc() {
-        assert_eq!(Protocol::Udp.to_libc(), libc::IPPROTO_UDP as i32);
-        assert_eq!(Protocol::Tcp.to_libc(), libc::IPPROTO_TCP as i32);
+        assert_eq!(Protocol::Udp.to_libc(), libc::IPPROTO_UDP);
+        assert_eq!(Protocol::Tcp.to_libc(), libc::IPPROTO_TCP);
     }
 
     #[test]

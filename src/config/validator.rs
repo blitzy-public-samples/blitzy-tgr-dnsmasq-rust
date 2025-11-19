@@ -61,14 +61,14 @@
 //! ```
 
 use crate::config::types::{Config, StaticLease};
-use crate::error::ConfigError;
 use crate::constants::MAXLEASES;
+use crate::error::ConfigError;
 use crate::types::DomainName;
+use nix::unistd::{Group, User};
 use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
-use tracing::{warn, error, info};
-use nix::unistd::{User, Group};
+use tracing::{error, info, warn};
 
 /// Type alias for validation results, using ConfigError for failures.
 pub type ValidationResult = Result<(), ConfigError>;
@@ -162,7 +162,7 @@ pub enum ValidationWarning {
 pub struct ConfigValidator<'a> {
     /// Reference to configuration being validated
     config: &'a Config,
-    
+
     /// Collected warnings during validation
     warnings: Vec<ValidationWarning>,
 }
@@ -185,10 +185,7 @@ impl<'a> ConfigValidator<'a> {
     /// let validator = ConfigValidator::new(&config);
     /// ```
     pub fn new(config: &'a Config) -> Self {
-        Self {
-            config,
-            warnings: Vec::new(),
-        }
+        Self { config, warnings: Vec::new() }
     }
 
     /// Performs comprehensive validation of the configuration.
@@ -228,7 +225,7 @@ impl<'a> ConfigValidator<'a> {
             // ServerDetails.addr is a SocketAddr, validate the IP
             let ip_addr = server.addr().ip();
             self.validate_ip_address(&ip_addr, "upstream DNS server")?;
-            
+
             // Validate domain restriction if present
             if let Some(domain) = server.domain() {
                 self.validate_hostname(domain.as_str(), "server domain restriction")?;
@@ -248,7 +245,7 @@ impl<'a> ConfigValidator<'a> {
         // Validate DHCP configuration (DHCP is enabled if ranges are configured)
         if !self.config.dhcp.v4_ranges.is_empty() || !self.config.dhcp.v6_ranges.is_empty() {
             self.validate_dhcp_pools()?;
-            
+
             // Validate static leases
             for lease in &self.config.dhcp.static_leases {
                 self.validate_static_lease(lease)?;
@@ -385,10 +382,8 @@ impl<'a> ConfigValidator<'a> {
         // Port range is guaranteed by u16 type (0-65535)
         // Warn about privileged ports
         if port < 1024 && port != 0 {
-            self.warnings.push(ValidationWarning::PrivilegedPort {
-                port,
-                context: context.to_string(),
-            });
+            self.warnings
+                .push(ValidationWarning::PrivilegedPort { port, context: context.to_string() });
         }
 
         Ok(())
@@ -431,25 +426,19 @@ impl<'a> ConfigValidator<'a> {
             }
 
             // Check readability
-            let metadata = std::fs::metadata(path).map_err(|e| {
-                ConfigError::ValidationFailed {
-                    reason: format!("{}: cannot access file: {}", context, e),
-                }
+            let metadata = std::fs::metadata(path).map_err(|e| ConfigError::ValidationFailed {
+                reason: format!("{}: cannot access file: {}", context, e),
             })?;
 
             if metadata.is_file() {
                 // For files, attempt to open for reading
-                std::fs::File::open(path).map_err(|_| {
-                    ConfigError::ValidationFailed {
-                        reason: format!("{}: cannot read file: {}", context, path.display()),
-                    }
+                std::fs::File::open(path).map_err(|_| ConfigError::ValidationFailed {
+                    reason: format!("{}: cannot read file: {}", context, path.display()),
                 })?;
             } else if metadata.is_dir() {
                 // For directories, check execute permission
-                std::fs::read_dir(path).map_err(|_| {
-                    ConfigError::ValidationFailed {
-                        reason: format!("{}: cannot access directory: {}", context, path.display()),
-                    }
+                std::fs::read_dir(path).map_err(|_| ConfigError::ValidationFailed {
+                    reason: format!("{}: cannot access directory: {}", context, path.display()),
                 })?;
             }
         } else {
@@ -505,7 +494,10 @@ impl<'a> ConfigValidator<'a> {
                     // Validate start < end
                     if start >= end {
                         return Err(ConfigError::InvalidIpRange {
-                            directive: format!("DHCP range {}", range.interface.as_deref().unwrap_or("unknown")),
+                            directive: format!(
+                                "DHCP range {}",
+                                range.interface.as_deref().unwrap_or("unknown")
+                            ),
                             value: format!("{} - {}", start_ip, end_ip),
                             reason: "start address must be less than end address".to_string(),
                         });
@@ -533,7 +525,10 @@ impl<'a> ConfigValidator<'a> {
                 }
                 _ => {
                     return Err(ConfigError::InvalidIpRange {
-                        directive: format!("DHCP range {}", range.interface.as_deref().unwrap_or("unknown")),
+                        directive: format!(
+                            "DHCP range {}",
+                            range.interface.as_deref().unwrap_or("unknown")
+                        ),
                         value: format!("{} - {}", start_ip, end_ip),
                         reason: "DHCPv4 range must contain IPv4 addresses".to_string(),
                     });
@@ -571,7 +566,10 @@ impl<'a> ConfigValidator<'a> {
                     // Validate start < end (lexicographic comparison)
                     if start >= end {
                         return Err(ConfigError::InvalidIpRange {
-                            directive: format!("DHCPv6 range {}", range.interface.as_deref().unwrap_or("unknown")),
+                            directive: format!(
+                                "DHCPv6 range {}",
+                                range.interface.as_deref().unwrap_or("unknown")
+                            ),
                             value: format!("{} - {}", start_ip, end_ip),
                             reason: "start address must be less than end address".to_string(),
                         });
@@ -586,7 +584,10 @@ impl<'a> ConfigValidator<'a> {
                 }
                 _ => {
                     return Err(ConfigError::InvalidIpRange {
-                        directive: format!("DHCP range {}", range.interface.as_deref().unwrap_or("unknown")),
+                        directive: format!(
+                            "DHCP range {}",
+                            range.interface.as_deref().unwrap_or("unknown")
+                        ),
                         value: format!("{} - {}", start_ip, end_ip),
                         reason: "DHCPv6 range must contain IPv6 addresses".to_string(),
                     });
@@ -698,13 +699,14 @@ impl<'a> ConfigValidator<'a> {
         // rather than being part of the main configuration structure.
 
         // Interface binding validation
-        if self.config.network.bind_interfaces {
-            if self.config.network.interfaces.is_empty() && 
-               self.config.network.listen_addresses.is_empty() {
-                return Err(ConfigError::ValidationFailed {
-                    reason: "bind-interfaces enabled but no interfaces or listen-addresses specified".to_string(),
-                });
-            }
+        if self.config.network.bind_interfaces
+            && self.config.network.interfaces.is_empty()
+            && self.config.network.listen_addresses.is_empty()
+        {
+            return Err(ConfigError::ValidationFailed {
+                reason: "bind-interfaces enabled but no interfaces or listen-addresses specified"
+                    .to_string(),
+            });
         }
 
         // Log queries requires DNS
@@ -773,7 +775,7 @@ impl<'a> ConfigValidator<'a> {
         // NOTE: DHCP options are not stored in the Config struct.
         // DHCP options are handled at the protocol level in the dhcp module.
         // This function is a no-op placeholder for future validation if needed.
-        
+
         // TODO: If DHCP options are added to Config in the future, validate them here:
         // - Option 6 (DNS servers): validate IP addresses
         // - Option 15 (domain name): validate hostname
@@ -820,22 +822,24 @@ impl<'a> ConfigValidator<'a> {
     fn validate_security_config(&mut self) -> ValidationResult {
         // Validate user exists
         if let Some(ref username) = self.config.security.user {
-            User::from_name(username).map_err(|_| ConfigError::ValidationFailed {
-                reason: format!("User '{}' does not exist on system", username),
-            })?
-            .ok_or_else(|| ConfigError::ValidationFailed {
-                reason: format!("User '{}' does not exist on system", username),
-            })?;
+            User::from_name(username)
+                .map_err(|_| ConfigError::ValidationFailed {
+                    reason: format!("User '{}' does not exist on system", username),
+                })?
+                .ok_or_else(|| ConfigError::ValidationFailed {
+                    reason: format!("User '{}' does not exist on system", username),
+                })?;
         }
 
         // Validate group exists
         if let Some(ref groupname) = self.config.security.group {
-            Group::from_name(groupname).map_err(|_| ConfigError::ValidationFailed {
-                reason: format!("Group '{}' does not exist on system", groupname),
-            })?
-            .ok_or_else(|| ConfigError::ValidationFailed {
-                reason: format!("Group '{}' does not exist on system", groupname),
-            })?;
+            Group::from_name(groupname)
+                .map_err(|_| ConfigError::ValidationFailed {
+                    reason: format!("Group '{}' does not exist on system", groupname),
+                })?
+                .ok_or_else(|| ConfigError::ValidationFailed {
+                    reason: format!("Group '{}' does not exist on system", groupname),
+                })?;
         }
 
         // Validate chroot directory
@@ -934,10 +938,7 @@ impl<'a> ConfigValidator<'a> {
                     );
                 }
                 ValidationWarning::UnusualLeaseTime { seconds, interface } => {
-                    warn!(
-                        "Unusual DHCP lease time {} seconds on interface {}",
-                        seconds, interface
-                    );
+                    warn!("Unusual DHCP lease time {} seconds on interface {}", seconds, interface);
                 }
             }
         }
@@ -1020,7 +1021,7 @@ pub fn run_test_mode(config: &Config) -> ! {
             validator.validate_and_warn();
 
             info!("Configuration test successful");
-            
+
             if validator.warnings().is_empty() {
                 println!("dnsmasq: syntax check OK.");
             } else {

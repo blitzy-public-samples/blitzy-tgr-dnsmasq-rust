@@ -334,21 +334,21 @@ impl Config {
         }
 
         // Apply listen addresses (append to existing)
-        for addr in &cli_args.listen_addresses {
+        for addr in &cli_args.listen_address {
             if !self.network.listen_addresses.contains(addr) {
                 self.network.listen_addresses.push(*addr);
             }
         }
 
         // Apply interfaces (append to existing)
-        for interface in &cli_args.interfaces {
+        for interface in &cli_args.interface {
             if !self.network.interfaces.contains(interface) {
                 self.network.interfaces.push(interface.clone());
             }
         }
 
-        // Apply verbose logging
-        if cli_args.verbose {
+        // Apply query logging
+        if cli_args.log_queries {
             self.logging.log_queries = true;
         }
 

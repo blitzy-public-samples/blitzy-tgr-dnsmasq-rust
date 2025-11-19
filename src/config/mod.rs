@@ -47,7 +47,7 @@ pub mod types;
 pub mod validator;
 
 // Re-export commonly used items
-pub use self::cli::{parse_cli_args, CliArgs};
+pub use self::cli::{parse_args, parse_args_from, CliArgs};
 pub use self::parser::{parse_config_file, ConfigParser};
 pub use self::reload::ConfigReloader;
 pub use self::types::{Config, ConfigBuilder, DhcpConfig, DnsConfig};
@@ -93,10 +93,12 @@ where
     T: Into<String>,
 {
     // Parse command-line arguments
-    let cli_args = parse_cli_args(args)?;
+    // Convert args to OsString format for clap parser
+    let args_vec: Vec<std::ffi::OsString> = args.into_iter().map(|s| s.into().into()).collect();
+    let cli_args = parse_args_from(args_vec)?;
 
     // Determine config file path
-    let config_path = cli_args.config_file.as_deref().unwrap_or("/etc/dnsmasq.conf");
+    let config_path = cli_args.conf_file.as_deref().unwrap_or(Path::new("/etc/dnsmasq.conf"));
 
     // Load and parse configuration file
     let mut config = if Path::new(config_path).exists() {
