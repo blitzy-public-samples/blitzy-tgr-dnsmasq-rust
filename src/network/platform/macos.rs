@@ -22,7 +22,9 @@
 //! - Routing socket messages have macOS-specific format variations
 
 use crate::error::{DnsmasqError, NetworkError, Result};
-use crate::network::platform::common::{InterfaceEvent, InterfaceFlags, NetworkInterface, NetworkPlatform};
+use crate::network::platform::common::{
+    InterfaceEvent, InterfaceFlags, NetworkInterface, NetworkPlatform,
+};
 use crate::types::MacAddress;
 
 use async_trait::async_trait;
@@ -89,9 +91,7 @@ impl MacOSNetworkPlatform {
     #[instrument]
     pub fn new() -> Self {
         debug!("Initializing macOS network platform");
-        Self {
-            interface_cache: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-        }
+        Self { interface_cache: Arc::new(tokio::sync::RwLock::new(HashMap::new())) }
     }
 
     /// Initialize a BPF device for raw packet I/O
@@ -119,15 +119,10 @@ impl MacOSNetworkPlatform {
             let device_path = format!("/dev/bpf{}", i);
             trace!("Attempting to open BPF device: {}", device_path);
 
-            match tokio::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&device_path)
-                .await
-            {
+            match tokio::fs::OpenOptions::new().read(true).write(true).open(&device_path).await {
                 Ok(file) => {
                     let fd = file.into_std().await.as_raw_fd();
-                    
+
                     // Configure BPF buffer size
                     let buf_len: libc::c_uint = BPF_BUFFER_SIZE as libc::c_uint;
                     unsafe {
@@ -151,17 +146,17 @@ impl MacOSNetworkPlatform {
                         let mut ifreq: libc::ifreq = unsafe { std::mem::zeroed() };
                         let iface_bytes = iface.as_bytes();
                         let len = std::cmp::min(iface_bytes.len(), libc::IFNAMSIZ - 1);
-                        ifreq.ifr_name[..len].copy_from_slice(
-                            unsafe { std::slice::from_raw_parts(iface_bytes.as_ptr() as *const i8, len) }
-                        );
+                        ifreq.ifr_name[..len].copy_from_slice(unsafe {
+                            std::slice::from_raw_parts(iface_bytes.as_ptr() as *const i8, len)
+                        });
 
                         unsafe {
                             if libc::ioctl(fd, nix::libc::BIOCSETIF, &ifreq) < 0 {
                                 error!("Failed to bind BPF device to interface {}", iface);
                                 let _ = nix::unistd::close(fd);
-                                return Err(DnsmasqError::Network(NetworkError::InterfaceNotFound(
-                                    iface.to_string(),
-                                )));
+                                return Err(DnsmasqError::Network(
+                                    NetworkError::InterfaceNotFound(iface.to_string()),
+                                ));
                             }
                         }
                     }
@@ -175,9 +170,10 @@ impl MacOSNetworkPlatform {
                 }
                 Err(e) => {
                     error!("Failed to open any BPF device: {}", e);
-                    return Err(DnsmasqError::Network(NetworkError::BpfFailed(
-                        format!("No BPF devices available: {}", e),
-                    )));
+                    return Err(DnsmasqError::Network(NetworkError::BpfFailed(format!(
+                        "No BPF devices available: {}",
+                        e
+                    ))));
                 }
             }
         }
@@ -204,23 +200,25 @@ impl MacOSNetworkPlatform {
     pub async fn send_via_bpf(&self, bpf_fd: RawFd, packet: &[u8]) -> Result<()> {
         trace!("Sending {} byte packet via BPF", packet.len());
 
-        let written = unsafe {
-            libc::write(bpf_fd, packet.as_ptr() as *const libc::c_void, packet.len())
-        };
+        let written =
+            unsafe { libc::write(bpf_fd, packet.as_ptr() as *const libc::c_void, packet.len()) };
 
         if written < 0 {
             let error = std::io::Error::last_os_error();
             error!("BPF write failed: {}", error);
-            return Err(DnsmasqError::Network(NetworkError::BpfFailed(
-                format!("Write failed: {}", error),
-            )));
+            return Err(DnsmasqError::Network(NetworkError::BpfFailed(format!(
+                "Write failed: {}",
+                error
+            ))));
         }
 
         if written as usize != packet.len() {
             warn!("BPF partial write: {} of {} bytes", written, packet.len());
-            return Err(DnsmasqError::Network(NetworkError::BpfFailed(
-                format!("Partial write: {} of {} bytes", written, packet.len()),
-            )));
+            return Err(DnsmasqError::Network(NetworkError::BpfFailed(format!(
+                "Partial write: {} of {} bytes",
+                written,
+                packet.len()
+            ))));
         }
 
         debug!("Successfully sent {} byte packet via BPF", written);
@@ -282,9 +280,7 @@ impl MacOSNetworkPlatform {
             RTM_IFINFO | RTM_IFINFO2 => {
                 debug!("Interface info change (RTM_IFINFO)");
                 // Parse interface flags from the message to determine link state
-                Some(InterfaceEvent::LinkUp {
-                    interface: String::from("unknown"),
-                })
+                Some(InterfaceEvent::LinkUp { interface: String::from("unknown") })
             }
             _ => {
                 trace!("Ignoring routing message type: {}", hdr.rtm_type);
@@ -300,15 +296,15 @@ impl MacOSNetworkPlatform {
     #[instrument]
     async fn update_interface_cache(&self) -> Result<()> {
         debug!("Updating interface cache");
-        
+
         let interfaces = self.enumerate_interfaces().await?;
         let mut cache = self.interface_cache.write().await;
-        
+
         cache.clear();
         for iface in interfaces {
             cache.insert(iface.index, iface.name.clone());
         }
-        
+
         debug!("Interface cache updated with {} entries", cache.len());
         Ok(())
     }
@@ -342,13 +338,15 @@ impl NetworkPlatform for MacOSNetworkPlatform {
 
         for ifaddr in ifaddrs {
             let name = ifaddr.interface_name;
-            
+
             // Get interface index
             let index = unsafe {
-                let c_name = std::ffi::CString::new(name.as_str())
-                    .map_err(|e| DnsmasqError::Network(NetworkError::InterfaceEnumerationFailed(
-                        format!("Invalid interface name: {}", e)
-                    )))?;
+                let c_name = std::ffi::CString::new(name.as_str()).map_err(|e| {
+                    DnsmasqError::Network(NetworkError::InterfaceEnumerationFailed(format!(
+                        "Invalid interface name: {}",
+                        e
+                    )))
+                })?;
                 libc::if_nametoindex(c_name.as_ptr())
             };
 
@@ -358,13 +356,11 @@ impl NetworkPlatform for MacOSNetworkPlatform {
             }
 
             // Get or create interface entry
-            let interface = interfaces.entry(name.clone()).or_insert_with(|| {
-                NetworkInterface {
-                    name: name.clone(),
-                    index,
-                    addresses: Vec::new(),
-                    flags: InterfaceFlags::empty(),
-                }
+            let interface = interfaces.entry(name.clone()).or_insert_with(|| NetworkInterface {
+                name: name.clone(),
+                index,
+                addresses: Vec::new(),
+                flags: InterfaceFlags::empty(),
             });
 
             // Parse interface flags
@@ -434,19 +430,14 @@ impl NetworkPlatform for MacOSNetworkPlatform {
         debug!("Setting up routing socket for change notifications");
 
         // Create PF_ROUTE socket
-        let sock = socket::socket(
-            AddressFamily::Route,
-            SockType::Raw,
-            SockFlag::empty(),
-            None,
-        )
-        .map_err(|e| {
-            error!("Failed to create routing socket: {}", e);
-            DnsmasqError::Network(NetworkError::RoutingFailed(format!(
-                "Socket creation failed: {}",
-                e
-            )))
-        })?;
+        let sock = socket::socket(AddressFamily::Route, SockType::Raw, SockFlag::empty(), None)
+            .map_err(|e| {
+                error!("Failed to create routing socket: {}", e);
+                DnsmasqError::Network(NetworkError::RoutingFailed(format!(
+                    "Socket creation failed: {}",
+                    e
+                )))
+            })?;
 
         debug!("Routing socket created successfully: fd={}", sock);
 
@@ -457,15 +448,10 @@ impl NetworkPlatform for MacOSNetworkPlatform {
         let platform = self.clone_for_task();
         task::spawn(async move {
             let mut buffer = vec![0u8; ROUTE_MSG_BUFFER_SIZE];
-            
+
             loop {
                 let bytes_read = unsafe {
-                    libc::recv(
-                        sock,
-                        buffer.as_mut_ptr() as *mut libc::c_void,
-                        buffer.len(),
-                        0,
-                    )
+                    libc::recv(sock, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len(), 0)
                 };
 
                 if bytes_read < 0 {
@@ -482,7 +468,8 @@ impl NetworkPlatform for MacOSNetworkPlatform {
                 trace!("Received {} bytes from routing socket", bytes_read);
 
                 // Parse routing message
-                if let Some(event) = platform.parse_routing_message(&buffer[..bytes_read as usize]) {
+                if let Some(event) = platform.parse_routing_message(&buffer[..bytes_read as usize])
+                {
                     if tx.send(event).await.is_err() {
                         debug!("Event receiver dropped, stopping routing socket monitor");
                         break;
@@ -534,13 +521,10 @@ impl NetworkPlatform for MacOSNetworkPlatform {
 
         // Try again after cache update
         let cache = self.interface_cache.read().await;
-        cache
-            .get(&index)
-            .cloned()
-            .ok_or_else(|| {
-                error!("Interface index {} not found", index);
-                DnsmasqError::Network(NetworkError::InterfaceNotFound(index.to_string()))
-            })
+        cache.get(&index).cloned().ok_or_else(|| {
+            error!("Interface index {} not found", index);
+            DnsmasqError::Network(NetworkError::InterfaceNotFound(index.to_string()))
+        })
     }
 
     /// Enumerate ARP table entries
@@ -574,7 +558,11 @@ impl NetworkPlatform for MacOSNetworkPlatform {
     ///
     /// Returns `true` if the address is assigned to the interface, `false` otherwise.
     #[instrument]
-    async fn is_valid_address(&self, address: &IpAddr, interface: &NetworkInterface) -> Result<bool> {
+    async fn is_valid_address(
+        &self,
+        address: &IpAddr,
+        interface: &NetworkInterface,
+    ) -> Result<bool> {
         trace!("Validating address {} on interface {}", address, interface.name);
         Ok(interface.addresses.contains(address))
     }
@@ -585,9 +573,7 @@ impl MacOSNetworkPlatform {
     ///
     /// Creates a shallow clone that shares the interface cache via Arc.
     fn clone_for_task(&self) -> Self {
-        Self {
-            interface_cache: Arc::clone(&self.interface_cache),
-        }
+        Self { interface_cache: Arc::clone(&self.interface_cache) }
     }
 }
 
@@ -623,14 +609,14 @@ mod tests {
     async fn test_enumerate_interfaces() {
         let platform = MacOSNetworkPlatform::new();
         let interfaces = platform.enumerate_interfaces().await;
-        
+
         // Should succeed (even if no interfaces found)
         assert!(interfaces.is_ok());
-        
+
         // Should have at least loopback
         let ifaces = interfaces.unwrap();
         assert!(!ifaces.is_empty(), "Should have at least one interface");
-        
+
         // Check for loopback interface
         let has_loopback = ifaces.iter().any(|i| i.flags.contains(InterfaceFlags::LOOPBACK));
         assert!(has_loopback, "Should have loopback interface");
@@ -639,10 +625,10 @@ mod tests {
     #[tokio::test]
     async fn test_index_to_name() {
         let platform = MacOSNetworkPlatform::new();
-        
+
         // First enumerate to populate cache
         let interfaces = platform.enumerate_interfaces().await.unwrap();
-        
+
         if let Some(iface) = interfaces.first() {
             let name = platform.index_to_name(iface.index).await;
             assert!(name.is_ok());
@@ -654,13 +640,13 @@ mod tests {
     async fn test_is_valid_address() {
         let platform = MacOSNetworkPlatform::new();
         let interfaces = platform.enumerate_interfaces().await.unwrap();
-        
+
         if let Some(iface) = interfaces.first() {
             if let Some(addr) = iface.addresses.first() {
                 let is_valid = platform.is_valid_address(addr, iface).await;
                 assert!(is_valid.is_ok());
                 assert!(is_valid.unwrap());
-                
+
                 // Test invalid address
                 let invalid_addr = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1));
                 let is_invalid = platform.is_valid_address(&invalid_addr, iface).await;
@@ -674,7 +660,7 @@ mod tests {
     async fn test_arp_enumeration_returns_empty() {
         let platform = MacOSNetworkPlatform::new();
         let arp_entries = platform.enumerate_arp_entries().await;
-        
+
         assert!(arp_entries.is_ok());
         assert!(arp_entries.unwrap().is_empty(), "macOS should return empty ARP table");
     }
