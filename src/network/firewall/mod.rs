@@ -242,25 +242,20 @@ pub mod ipset;
 #[cfg(target_os = "linux")]
 pub mod nftables;
 
-#[cfg(any(
-    target_os = "freebsd",
-    target_os = "openbsd",
-    target_os = "netbsd"
-))]
+// PF module is BSD-specific but we make it available on all platforms for testing.
+// The actual BSD-specific code inside the module (like opening /dev/pf) is gated by cfg attributes.
+// This allows the type definitions and trait implementations to be tested on any platform.
 pub mod pf;
 
 // Re-export platform-specific backend implementations
-#[cfg(target_os = "linux")]
-pub use ipset::IpsetBackend;
+// Note: IpsetBackend and NftablesBackend are not yet implemented in their respective modules
+// #[cfg(target_os = "linux")]
+// pub use ipset::IpsetBackend;
 
-#[cfg(target_os = "linux")]
-pub use nftables::NftablesBackend;
+// #[cfg(target_os = "linux")]
+// pub use nftables::NftablesBackend;
 
-#[cfg(any(
-    target_os = "freebsd",
-    target_os = "openbsd",
-    target_os = "netbsd"
-))]
+// PfBackend is always available for testing, but only functional on BSD platforms
 pub use pf::PfBackend;
 
 /// Unified error type for all firewall backend operations.

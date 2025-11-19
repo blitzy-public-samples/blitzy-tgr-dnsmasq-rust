@@ -53,6 +53,7 @@ use tokio::net::UdpSocket;
 // Declare submodules
 pub mod interfaces;
 pub mod sockets;
+pub mod firewall;
 
 // Platform-specific modules
 #[cfg(target_os = "linux")]

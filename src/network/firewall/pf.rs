@@ -280,6 +280,10 @@ const DIOCRADDTABLES: libc::c_ulong = 0xc4504441;
 #[cfg(target_os = "netbsd")]
 const DIOCRADDTABLES: libc::c_ulong = 0xc4504441;
 
+// Dummy value for non-BSD platforms to allow compilation (will never be used at runtime)
+#[cfg(not(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd")))]
+const DIOCRADDTABLES: libc::c_ulong = 0xc4504441;
+
 /// ioctl request code for adding addresses to PF tables.
 ///
 /// C definition: `#define DIOCRADDADDRS _IOWR('D', 67, struct pfioc_table)`
@@ -292,6 +296,10 @@ const DIOCRADDADDRS: libc::c_ulong = 0xc4504443;
 #[cfg(target_os = "netbsd")]
 const DIOCRADDADDRS: libc::c_ulong = 0xc4504443;
 
+// Dummy value for non-BSD platforms to allow compilation (will never be used at runtime)
+#[cfg(not(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd")))]
+const DIOCRADDADDRS: libc::c_ulong = 0xc4504443;
+
 /// ioctl request code for deleting addresses from PF tables.
 ///
 /// C definition: `#define DIOCRDELADDRS _IOWR('D', 68, struct pfioc_table)`
@@ -302,6 +310,10 @@ const DIOCRDELADDRS: libc::c_ulong = 0xc4504444;
 const DIOCRDELADDRS: libc::c_ulong = 0xc4504444;
 
 #[cfg(target_os = "netbsd")]
+const DIOCRDELADDRS: libc::c_ulong = 0xc4504444;
+
+// Dummy value for non-BSD platforms to allow compilation (will never be used at runtime)
+#[cfg(not(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd")))]
 const DIOCRDELADDRS: libc::c_ulong = 0xc4504444;
 
 /// PF table descriptor structure (from BSD sys/net/pfvar.h).
