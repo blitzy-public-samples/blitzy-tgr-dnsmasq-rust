@@ -286,7 +286,7 @@ impl Edns0Option {
             }
 
             Edns0Option::Mac { address } => {
-                buf.extend_from_slice(&address.octets());
+                buf.extend_from_slice(address.octets());
             }
 
             Edns0Option::NomDeviceId { device_id } => {
@@ -307,6 +307,16 @@ impl Edns0Option {
         }
 
         Ok(buf)
+    }
+
+    /// Serializes the option to wire format with code and data
+    ///
+    /// Returns a tuple of (option_code, option_data) for wire format serialization.
+    /// This is a convenience method that combines `code()` and `to_wire_format()`.
+    pub fn serialize(&self) -> Result<(u16, Vec<u8>)> {
+        let code = self.code();
+        let data = self.to_wire_format()?;
+        Ok((code, data))
     }
 
     /// Parses an EDNS0 option from wire format
@@ -1194,13 +1204,13 @@ mod tests {
     #[test]
     fn test_extended_error() {
         let option = Edns0Option::ExtendedError {
-            info_code: EDE_DNSSEC_BOGUS,
+            info_code: EDE_DNSSEC_BOGUS as u16,
             extra_text: "DNSSEC validation failed".to_string(),
         };
 
         assert_eq!(option.code(), 15);
         let data = option.to_wire_format().expect("Failed to serialize");
-        assert_eq!(data[0..2], EDE_DNSSEC_BOGUS.to_be_bytes());
+        assert_eq!(data[0..2], (EDE_DNSSEC_BOGUS as u16).to_be_bytes());
         assert!(data.len() > 2);
     }
 
@@ -1225,7 +1235,7 @@ mod tests {
             .udp_size(4096)
             .do_bit(true)
             .client_subnet(addr, 24)
-            .extended_error(EDE_STALE, "Stale answer")
+            .extended_error(EDE_STALE as u16, "Stale answer")
             .mac(mac)
             .build()
             .expect("Builder failed");
