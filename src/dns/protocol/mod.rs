@@ -149,7 +149,9 @@
 //! ## Constructing a DNS Response Message
 //!
 //! ```rust
-//! use dnsmasq::dns::protocol::{DnsMessage, ResourceRecord, DomainName};
+//! use dnsmasq::dns::protocol::{DnsMessage, ResourceRecord, DomainName, RData};
+//! use dnsmasq::dns::protocol::constants::C_IN;
+//! use dnsmasq::types::RecordType;
 //! use std::net::Ipv4Addr;
 //! use std::str::FromStr;
 //!
@@ -164,13 +166,16 @@
 //! let mut response = DnsMessage::new_response(&query);
 //!
 //! // Add A record answer with 300 second TTL
-//! let answer = ResourceRecord::A {
-//!     name: query.questions.get(0)
-//!         .map(|q| q.name.clone())
-//!         .unwrap_or_else(|| DomainName::from_str("example.com").unwrap()),
-//!     ttl: 300,
-//!     address: Ipv4Addr::new(93, 184, 216, 34),
-//! };
+//! let name = query.questions.get(0)
+//!     .map(|q| q.name.clone())
+//!     .unwrap_or_else(|| DomainName::from_str("example.com").unwrap());
+//! let answer = ResourceRecord::new(
+//!     name,
+//!     RecordType::A,
+//!     C_IN,
+//!     300,
+//!     RData::A(Ipv4Addr::new(93, 184, 216, 34))
+//! );
 //! response.add_answer(answer);
 //!
 //! // Serialize to wire format for transmission
@@ -278,7 +283,7 @@ pub use constants::{NAMESERVER_PORT, NOERROR, SERVFAIL, T_A, T_AAAA, T_CNAME};
 // `use dnsmasq::dns::protocol::name::DomainName`
 pub use message::{DnsMessage, DnsQuery, DnsResponse};
 pub use name::DomainName;
-pub use record::ResourceRecord;
+pub use record::{ResourceRecord, RData};
 
 #[cfg(test)]
 mod tests {
