@@ -107,20 +107,129 @@ use crate::dns::protocol::constants::{
     T_NAPTR, T_NS, T_NSEC, T_NSEC3, T_OPT, T_PTR, T_RRSIG, T_SOA, T_SRV, T_TXT,
 };
 use crate::dns::protocol::name::DomainName;
-use crate::error::Result;
+use crate::error::{Result, DnsError};
 use crate::types::RecordType;
 
 use bytes::{BufMut, Bytes, BytesMut};
 use nom::{
     bytes::complete::take,
     combinator::map,
+    error::{Error as NomError, ErrorKind},
     multi::{length_data, many0},
     number::complete::{be_u16, be_u32, be_u8},
     sequence::tuple,
-    IResult,
+    Err as NomErr, IResult,
 };
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
+
+/// Type alias for nom parser error type used throughout this module
+type NomErrorType<'a> = NomError<&'a [u8]>;
+
+/// Helper function to parse a domain name using DomainName::from_wire within a nom parser context.
+///
+/// This function bridges the gap between nom's `&[u8]` based parsing and `DomainName::from_wire`'s
+/// `Bytes`-based API. It calculates the offset of the current input position within the full message
+/// and calls the appropriate API.
+///
+/// # Arguments
+///
+/// * `input` - Current parsing position (nom's remaining input)
+/// * `message` - Full DNS message buffer (for compression pointer resolution)
+///
+/// # Returns
+///
+/// Returns an `IResult` containing the parsed `DomainName` and remaining input, compatible with nom parsers.
+fn parse_domain_name<'a>(input: &'a [u8], message: &'a [u8]) -> IResult<&'a [u8], DomainName> {
+    // Convert slices to Bytes for DomainName::from_wire
+    let message_bytes = Bytes::copy_from_slice(message);
+    
+    // Calculate offset of input within message
+    let input_ptr = input.as_ptr() as usize;
+    let message_ptr = message.as_ptr() as usize;
+    
+    // Ensure input is within message bounds
+    if input_ptr < message_ptr || input_ptr > message_ptr + message.len() {
+        return Err(NomErr::Error(NomError::new(input, ErrorKind::Fail)));
+    }
+    
+    let offset = input_ptr - message_ptr;
+    
+    // Call DomainName::from_wire
+    match DomainName::from_wire(&message_bytes, offset) {
+        Ok((domain_name, next_offset)) => {
+            // Calculate how many bytes were consumed
+            let bytes_consumed = next_offset - offset;
+            
+            // Ensure we don't consume more than available
+            if bytes_consumed > input.len() {
+                return Err(NomErr::Error(NomError::new(input, ErrorKind::Eof)));
+            }
+            
+            // Return remaining input and parsed name
+            Ok((&input[bytes_consumed..], domain_name))
+        }
+        Err(_e) => {
+            // Convert DnsError to nom error
+            Err(NomErr::Error(NomError::new(input, ErrorKind::Fail)))
+        }
+    }
+}
+
+/// Helper function to parse a domain name in parse_rdata context (non-nom).
+///
+/// This variant returns `Result` instead of `IResult` for use in functions that
+/// don't use nom parser combinators.
+///
+/// # Arguments
+///
+/// * `input` - RDATA bytes to parse from
+/// * `message` - Full DNS message buffer (for compression pointer resolution)
+///
+/// # Returns
+///
+/// Returns a tuple of (remaining_bytes, parsed_domain_name) or an error.
+fn parse_domain_name_rdata<'a>(
+    input: &'a [u8],
+    message: &'a [u8],
+) -> Result<(&'a [u8], DomainName)> {
+    // Convert slices to Bytes for DomainName::from_wire
+    let message_bytes = Bytes::copy_from_slice(message);
+    
+    // Calculate offset of input within message
+    let input_ptr = input.as_ptr() as usize;
+    let message_ptr = message.as_ptr() as usize;
+    
+    // Ensure input is within message bounds
+    if input_ptr < message_ptr || input_ptr > message_ptr + message.len() {
+        return Err(crate::error::DnsmasqError::Dns(DnsError::ParseFailed {
+            server: "local".to_string(),
+            reason: "Input not within message bounds".to_string(),
+        }));
+    }
+    
+    let offset = input_ptr - message_ptr;
+    
+    // Call DomainName::from_wire
+    match DomainName::from_wire(&message_bytes, offset) {
+        Ok((domain_name, next_offset)) => {
+            // Calculate how many bytes were consumed
+            let bytes_consumed = next_offset - offset;
+            
+            // Ensure we don't consume more than available
+            if bytes_consumed > input.len() {
+                return Err(crate::error::DnsmasqError::Dns(DnsError::ParseFailed {
+                    server: "local".to_string(),
+                    reason: "Domain name parsing consumed more bytes than available".to_string(),
+                }));
+            }
+            
+            // Return remaining input and parsed name
+            Ok((&input[bytes_consumed..], domain_name))
+        }
+        Err(e) => Err(crate::error::DnsmasqError::Dns(e)),
+    }
+}
 
 /// DNS Resource Record with type-safe RDATA representation.
 ///
@@ -579,7 +688,7 @@ impl ResourceRecord {
     /// ```
     pub fn parse<'a>(input: &'a [u8], message: &'a [u8]) -> IResult<&'a [u8], Self> {
         // Parse RR header fields
-        let (input, name) = DomainName::from_wire(input, message)?;
+        let (input, name) = parse_domain_name(input, message)?;
         let (input, type_code) = be_u16(input)?;
         let (input, class) = be_u16(input)?;
         let (input, ttl) = be_u32(input)?;
@@ -592,7 +701,8 @@ impl ResourceRecord {
         let rtype = RecordType::from(type_code);
 
         // Parse RDATA based on record type
-        let rdata = Self::parse_rdata(rdata_bytes, message, rtype, rdlength)?;
+        let rdata = Self::parse_rdata(rdata_bytes, message, rtype, rdlength)
+            .map_err(|_| NomErr::Error(NomError::new(input, ErrorKind::Fail)))?;
 
         Ok((
             input,
@@ -693,25 +803,13 @@ impl ResourceRecord {
 
             RecordType::CNAME => {
                 // CNAME record: Domain name (can be compressed)
-                let (_remaining, cname) = DomainName::from_wire(rdata_bytes, message)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
-                            server: "local".to_string(),
-                            reason: format!("Failed to parse CNAME: {:?}", e),
-                        },
-                    ))?;
+                let (_remaining, cname) = parse_domain_name_rdata(rdata_bytes, message)?;
                 Ok(RData::Cname { cname })
             }
 
             RecordType::PTR => {
                 // PTR record: Domain name (can be compressed)
-                let (_remaining, ptrdname) = DomainName::from_wire(rdata_bytes, message)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
-                            server: "local".to_string(),
-                            reason: format!("Failed to parse PTR: {:?}", e),
-                        },
-                    ))?;
+                let (_remaining, ptrdname) = parse_domain_name_rdata(rdata_bytes, message)?;
                 Ok(RData::Ptr { ptrdname })
             }
 
@@ -725,20 +823,14 @@ impl ResourceRecord {
                         },
                     ));
                 }
-                let (input, preference) = be_u16(rdata_bytes)
+                let (input, preference) = be_u16::<_, NomErrorType<'_>>(rdata_bytes)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!("Failed to parse MX preference: {:?}", e),
                         },
                     ))?;
-                let (_remaining, exchange) = DomainName::from_wire(input, message)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
-                            server: "local".to_string(),
-                            reason: format!("Failed to parse MX exchange: {:?}", e),
-                        },
-                    ))?;
+                let (_remaining, exchange) = parse_domain_name_rdata(input, message)?;
                 Ok(RData::Mx {
                     preference,
                     exchange,
@@ -752,7 +844,7 @@ impl ResourceRecord {
                 
                 while !input.is_empty() {
                     // Parse length-prefixed string
-                    let (remaining, txt_string) = length_data(be_u8)(input)
+                    let (remaining, txt_string) = length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
                         .map_err(|e| crate::error::DnsmasqError::Dns(
                             crate::error::DnsError::ParseFailed {
                                 server: "local".to_string(),
@@ -768,22 +860,16 @@ impl ResourceRecord {
 
             RecordType::SOA => {
                 // SOA record: mname + rname + serial + refresh + retry + expire + minimum
-                let (input, mname) = DomainName::from_wire(rdata_bytes, message)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
-                            server: "local".to_string(),
-                            reason: format!("Failed to parse SOA mname: {:?}", e),
-                        },
-                    ))?;
-                let (input, rname) = DomainName::from_wire(input, message)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
-                            server: "local".to_string(),
-                            reason: format!("Failed to parse SOA rname: {:?}", e),
-                        },
-                    ))?;
+                let (input, mname) = parse_domain_name_rdata(rdata_bytes, message)?;
+                let (input, rname) = parse_domain_name_rdata(input, message)?;
                 let (input, (serial, refresh, retry, expire, minimum)) =
-                    tuple((be_u32, be_u32, be_u32, be_u32, be_u32))(input)
+                    tuple::<_, _, NomErrorType<'_>, _>((
+                        be_u32::<_, NomErrorType<'_>>,
+                        be_u32::<_, NomErrorType<'_>>,
+                        be_u32::<_, NomErrorType<'_>>,
+                        be_u32::<_, NomErrorType<'_>>,
+                        be_u32::<_, NomErrorType<'_>>
+                    ))(input)
                         .map_err(|e| crate::error::DnsmasqError::Dns(
                             crate::error::DnsError::ParseFailed {
                                 server: "local".to_string(),
@@ -804,13 +890,7 @@ impl ResourceRecord {
 
             RecordType::NS => {
                 // NS record: Domain name (can be compressed)
-                let (_remaining, nsdname) = DomainName::from_wire(rdata_bytes, message)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
-                            server: "local".to_string(),
-                            reason: format!("Failed to parse NS: {:?}", e),
-                        },
-                    ))?;
+                let (_remaining, nsdname) = parse_domain_name_rdata(rdata_bytes, message)?;
                 Ok(RData::Ns { nsdname })
             }
 
@@ -824,14 +904,18 @@ impl ResourceRecord {
                         },
                     ));
                 }
-                let (input, (priority, weight, port)) = tuple((be_u16, be_u16, be_u16))(rdata_bytes)
+                let (input, (priority, weight, port)) = tuple::<_, _, NomErrorType<'_>, _>((
+                    be_u16::<_, NomErrorType<'_>>,
+                    be_u16::<_, NomErrorType<'_>>,
+                    be_u16::<_, NomErrorType<'_>>
+                ))(rdata_bytes)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!("Failed to parse SRV fields: {:?}", e),
                         },
                     ))?;
-                let (_remaining, target) = DomainName::from_wire(input, message)
+                let (_remaining, target) = parse_domain_name_rdata(input, message)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
@@ -857,7 +941,10 @@ impl ResourceRecord {
                         },
                     ));
                 }
-                let (input, (order, preference)) = tuple((be_u16, be_u16))(rdata_bytes)
+                let (input, (order, preference)) = tuple::<_, _, NomErrorType<'_>, _>((
+                    be_u16::<_, NomErrorType<'_>>,
+                    be_u16::<_, NomErrorType<'_>>
+                ))(rdata_bytes)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
@@ -866,7 +953,7 @@ impl ResourceRecord {
                     ))?;
                 
                 // Parse flags (length-prefixed string)
-                let (input, flags_bytes) = length_data(be_u8)(input)
+                let (input, flags_bytes) = length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
@@ -876,7 +963,7 @@ impl ResourceRecord {
                 let flags = String::from_utf8_lossy(flags_bytes).to_string();
                 
                 // Parse service (length-prefixed string)
-                let (input, service_bytes) = length_data(be_u8)(input)
+                let (input, service_bytes) = length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
@@ -886,7 +973,7 @@ impl ResourceRecord {
                 let service = String::from_utf8_lossy(service_bytes).to_string();
                 
                 // Parse regexp (length-prefixed string)
-                let (input, regexp_bytes) = length_data(be_u8)(input)
+                let (input, regexp_bytes) = length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
@@ -896,7 +983,7 @@ impl ResourceRecord {
                 let regexp = String::from_utf8_lossy(regexp_bytes).to_string();
                 
                 // Parse replacement domain name
-                let (_remaining, replacement) = DomainName::from_wire(input, message)
+                let (_remaining, replacement) = parse_domain_name_rdata(input, message)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
@@ -924,7 +1011,11 @@ impl ResourceRecord {
                         },
                     ));
                 }
-                let (input, (flags, protocol, algorithm)) = tuple((be_u16, be_u8, be_u8))(rdata_bytes)
+                let (input, (flags, protocol, algorithm)) = tuple::<_, _, NomErrorType<'_>, _>((
+                    be_u16::<_, NomErrorType<'_>>,
+                    be_u8::<_, NomErrorType<'_>>,
+                    be_u8::<_, NomErrorType<'_>>
+                ))(rdata_bytes)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
@@ -953,7 +1044,11 @@ impl ResourceRecord {
                         },
                     ));
                 }
-                let (input, (key_tag, algorithm, digest_type)) = tuple((be_u16, be_u8, be_u8))(rdata_bytes)
+                let (input, (key_tag, algorithm, digest_type)) = tuple::<_, _, NomErrorType<'_>, _>((
+                    be_u16::<_, NomErrorType<'_>>,
+                    be_u8::<_, NomErrorType<'_>>,
+                    be_u8::<_, NomErrorType<'_>>
+                ))(rdata_bytes)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
@@ -984,7 +1079,15 @@ impl ResourceRecord {
                     ));
                 }
                 let (input, (type_covered, algorithm, labels, original_ttl, expiration, inception, key_tag)) =
-                    tuple((be_u16, be_u8, be_u8, be_u32, be_u32, be_u32, be_u16))(rdata_bytes)
+                    tuple::<_, _, NomErrorType<'_>, _>((
+                        be_u16::<_, NomErrorType<'_>>,
+                        be_u8::<_, NomErrorType<'_>>,
+                        be_u8::<_, NomErrorType<'_>>,
+                        be_u32::<_, NomErrorType<'_>>,
+                        be_u32::<_, NomErrorType<'_>>,
+                        be_u32::<_, NomErrorType<'_>>,
+                        be_u16::<_, NomErrorType<'_>>
+                    ))(rdata_bytes)
                         .map_err(|e| crate::error::DnsmasqError::Dns(
                             crate::error::DnsError::ParseFailed {
                                 server: "local".to_string(),
@@ -993,7 +1096,7 @@ impl ResourceRecord {
                         ))?;
                 
                 // Parse signer domain name
-                let (input, signer) = DomainName::from_wire(input, message)
+                let (input, signer) = parse_domain_name_rdata(input, message)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
@@ -1019,7 +1122,7 @@ impl ResourceRecord {
 
             RecordType::NSEC => {
                 // NSEC record: next_domain + type_bitmap
-                let (input, next_domain) = DomainName::from_wire(rdata_bytes, message)
+                let (input, next_domain) = parse_domain_name_rdata(rdata_bytes, message)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
@@ -1047,7 +1150,11 @@ impl ResourceRecord {
                         },
                     ));
                 }
-                let (input, (hash_algorithm, flags, iterations)) = tuple((be_u8, be_u8, be_u16))(rdata_bytes)
+                let (input, (hash_algorithm, flags, iterations)) = tuple::<_, _, NomErrorType<'_>, _>((
+                    be_u8::<_, NomErrorType<'_>>,
+                    be_u8::<_, NomErrorType<'_>>,
+                    be_u16::<_, NomErrorType<'_>>
+                ))(rdata_bytes)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
@@ -1056,7 +1163,7 @@ impl ResourceRecord {
                     ))?;
                 
                 // Parse salt (length-prefixed)
-                let (input, salt_bytes) = length_data(be_u8)(input)
+                let (input, salt_bytes) = length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
@@ -1066,7 +1173,7 @@ impl ResourceRecord {
                 let salt = Bytes::copy_from_slice(salt_bytes);
                 
                 // Parse next hashed owner name (length-prefixed)
-                let (input, next_hashed_bytes) = length_data(be_u8)(input)
+                let (input, next_hashed_bytes) = length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
@@ -1095,7 +1202,7 @@ impl ResourceRecord {
                 
                 while input.len() >= 4 {
                     // Each option: code(16) + length(16) + data(length)
-                    let (remaining, (option_code, option_length)) = tuple((be_u16, be_u16))(input)
+                    let (remaining, (option_code, option_length)) = tuple::<_, _, NomErrorType<'_>, _>((be_u16::<_, NomErrorType<'_>>, be_u16::<_, NomErrorType<'_>>))(input)
                         .map_err(|e| crate::error::DnsmasqError::Dns(
                             crate::error::DnsError::ParseFailed {
                                 server: "local".to_string(),
@@ -1103,7 +1210,7 @@ impl ResourceRecord {
                             },
                         ))?;
                     
-                    let (remaining, option_data) = take(option_length as usize)(remaining)
+                    let (remaining, option_data) = take::<_, _, NomErrorType<'_>>(option_length as usize)(remaining)
                         .map_err(|e| crate::error::DnsmasqError::Dns(
                             crate::error::DnsError::ParseFailed {
                                 server: "local".to_string(),
@@ -1112,7 +1219,7 @@ impl ResourceRecord {
                         ))?;
                     
                     // Parse EDNS0 option based on code
-                    let option = Edns0Option::parse(option_code, option_data)
+                    let option = Edns0Option::from_wire_format(option_code, option_data)
                         .map_err(|e| crate::error::DnsmasqError::Dns(
                             crate::error::DnsError::ParseFailed {
                                 server: "local".to_string(),
@@ -1137,7 +1244,7 @@ impl ResourceRecord {
                         },
                     ));
                 }
-                let (input, flags) = be_u8(rdata_bytes)
+                let (input, flags) = be_u8::<_, NomErrorType<'_>>(rdata_bytes)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
@@ -1146,7 +1253,7 @@ impl ResourceRecord {
                     ))?;
                 
                 // Parse tag (length-prefixed string)
-                let (input, tag_bytes) = length_data(be_u8)(input)
+                let (input, tag_bytes) = length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
                     .map_err(|e| crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
@@ -1194,8 +1301,7 @@ impl ResourceRecord {
         let mut buf = BytesMut::new();
         
         // Serialize name (with compression potential in full message context)
-        let name_bytes = self.name.to_wire();
-        buf.put_slice(&name_bytes);
+        self.name.to_wire(&mut buf, None)?;
         
         // Serialize type, class, TTL
         buf.put_u16(self.rtype.into());
@@ -1243,16 +1349,16 @@ impl ResourceRecord {
             }
             
             RData::Cname { cname } => {
-                buf.put_slice(&cname.to_wire());
+                cname.to_wire(&mut buf, None)?;
             }
             
             RData::Ptr { ptrdname } => {
-                buf.put_slice(&ptrdname.to_wire());
+                ptrdname.to_wire(&mut buf, None)?;
             }
             
             RData::Mx { preference, exchange } => {
                 buf.put_u16(*preference);
-                buf.put_slice(&exchange.to_wire());
+                exchange.to_wire(&mut buf, None)?;
             }
             
             RData::Txt { txt_data } => {
@@ -1271,8 +1377,8 @@ impl ResourceRecord {
                 expire,
                 minimum,
             } => {
-                buf.put_slice(&mname.to_wire());
-                buf.put_slice(&rname.to_wire());
+                mname.to_wire(&mut buf, None)?;
+                rname.to_wire(&mut buf, None)?;
                 buf.put_u32(*serial);
                 buf.put_u32(*refresh);
                 buf.put_u32(*retry);
@@ -1281,7 +1387,7 @@ impl ResourceRecord {
             }
             
             RData::Ns { nsdname } => {
-                buf.put_slice(&nsdname.to_wire());
+                nsdname.to_wire(&mut buf, None)?;
             }
             
             RData::Srv {
@@ -1293,7 +1399,7 @@ impl ResourceRecord {
                 buf.put_u16(*priority);
                 buf.put_u16(*weight);
                 buf.put_u16(*port);
-                buf.put_slice(&target.to_wire());
+                target.to_wire(&mut buf, None)?;
             }
             
             RData::Naptr {
@@ -1323,7 +1429,7 @@ impl ResourceRecord {
                 buf.put_slice(regexp_bytes);
                 
                 // Serialize replacement domain name
-                buf.put_slice(&replacement.to_wire());
+                replacement.to_wire(&mut buf, None)?;
             }
             
             RData::Dnskey {
@@ -1368,7 +1474,7 @@ impl ResourceRecord {
                 buf.put_u32(*expiration);
                 buf.put_u32(*inception);
                 buf.put_u16(*key_tag);
-                buf.put_slice(&signer.to_wire());
+                signer.to_wire(&mut buf, None)?;
                 buf.put_slice(signature);
             }
             
@@ -1376,7 +1482,7 @@ impl ResourceRecord {
                 next_domain,
                 type_bitmap,
             } => {
-                buf.put_slice(&next_domain.to_wire());
+                next_domain.to_wire(&mut buf, None)?;
                 buf.put_slice(type_bitmap);
             }
             
