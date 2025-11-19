@@ -128,7 +128,9 @@ use crate::error::PlatformError;
 
 // Platform-specific imports
 #[cfg(target_os = "linux")]
-use caps::{Capability, CapSet};
+use caps::{CapSet, Capability};
+#[cfg(target_os = "linux")]
+use libc::PR_SET_KEEPCAPS;
 #[cfg(any(
     target_os = "linux",
     target_os = "freebsd",
@@ -137,11 +139,10 @@ use caps::{Capability, CapSet};
     target_os = "macos"
 ))]
 use nix::unistd::{Gid, Uid};
-#[cfg(target_os = "linux")]
-use libc::PR_SET_KEEPCAPS;
 
+use std::collections::HashSet;
 use tracing::{debug, error, info, warn};
-use users::{get_user_by_name, get_group_by_name};
+use users::{get_group_by_name, get_user_by_name};
 
 // ============================================================================
 // PRIVILEGE MANAGER TRAIT
@@ -216,6 +217,7 @@ pub trait PrivilegeManager: Send + Sync {
 /// Implements fine-grained privilege retention through Linux capabilities,
 /// allowing dnsmasq to drop root privileges while retaining specific capabilities
 /// required for network operations.
+#[derive(Default)]
 pub struct LinuxPrivilegeManager;
 
 #[cfg(target_os = "linux")]
@@ -268,13 +270,15 @@ impl LinuxPrivilegeManager {
 
         // Set requested capabilities in permitted and effective sets
         for cap in capabilities {
-            caps::set(None, CapSet::Permitted, cap).map_err(|e| {
+            let mut cap_set = HashSet::new();
+            cap_set.insert(*cap);
+            caps::set(None, CapSet::Permitted, &cap_set).map_err(|e| {
                 PlatformError::CapabilityError {
                     operation: format!("set permitted {:?}", cap),
                     reason: e.to_string(),
                 }
             })?;
-            caps::set(None, CapSet::Effective, cap).map_err(|e| {
+            caps::set(None, CapSet::Effective, &cap_set).map_err(|e| {
                 PlatformError::CapabilityError {
                     operation: format!("set effective {:?}", cap),
                     reason: e.to_string(),
@@ -296,10 +300,8 @@ impl PrivilegeManager for LinuxPrivilegeManager {
         retain_net_raw: bool,
     ) -> Result<(), PlatformError> {
         // Determine target user (required on Linux)
-        let username = security_config
-            .user
-            .as_ref()
-            .ok_or_else(|| PlatformError::UserNotFound {
+        let username =
+            security_config.user.as_ref().ok_or_else(|| PlatformError::UserNotFound {
                 user: "unknown".to_string(),
                 reason: "No user specified in security configuration".to_string(),
             })?;
@@ -313,12 +315,11 @@ impl PrivilegeManager for LinuxPrivilegeManager {
         let uid = Uid::from_raw(user.uid());
         let gid = if let Some(ref groupname) = security_config.group {
             // Look up group if specified
-            let group = get_group_by_name(groupname).ok_or_else(|| {
-                PlatformError::UserNotFound {
+            let group =
+                get_group_by_name(groupname).ok_or_else(|| PlatformError::UserNotFound {
                     user: groupname.clone(),
                     reason: format!("Group '{}' not found in /etc/group", groupname),
-                }
-            })?;
+                })?;
             Gid::from_raw(group.gid())
         } else {
             // Use primary group from passwd entry
@@ -348,11 +349,9 @@ impl PrivilegeManager for LinuxPrivilegeManager {
             self.retain_capabilities(&capabilities)?;
         } else {
             // Clear all capabilities if none requested
-            caps::clear(None, CapSet::Effective).map_err(|e| {
-                PlatformError::CapabilityError {
-                    operation: "clear all effective".to_string(),
-                    reason: e.to_string(),
-                }
+            caps::clear(None, CapSet::Effective).map_err(|e| PlatformError::CapabilityError {
+                operation: "clear all effective".to_string(),
+                reason: e.to_string(),
             })?;
         }
 
@@ -374,7 +373,9 @@ impl PrivilegeManager for LinuxPrivilegeManager {
         // Re-apply capabilities after setuid (required even with PR_SET_KEEPCAPS)
         if !capabilities.is_empty() {
             for cap in &capabilities {
-                caps::set(None, CapSet::Effective, cap).map_err(|e| {
+                let mut cap_set = HashSet::new();
+                cap_set.insert(*cap);
+                caps::set(None, CapSet::Effective, &cap_set).map_err(|e| {
                     PlatformError::CapabilityError {
                         operation: format!("re-apply effective {:?}", cap),
                         reason: e.to_string(),
@@ -457,6 +458,7 @@ impl PrivilegeManager for LinuxPrivilegeManager {
 /// FreeBSD, NetBSD, and macOS do not support Linux-style capabilities,
 /// so this implementation performs simple privilege dropping without
 /// fine-grained capability retention.
+#[derive(Default)]
 pub struct BsdPrivilegeManager;
 
 #[cfg(any(target_os = "freebsd", target_os = "netbsd", target_os = "macos"))]
@@ -476,10 +478,8 @@ impl PrivilegeManager for BsdPrivilegeManager {
         _retain_net_raw: bool,
     ) -> Result<(), PlatformError> {
         // Determine target user
-        let username = security_config
-            .user
-            .as_ref()
-            .ok_or_else(|| PlatformError::UserNotFound {
+        let username =
+            security_config.user.as_ref().ok_or_else(|| PlatformError::UserNotFound {
                 user: "unknown".to_string(),
                 reason: "No user specified in security configuration".to_string(),
             })?;
@@ -492,12 +492,11 @@ impl PrivilegeManager for BsdPrivilegeManager {
 
         let uid = Uid::from_raw(user.uid());
         let gid = if let Some(ref groupname) = security_config.group {
-            let group = get_group_by_name(groupname).ok_or_else(|| {
-                PlatformError::UserNotFound {
+            let group =
+                get_group_by_name(groupname).ok_or_else(|| PlatformError::UserNotFound {
                     user: groupname.clone(),
                     reason: format!("Group '{}' not found in /etc/group", groupname),
-                }
-            })?;
+                })?;
             Gid::from_raw(group.gid())
         } else {
             Gid::from_raw(user.primary_group_id())
@@ -567,6 +566,7 @@ impl PrivilegeManager for BsdPrivilegeManager {
 /// OpenBSD provides promise-based security restrictions through `pledge(2)` and
 /// filesystem access restrictions through `unveil(2)`. This manager combines
 /// basic privilege dropping with OpenBSD's security features.
+#[derive(Default)]
 pub struct OpenBsdPrivilegeManager;
 
 #[cfg(target_os = "openbsd")]
@@ -647,9 +647,7 @@ impl OpenBsdPrivilegeManager {
 
         unsafe {
             let path_cstr = std::ffi::CString::new(path).map_err(|e| {
-                PlatformError::PrivilegeDropFailed {
-                    reason: format!("Invalid unveil path: {}", e),
-                }
+                PlatformError::PrivilegeDropFailed { reason: format!("Invalid unveil path: {}", e) }
             })?;
             let perms_cstr = std::ffi::CString::new(permissions).map_err(|e| {
                 PlatformError::PrivilegeDropFailed {
@@ -683,10 +681,8 @@ impl PrivilegeManager for OpenBsdPrivilegeManager {
         _retain_net_raw: bool,
     ) -> Result<(), PlatformError> {
         // Determine target user
-        let username = security_config
-            .user
-            .as_ref()
-            .ok_or_else(|| PlatformError::UserNotFound {
+        let username =
+            security_config.user.as_ref().ok_or_else(|| PlatformError::UserNotFound {
                 user: "unknown".to_string(),
                 reason: "No user specified in security configuration".to_string(),
             })?;
@@ -699,12 +695,11 @@ impl PrivilegeManager for OpenBsdPrivilegeManager {
 
         let uid = Uid::from_raw(user.uid());
         let gid = if let Some(ref groupname) = security_config.group {
-            let group = get_group_by_name(groupname).ok_or_else(|| {
-                PlatformError::UserNotFound {
+            let group =
+                get_group_by_name(groupname).ok_or_else(|| PlatformError::UserNotFound {
                     user: groupname.clone(),
                     reason: format!("Group '{}' not found in /etc/group", groupname),
-                }
-            })?;
+                })?;
             Gid::from_raw(group.gid())
         } else {
             Gid::from_raw(user.primary_group_id())
@@ -906,7 +901,7 @@ mod tests {
     fn test_capability_name_mapping() {
         // Verify capability name strings map to correct enums
         let cap_names = vec!["CAP_NET_ADMIN", "CAP_NET_RAW", "CAP_NET_BIND_SERVICE"];
-        
+
         for name in cap_names {
             let _capability = match name {
                 "CAP_NET_ADMIN" => Capability::CAP_NET_ADMIN,
@@ -922,7 +917,7 @@ mod tests {
         #[cfg(target_os = "linux")]
         {
             let manager = LinuxPrivilegeManager::new();
-            
+
             // DHCP enabled - should require network capabilities
             let caps_dhcp = manager.get_required_capabilities(true);
             assert_eq!(caps_dhcp.len(), 2);
