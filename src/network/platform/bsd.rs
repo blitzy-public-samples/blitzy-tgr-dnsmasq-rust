@@ -45,13 +45,15 @@
 //! - C error codes (errno) → Result<T, NetworkError>
 
 use crate::error::NetworkError;
-use crate::network::platform::common::{InterfaceEvent, InterfaceFlags, NetworkInterface, NetworkPlatform};
+use crate::network::platform::common::{
+    InterfaceEvent, InterfaceFlags, NetworkInterface, NetworkPlatform,
+};
 use crate::types::MacAddress;
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
 use nix::ifaddrs::getifaddrs;
 use nix::libc;
-use nix::sys::socket::{socket, AddressFamily, SockFlag, SockType, bind, SockaddrLike};
+use nix::sys::socket::{bind, socket, AddressFamily, SockFlag, SockType, SockaddrLike};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
@@ -102,9 +104,9 @@ const DELETED_ADDRESS_RETENTION: u64 = 5;
 pub struct BsdNetworkPlatform {
     /// Cached interface name to index mapping for fast lookups
     if_index_map: Arc<tokio::sync::RwLock<HashMap<u32, String>>>,
-    
+
     /// Recently deleted addresses for handling kernel race conditions
-    /// 
+    ///
     /// BSD kernels have a race condition where RTM_DELADDR messages arrive
     /// before the address is actually removed from getifaddrs() results.
     /// We store deleted addresses temporarily to filter them out.
@@ -163,12 +165,7 @@ impl BsdNetworkPlatform {
             let device_path = format!("/dev/bpf{}", i);
             trace!("Attempting to open BPF device: {}", device_path);
 
-            match tokio::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&device_path)
-                .await
-            {
+            match tokio::fs::OpenOptions::new().read(true).write(true).open(&device_path).await {
                 Ok(file) => {
                     use std::os::unix::io::IntoRawFd;
                     let fd = file.into_raw_fd();
@@ -199,10 +196,7 @@ impl BsdNetworkPlatform {
         );
         Err(NetworkError::BpfFailed {
             operation: "init_bpf".to_string(),
-            reason: format!(
-                "No available BPF devices (tried 0-{})",
-                MAX_BPF_DEVICES - 1
-            ),
+            reason: format!("No available BPF devices (tried 0-{})", MAX_BPF_DEVICES - 1),
         })
     }
 
@@ -294,25 +288,13 @@ impl BsdNetworkPlatform {
         self.bind_bpf_to_interface(bpf_fd, interface_name)?;
 
         // Construct complete packet: Ethernet + IP + UDP + Payload
-        let packet = self.build_packet(
-            dest_mac,
-            src_mac,
-            dest_ipv4,
-            src_ipv4,
-            dest_port,
-            src_port,
-            payload,
-        )?;
+        let packet = self
+            .build_packet(dest_mac, src_mac, dest_ipv4, src_ipv4, dest_port, src_port, payload)?;
 
         // Write packet to BPF device
         // Safety: bpf_fd is valid, packet is properly constructed
-        let written = unsafe {
-            libc::write(
-                bpf_fd,
-                packet.as_ptr() as *const libc::c_void,
-                packet.len(),
-            )
-        };
+        let written =
+            unsafe { libc::write(bpf_fd, packet.as_ptr() as *const libc::c_void, packet.len()) };
 
         // Close BPF device
         unsafe {
@@ -329,16 +311,9 @@ impl BsdNetworkPlatform {
         }
 
         if written != packet.len() as isize {
-            warn!(
-                "Partial BPF write: {} of {} bytes",
-                written,
-                packet.len()
-            );
+            warn!("Partial BPF write: {} of {} bytes", written, packet.len());
         } else {
-            debug!(
-                "Successfully sent {} byte packet via BPF on {}",
-                written, interface_name
-            );
+            debug!("Successfully sent {} byte packet via BPF on {}", written, interface_name);
         }
 
         Ok(())
@@ -366,7 +341,11 @@ impl BsdNetworkPlatform {
     /// - Interface name is too long (> IFNAMSIZ)
     /// - Interface does not exist
     /// - BIOCSETIF ioctl fails
-    fn bind_bpf_to_interface(&self, bpf_fd: RawFd, interface_name: &str) -> Result<(), NetworkError> {
+    fn bind_bpf_to_interface(
+        &self,
+        bpf_fd: RawFd,
+        interface_name: &str,
+    ) -> Result<(), NetworkError> {
         // Create ifreq structure for BIOCSETIF ioctl
         // From <net/if.h>: struct ifreq with ifr_name[IFNAMSIZ]
         const IFNAMSIZ: usize = 16;
@@ -388,10 +367,7 @@ impl BsdNetworkPlatform {
             ifr_ifru: libc::c_int, // Placeholder for union
         }
 
-        let mut ifr = ifreq {
-            ifr_name: [0; IFNAMSIZ],
-            ifr_ifru: 0,
-        };
+        let mut ifr = ifreq { ifr_name: [0; IFNAMSIZ], ifr_ifru: 0 };
 
         // Copy interface name into ifreq structure
         for (i, byte) in interface_name.bytes().enumerate() {
@@ -401,16 +377,12 @@ impl BsdNetworkPlatform {
         // BIOCSETIF: Set interface for BPF device
         const BIOCSETIF: libc::c_ulong = 0x8020426c; // _IOW('B', 108, struct ifreq)
 
-        let result = unsafe {
-            libc::ioctl(bpf_fd, BIOCSETIF as libc::c_ulong, &ifr as *const ifreq)
-        };
+        let result =
+            unsafe { libc::ioctl(bpf_fd, BIOCSETIF as libc::c_ulong, &ifr as *const ifreq) };
 
         if result < 0 {
             let err = std::io::Error::last_os_error();
-            error!(
-                "BIOCSETIF ioctl failed for interface '{}': {}",
-                interface_name, err
-            );
+            error!("BIOCSETIF ioctl failed for interface '{}': {}", interface_name, err);
             return Err(NetworkError::BpfFailed {
                 operation: "bind_to_interface".to_string(),
                 reason: format!("BIOCSETIF ioctl failed: {}", err),
@@ -469,24 +441,24 @@ impl BsdNetworkPlatform {
 
         // Ethernet header (14 bytes)
         packet.extend_from_slice(dest_mac.as_bytes()); // Destination MAC (6 bytes)
-        packet.extend_from_slice(src_mac.as_bytes());  // Source MAC (6 bytes)
-        packet.extend_from_slice(&[0x08, 0x00]);       // Ethertype: IPv4 (0x0800)
+        packet.extend_from_slice(src_mac.as_bytes()); // Source MAC (6 bytes)
+        packet.extend_from_slice(&[0x08, 0x00]); // Ethertype: IPv4 (0x0800)
 
         // IP header (20 bytes, no options)
         let ip_total_len = (20 + 8 + payload.len()) as u16;
         packet.extend_from_slice(&[
-            0x45,        // Version (4) + IHL (5 = 20 bytes)
-            0x00,        // DSCP + ECN
+            0x45, // Version (4) + IHL (5 = 20 bytes)
+            0x00, // DSCP + ECN
         ]);
         packet.extend_from_slice(&ip_total_len.to_be_bytes()); // Total length
         packet.extend_from_slice(&[
-            0x00, 0x00,  // Identification
-            0x00, 0x00,  // Flags + Fragment offset
-            0x40,        // TTL (64)
-            0x11,        // Protocol: UDP (17)
-            0x00, 0x00,  // Header checksum (calculated below)
+            0x00, 0x00, // Identification
+            0x00, 0x00, // Flags + Fragment offset
+            0x40, // TTL (64)
+            0x11, // Protocol: UDP (17)
+            0x00, 0x00, // Header checksum (calculated below)
         ]);
-        packet.extend_from_slice(&src_ip.octets());  // Source IP
+        packet.extend_from_slice(&src_ip.octets()); // Source IP
         packet.extend_from_slice(&dest_ip.octets()); // Destination IP
 
         // Calculate IP header checksum
@@ -496,10 +468,10 @@ impl BsdNetworkPlatform {
 
         // UDP header (8 bytes)
         let udp_len = (8 + payload.len()) as u16;
-        packet.extend_from_slice(&src_port.to_be_bytes());  // Source port
+        packet.extend_from_slice(&src_port.to_be_bytes()); // Source port
         packet.extend_from_slice(&dest_port.to_be_bytes()); // Destination port
-        packet.extend_from_slice(&udp_len.to_be_bytes());   // Length
-        packet.extend_from_slice(&[0x00, 0x00]);            // Checksum (0 = not calculated)
+        packet.extend_from_slice(&udp_len.to_be_bytes()); // Length
+        packet.extend_from_slice(&[0x00, 0x00]); // Checksum (0 = not calculated)
 
         // Payload
         packet.extend_from_slice(payload);
@@ -665,20 +637,18 @@ impl NetworkPlatform for BsdNetworkPlatform {
             }
 
             // Get or create NetworkInterface entry
-            let interface = interfaces.entry(if_name.clone()).or_insert_with(|| {
-                NetworkInterface {
-                    name: if_name.clone(),
-                    index: if_index_from_name(&if_name),
-                    addresses: Vec::new(),
-                    flags: if_flags,
-                }
+            let interface = interfaces.entry(if_name.clone()).or_insert_with(|| NetworkInterface {
+                name: if_name.clone(),
+                index: if_index_from_name(&if_name),
+                addresses: Vec::new(),
+                flags: if_flags,
             });
 
             // Add address if present
             if let Some(addr) = ifaddr.address {
                 if let Some(sock_addr) = addr.as_sockaddr_in() {
                     let ip = IpAddr::V4(Ipv4Addr::from(sock_addr.ip()));
-                    
+
                     // Filter out deleted addresses (kernel race condition)
                     if !self.is_deleted_address(&ip).await {
                         interface.addresses.push(ip);
@@ -688,7 +658,7 @@ impl NetworkPlatform for BsdNetworkPlatform {
                     }
                 } else if let Some(sock_addr) = addr.as_sockaddr_in6() {
                     let ip = IpAddr::V6(Ipv6Addr::from(sock_addr.ip()));
-                    
+
                     // Filter out deleted addresses
                     if !self.is_deleted_address(&ip).await {
                         interface.addresses.push(ip);
@@ -755,16 +725,11 @@ impl NetworkPlatform for BsdNetworkPlatform {
 
         // Create PF_ROUTE socket for receiving routing messages
         // socket(PF_ROUTE, SOCK_RAW, AF_UNSPEC)
-        let route_fd = socket(
-            AddressFamily::Route,
-            SockType::Raw,
-            SockFlag::empty(),
-            None,
-        )
-        .map_err(|e| NetworkError::RoutingFailed {
-            operation: "socket_create".to_string(),
-            reason: format!("socket(PF_ROUTE) failed: {}", e),
-        })?;
+        let route_fd = socket(AddressFamily::Route, SockType::Raw, SockFlag::empty(), None)
+            .map_err(|e| NetworkError::RoutingFailed {
+                operation: "socket_create".to_string(),
+                reason: format!("socket(PF_ROUTE) failed: {}", e),
+            })?;
 
         debug!("Created PF_ROUTE socket with fd={}", route_fd);
 
@@ -801,7 +766,8 @@ impl NetworkPlatform for BsdNetworkPlatform {
                         }
 
                         let msg = &buffer[..n];
-                        let event = parse_routing_message(msg, &if_index_map, &deleted_addresses).await;
+                        let event =
+                            parse_routing_message(msg, &if_index_map, &deleted_addresses).await;
 
                         if let Some(event) = event {
                             if tx.send(event).is_err() {
@@ -1017,18 +983,18 @@ impl NetworkPlatform for BsdNetworkPlatform {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 struct RtMsghdr {
-    rtm_msglen: u16,   // Message length
-    rtm_version: u8,   // Message version
-    rtm_type: u8,      // Message type (RTM_ADD, RTM_DELETE, RTM_NEWADDR, RTM_DELADDR, etc.)
-    rtm_index: u16,    // Interface index
-    rtm_flags: i32,    // Flags
-    rtm_addrs: i32,    // Bitmask of present addresses
-    rtm_pid: libc::pid_t,     // Process ID
-    rtm_seq: i32,      // Sequence number
-    rtm_errno: i32,    // Error code
-    rtm_use: i32,      // Use count
-    rtm_inits: u32,    // Values initialized
-    // Followed by sockaddr structures based on rtm_addrs bitmask
+    rtm_msglen: u16,      // Message length
+    rtm_version: u8,      // Message version
+    rtm_type: u8,         // Message type (RTM_ADD, RTM_DELETE, RTM_NEWADDR, RTM_DELADDR, etc.)
+    rtm_index: u16,       // Interface index
+    rtm_flags: i32,       // Flags
+    rtm_addrs: i32,       // Bitmask of present addresses
+    rtm_pid: libc::pid_t, // Process ID
+    rtm_seq: i32,         // Sequence number
+    rtm_errno: i32,       // Error code
+    rtm_use: i32,         // Use count
+    rtm_inits: u32,       // Values initialized
+                          // Followed by sockaddr structures based on rtm_addrs bitmask
 }
 
 /// BSD interface address message header (struct ifa_msghdr).
@@ -1037,20 +1003,20 @@ struct RtMsghdr {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 struct IfaMsghdr {
-    ifam_msglen: u16,  // Message length
-    ifam_version: u8,  // Message version
-    ifam_type: u8,     // Message type
-    ifam_addrs: i32,   // Bitmask of present addresses
-    ifam_flags: i32,   // Flags
-    ifam_index: u16,   // Interface index
-    ifam_metric: i32,  // Metric
-    // Followed by sockaddr structures based on ifam_addrs bitmask
+    ifam_msglen: u16, // Message length
+    ifam_version: u8, // Message version
+    ifam_type: u8,    // Message type
+    ifam_addrs: i32,  // Bitmask of present addresses
+    ifam_flags: i32,  // Flags
+    ifam_index: u16,  // Interface index
+    ifam_metric: i32, // Metric
+                      // Followed by sockaddr structures based on ifam_addrs bitmask
 }
 
 /// Routing message types (from <net/route.h>)
-const RTM_NEWADDR: u8 = 0xc;   // Address being added
-const RTM_DELADDR: u8 = 0xd;   // Address being removed
-const RTM_IFINFO: u8 = 0xe;    // Interface state change
+const RTM_NEWADDR: u8 = 0xc; // Address being added
+const RTM_DELADDR: u8 = 0xd; // Address being removed
+const RTM_IFINFO: u8 = 0xe; // Interface state change
 
 /// Routing message version
 const RTM_VERSION: u8 = 5;
@@ -1117,13 +1083,13 @@ async fn parse_routing_message(
             // Address removed from interface
             if let Some(addr) = extract_address_from_message(msg) {
                 debug!("RTM_DELADDR: {} removed from {}", addr, interface);
-                
+
                 // Mark address as deleted (kernel race condition handling)
                 {
                     let mut deleted = deleted_addresses.write().await;
                     deleted.insert(addr, std::time::Instant::now());
                 }
-                
+
                 Some(InterfaceEvent::AddressRemoved { interface, address: addr })
             } else {
                 None
@@ -1133,7 +1099,7 @@ async fn parse_routing_message(
             // Interface status change (link up/down)
             // Flags in rtm_flags indicate interface state
             const IFF_UP: i32 = 0x1;
-            
+
             if hdr.rtm_flags & IFF_UP != 0 {
                 debug!("RTM_IFINFO: {} link up", interface);
                 Some(InterfaceEvent::LinkUp { interface })
@@ -1199,16 +1165,30 @@ fn extract_address_from_message(msg: &[u8]) -> Option<IpAddr> {
         if sa_family == libc::AF_INET6 as u8 && sa_len >= 28 {
             let ip_bytes = &msg[offset + 8..offset + 24];
             let ipv6 = Ipv6Addr::from([
-                ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3],
-                ip_bytes[4], ip_bytes[5], ip_bytes[6], ip_bytes[7],
-                ip_bytes[8], ip_bytes[9], ip_bytes[10], ip_bytes[11],
-                ip_bytes[12], ip_bytes[13], ip_bytes[14], ip_bytes[15],
+                ip_bytes[0],
+                ip_bytes[1],
+                ip_bytes[2],
+                ip_bytes[3],
+                ip_bytes[4],
+                ip_bytes[5],
+                ip_bytes[6],
+                ip_bytes[7],
+                ip_bytes[8],
+                ip_bytes[9],
+                ip_bytes[10],
+                ip_bytes[11],
+                ip_bytes[12],
+                ip_bytes[13],
+                ip_bytes[14],
+                ip_bytes[15],
             ]);
             return Some(IpAddr::V6(ipv6));
         }
 
         // Advance to next sockaddr (aligned to sizeof(long))
-        offset += ((sa_len + std::mem::size_of::<libc::c_long>() - 1) / std::mem::size_of::<libc::c_long>()) * std::mem::size_of::<libc::c_long>();
+        offset += ((sa_len + std::mem::size_of::<libc::c_long>() - 1)
+            / std::mem::size_of::<libc::c_long>())
+            * std::mem::size_of::<libc::c_long>();
     }
 
     None
@@ -1319,7 +1299,9 @@ fn extract_arp_entry(msg: &[u8]) -> Option<(IpAddr, MacAddress)> {
         }
 
         // Advance to next sockaddr (aligned to sizeof(long))
-        offset += ((sa_len + std::mem::size_of::<libc::c_long>() - 1) / std::mem::size_of::<libc::c_long>()) * std::mem::size_of::<libc::c_long>();
+        offset += ((sa_len + std::mem::size_of::<libc::c_long>() - 1)
+            / std::mem::size_of::<libc::c_long>())
+            * std::mem::size_of::<libc::c_long>();
     }
 
     match (ip_addr, mac_addr) {

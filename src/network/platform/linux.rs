@@ -225,7 +225,7 @@ impl LinuxNetworkPlatform {
         // Use libc constants from linux/if.h via nix crate
         // IFF_UP (0x1), IFF_LOOPBACK (0x8), IFF_POINTOPOINT (0x10),
         // IFF_MULTICAST (0x1000), IFF_BROADCAST (0x2)
-        
+
         if ifi_flags & (libc::IFF_UP as u32) != 0 {
             flags.insert(InterfaceFlags::UP);
         }
@@ -276,10 +276,10 @@ impl LinuxNetworkPlatform {
         // IPv4 addresses: Prefer IFA_LOCAL (for point-to-point) over IFA_ADDRESS
         // IPv6 addresses: Use IFA_ADDRESS
         // See RTM_NEWADDR processing in C netlink.c lines 495-540
-        
+
         let mut local_addr = None;
         let mut regular_addr = None;
-        
+
         for nla in msg.attributes.iter() {
             match nla {
                 AddressAttribute::Local(addr) => {
@@ -291,7 +291,7 @@ impl LinuxNetworkPlatform {
                 _ => {}
             }
         }
-        
+
         // For IPv4, prefer local address (matches C behavior)
         // For IPv6, use regular address
         match msg.header.family {
@@ -344,11 +344,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
         debug!("Enumerating network interfaces via netlink");
 
         // Step 1: Get all links (interfaces) from kernel
-        let mut links = self
-            .handle
-            .link()
-            .get()
-            .execute();
+        let mut links = self.handle.link().get().execute();
 
         // Build interface map by index
         let mut interface_map: HashMap<u32, NetworkInterface> = HashMap::new();
@@ -403,11 +399,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
         drop(cache); // Release lock before next operation
 
         // Step 2: Get all addresses from kernel
-        let mut addresses = self
-            .handle
-            .address()
-            .get()
-            .execute();
+        let mut addresses = self.handle.address().get().execute();
 
         // Match addresses to interfaces
         while let Some(addr_msg) = addresses.try_next().await.map_err(|e| {
@@ -432,10 +424,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
 
         let interfaces: Vec<NetworkInterface> = interface_map.into_values().collect();
 
-        info!(
-            count = interfaces.len(),
-            "Enumerated network interfaces"
-        );
+        info!(count = interfaces.len(), "Enumerated network interfaces");
 
         Ok(interfaces)
     }
@@ -533,88 +522,61 @@ impl NetworkPlatform for LinuxNetworkPlatform {
 
                 // Query current interface state
                 let mut addr_stream = handle.address().get().execute();
-                
+
                 let mut current_interfaces: HashMap<u32, Vec<IpAddr>> = HashMap::new();
 
                 // Collect current addresses
                 while let Ok(Some(addr_msg)) = addr_stream.try_next().await {
-                        let index = addr_msg.header.index;
+                    let index = addr_msg.header.index;
 
-                        if let Some(ip_addr) = Self::parse_address_from_nla(&addr_msg) {
-                            current_interfaces
-                                .entry(index)
-                                .or_default()
-                                .push(ip_addr);
+                    if let Some(ip_addr) = Self::parse_address_from_nla(&addr_msg) {
+                        current_interfaces.entry(index).or_default().push(ip_addr);
+                    }
+                }
+
+                // Compare with previous state to detect changes
+                for (index, current_addrs) in &current_interfaces {
+                    let prev_addrs = previous_interfaces.get(index);
+
+                    // Get interface name from cache
+                    let iface_name = cache
+                        .lock()
+                        .await
+                        .get(index)
+                        .cloned()
+                        .unwrap_or_else(|| format!("if{}", index));
+
+                    // Detect newly added addresses
+                    for addr in current_addrs {
+                        if prev_addrs.is_none_or(|prev| !prev.contains(addr)) {
+                            trace!(
+                                interface = %iface_name,
+                                address = %addr,
+                                "Address added"
+                            );
+
+                            let event = InterfaceEvent::AddressAdded {
+                                interface: iface_name.clone(),
+                                address: *addr,
+                            };
+
+                            if tx.send(event).await.is_err() {
+                                // Channel closed, terminate task
+                                return;
+                            }
                         }
                     }
 
-                    // Compare with previous state to detect changes
-                    for (index, current_addrs) in &current_interfaces {
-                        let prev_addrs = previous_interfaces.get(index);
-
-                        // Get interface name from cache
-                        let iface_name = cache
-                            .lock()
-                            .await
-                            .get(index)
-                            .cloned()
-                            .unwrap_or_else(|| format!("if{}", index));
-
-                        // Detect newly added addresses
-                        for addr in current_addrs {
-                            if prev_addrs.is_none_or(|prev| !prev.contains(addr)) {
+                    // Detect removed addresses
+                    if let Some(prev_addrs) = prev_addrs {
+                        for addr in prev_addrs {
+                            if !current_addrs.contains(addr) {
                                 trace!(
                                     interface = %iface_name,
                                     address = %addr,
-                                    "Address added"
+                                    "Address removed"
                                 );
 
-                                let event = InterfaceEvent::AddressAdded {
-                                    interface: iface_name.clone(),
-                                    address: *addr,
-                                };
-
-                                if tx.send(event).await.is_err() {
-                                    // Channel closed, terminate task
-                                    return;
-                                }
-                            }
-                        }
-
-                        // Detect removed addresses
-                        if let Some(prev_addrs) = prev_addrs {
-                            for addr in prev_addrs {
-                                if !current_addrs.contains(addr) {
-                                    trace!(
-                                        interface = %iface_name,
-                                        address = %addr,
-                                        "Address removed"
-                                    );
-
-                                    let event = InterfaceEvent::AddressRemoved {
-                                        interface: iface_name.clone(),
-                                        address: *addr,
-                                    };
-
-                                    if tx.send(event).await.is_err() {
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Detect removed interfaces
-                    for (index, prev_addrs) in &previous_interfaces {
-                        if !current_interfaces.contains_key(index) {
-                            let iface_name = cache
-                                .lock()
-                                .await
-                                .get(index)
-                                .cloned()
-                                .unwrap_or_else(|| format!("if{}", index));
-
-                            for addr in prev_addrs {
                                 let event = InterfaceEvent::AddressRemoved {
                                     interface: iface_name.clone(),
                                     address: *addr,
@@ -626,6 +588,30 @@ impl NetworkPlatform for LinuxNetworkPlatform {
                             }
                         }
                     }
+                }
+
+                // Detect removed interfaces
+                for (index, prev_addrs) in &previous_interfaces {
+                    if !current_interfaces.contains_key(index) {
+                        let iface_name = cache
+                            .lock()
+                            .await
+                            .get(index)
+                            .cloned()
+                            .unwrap_or_else(|| format!("if{}", index));
+
+                        for addr in prev_addrs {
+                            let event = InterfaceEvent::AddressRemoved {
+                                interface: iface_name.clone(),
+                                address: *addr,
+                            };
+
+                            if tx.send(event).await.is_err() {
+                                return;
+                            }
+                        }
+                    }
+                }
 
                 previous_interfaces = current_interfaces;
             }
@@ -702,9 +688,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
             }
 
             debug!(index, "Interface index not found");
-            Err(NetworkError::InterfaceNotFound {
-                interface: format!("index {}", index),
-            })?
+            Err(NetworkError::InterfaceNotFound { interface: format!("index {}", index) })?
         }
     }
 
@@ -756,11 +740,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
     async fn enumerate_arp_entries(&self) -> Result<Vec<(IpAddr, [u8; 6])>> {
         debug!("Enumerating ARP/neighbor table entries");
 
-        let mut neighbours = self
-            .handle
-            .neighbours()
-            .get()
-            .execute();
+        let mut neighbours = self.handle.neighbours().get().execute();
 
         let mut entries = Vec::new();
 
