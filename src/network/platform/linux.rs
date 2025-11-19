@@ -543,7 +543,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
                         if let Some(ip_addr) = Self::parse_address_from_nla(&addr_msg) {
                             current_interfaces
                                 .entry(index)
-                                .or_insert_with(Vec::new)
+                                .or_default()
                                 .push(ip_addr);
                         }
                     }
@@ -562,7 +562,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
 
                         // Detect newly added addresses
                         for addr in current_addrs {
-                            if prev_addrs.map_or(true, |prev| !prev.contains(addr)) {
+                            if prev_addrs.is_none_or(|prev| !prev.contains(addr)) {
                                 trace!(
                                     interface = %iface_name,
                                     address = %addr,
@@ -672,7 +672,10 @@ impl NetworkPlatform for LinuxNetworkPlatform {
         let cache = self.interface_cache.lock().await;
         let name = cache.get(&index).cloned();
 
-        if name.is_none() {
+        if let Some(cached_name) = name {
+            trace!(index, name = ?cached_name, "Interface name from cache");
+            Ok(cached_name)
+        } else {
             // Cache miss - query kernel directly
             drop(cache);
 
@@ -702,9 +705,6 @@ impl NetworkPlatform for LinuxNetworkPlatform {
             Err(NetworkError::InterfaceNotFound {
                 interface: format!("index {}", index),
             })?
-        } else {
-            trace!(index, name = ?name, "Interface name from cache");
-            Ok(name.unwrap())
         }
     }
 
