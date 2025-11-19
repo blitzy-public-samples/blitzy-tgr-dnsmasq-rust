@@ -589,6 +589,24 @@ pub const EDE_UNABLE_POLICY: i32 = 28;
 /// Answer was synthesized by the resolver (e.g., from wildcards or DNAME).
 pub const EDE_SYNTHESIZED: i32 = 29;
 
+// Aliases for compatibility with dnsmasq C implementation
+/// Alias for EDE_DNSSEC_BOGUS (code 6).
+pub const EDE_BOGUS: i32 = EDE_DNSSEC_BOGUS;
+
+/// Alias for EDE_DNSSEC_IND (code 5) - DNSSEC Indeterminate.
+pub const EDE_INDET: i32 = EDE_DNSSEC_IND;
+
+/// Alias for EDE_NO_RRSIG (code 10) - Missing RRSIG.
+pub const EDE_RRSIG_MISS: i32 = EDE_NO_RRSIG;
+
+/// No reachable authority - custom dnsmasq extension.
+/// Maps to network error for compatibility.
+pub const EDE_NO_REACHABLE: i32 = EDE_NETERR;
+
+/// Missing expected name - custom dnsmasq extension.
+/// Maps to DNSSEC indeterminate for compatibility.
+pub const EDE_SXNAME_MISS: i32 = EDE_DNSSEC_IND;
+
 // ============================================================================
 // DNS Header Flag Bits
 // ============================================================================

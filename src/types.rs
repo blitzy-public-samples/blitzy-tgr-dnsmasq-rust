@@ -654,14 +654,16 @@ pub enum RecordType {
     AAAA = 28,
     /// Service locator (RFC 2782)
     SRV = 33,
+    /// Naming Authority Pointer (RFC 3403)
+    NAPTR = 35,
+    /// Delegation signer (DNSSEC) (RFC 4034)
+    DS = 43,
     /// DNSSEC signature (RFC 4034)
     RRSIG = 46,
     /// Next secure record (DNSSEC) (RFC 4034)
     NSEC = 47,
     /// DNSSEC public key (RFC 4034)
     DNSKEY = 48,
-    /// Delegation signer (DNSSEC) (RFC 4034)
-    DS = 43,
     /// NSEC version 3 (DNSSEC) (RFC 5155)
     NSEC3 = 50,
     /// NSEC3 parameters (RFC 5155)
@@ -680,6 +682,8 @@ pub enum RecordType {
     WKS = 11,
     /// All cached records (query type only)
     ANY = 255,
+    /// Certification Authority Authorization (RFC 8659)
+    CAA = 257,
     /// Unknown or unsupported record type
     Unknown(u16),
 }
@@ -698,6 +702,7 @@ impl From<u16> for RecordType {
             16 => Self::TXT,
             28 => Self::AAAA,
             33 => Self::SRV,
+            35 => Self::NAPTR,
             37 => Self::CERT,
             39 => Self::DNAME,
             41 => Self::OPT,
@@ -709,6 +714,7 @@ impl From<u16> for RecordType {
             50 => Self::NSEC3,
             51 => Self::NSEC3PARAM,
             255 => Self::ANY,
+            257 => Self::CAA,
             other => Self::Unknown(other),
         }
     }
@@ -728,6 +734,7 @@ impl From<RecordType> for u16 {
             RecordType::TXT => 16,
             RecordType::AAAA => 28,
             RecordType::SRV => 33,
+            RecordType::NAPTR => 35,
             RecordType::CERT => 37,
             RecordType::DNAME => 39,
             RecordType::OPT => 41,
@@ -739,6 +746,7 @@ impl From<RecordType> for u16 {
             RecordType::NSEC3 => 50,
             RecordType::NSEC3PARAM => 51,
             RecordType::ANY => 255,
+            RecordType::CAA => 257,
             RecordType::Unknown(code) => code,
         }
     }
