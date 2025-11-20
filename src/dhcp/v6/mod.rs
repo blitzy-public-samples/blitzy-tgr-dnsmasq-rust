@@ -14,3 +14,6 @@ pub mod message;
 
 /// DHCPv6 options builder for safe packet construction
 pub mod options;
+
+/// DHCPv6 protocol state machine implementation
+pub mod protocol;
