@@ -23,3 +23,4 @@ pub mod dnssec;
 pub mod edns0;
 pub mod matcher;
 pub mod protocol;
+pub mod upstream;

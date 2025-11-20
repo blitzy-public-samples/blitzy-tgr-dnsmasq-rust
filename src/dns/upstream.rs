@@ -126,14 +126,13 @@
 
 use crate::constants::TIMEOUT;
 use crate::dns::matcher::DomainMatcher;
+use crate::dns::protocol::name::DomainName as ProtocolDomainName;
 use crate::error::Result;
 use crate::types::{DomainName, ServerDetails, Timestamp};
 use crate::config::types::DnsConfig;
 
 use std::net::{IpAddr, SocketAddr};
-use std::sync::{Arc, RwLock};
-use tokio::net::{TcpStream, UdpSocket};
-use tokio::time::{Duration, Instant};
+use tokio::time::Duration;
 use tracing::{debug, error, info, instrument, trace, warn};
 
 // ============================================================================
@@ -180,9 +179,10 @@ use tracing::{debug, error, info, instrument, trace, warn};
 ///     }
 /// }
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EdnsCapability {
     /// EDNS0 support status unknown (initial state, not yet probed).
+    #[default]
     Unknown,
 
     /// Server supports EDNS0 extensions (accepts OPT records).
@@ -193,12 +193,6 @@ pub enum EdnsCapability {
 
     /// Server requires DNSSEC validation (EDNS0 with DO bit mandatory).
     RequiresDnssec,
-}
-
-impl Default for EdnsCapability {
-    fn default() -> Self {
-        EdnsCapability::Unknown
-    }
 }
 
 // ============================================================================
@@ -531,6 +525,8 @@ impl UpstreamServer {
     pub fn record_success(&mut self) {
         self.queries += 1;
         self.last_used = Some(Timestamp::now());
+        // Clear failure state on successful query
+        self.last_failed = None;
         
         debug!(
             addr = %self.addr,
@@ -802,7 +798,9 @@ impl UpstreamPool {
 
             // If domain-specific, add to matcher
             if let Some(ref domain) = server.domain {
-                pool.matcher.add_pattern(domain.clone(), vec![server_details.clone()])?;
+                let protocol_domain = ProtocolDomainName::new(domain.as_str())
+                    .map_err(|e| crate::error::DnsmasqError::Other(format!("Invalid domain: {}", e)))?;
+                pool.matcher.add_pattern(protocol_domain, vec![server_details.clone()])?;
             }
 
             pool.servers.push(server);
@@ -864,23 +862,28 @@ impl UpstreamPool {
         }
 
         // Try domain-specific matching first
-        if let Some(match_result) = self.matcher.find_longest_match(query_name) {
-            debug!(
-                matched_domain = %match_result.domain.as_str(),
-                server_count = match_result.servers.len(),
-                "Found domain-specific servers"
-            );
+        // Convert types::DomainName to protocol::name::DomainName for matcher
+        let protocol_query_name = ProtocolDomainName::new(query_name.as_str()).ok();
+        
+        if let Some(pqn) = protocol_query_name {
+            if let Some(match_result) = self.matcher.find_longest_match(&pqn) {
+                debug!(
+                    matched_domain = %match_result.domain.as_str(),
+                    server_count = match_result.servers.len(),
+                    "Found domain-specific servers"
+                );
 
-            // Find corresponding UpstreamServer entries
-            for server_detail in &match_result.servers {
-                if let Some(server) = self.servers.iter().find(|s| s.addr == server_detail.addr()) {
-                    if server.is_available() {
-                        if dnssec_required && !server.flags.contains(ServerFlags::DO_DNSSEC) {
-                            trace!(addr = %server.addr, "Skipping: DNSSEC not supported");
-                            continue;
+                // Find corresponding UpstreamServer entries
+                for server_detail in &match_result.servers {
+                    if let Some(server) = self.servers.iter().find(|s| s.addr == server_detail.addr()) {
+                        if server.is_available() {
+                            if dnssec_required && !server.flags.contains(ServerFlags::DO_DNSSEC) {
+                                trace!(addr = %server.addr, "Skipping: DNSSEC not supported");
+                                continue;
+                            }
+                            debug!(addr = %server.addr, "Selected domain-specific server");
+                            return Some(server);
                         }
-                        debug!(addr = %server.addr, "Selected domain-specific server");
-                        return Some(server);
                     }
                 }
             }
@@ -1143,7 +1146,17 @@ impl UpstreamPool {
                 server.flags.bits(),
             ).expect("Valid server details");
             
-            if let Err(e) = self.matcher.add_pattern(domain.clone(), vec![server_details]) {
+            // Convert types::DomainName to protocol::name::DomainName for matcher
+            let protocol_domain = match ProtocolDomainName::new(domain.as_str()) {
+                Ok(name) => name,
+                Err(e) => {
+                    error!(addr = %server.addr, domain = %domain.as_str(), error = %e, 
+                        "Invalid domain name, skipping matcher registration");
+                    return;
+                }
+            };
+            
+            if let Err(e) = self.matcher.add_pattern(protocol_domain, vec![server_details]) {
                 error!(addr = %server.addr, domain = %domain.as_str(), error = %e, 
                     "Failed to add domain pattern to matcher");
             }
@@ -1401,5 +1414,124 @@ mod tests {
         assert!(flags.contains(ServerFlags::DO_DNSSEC));
         assert!(flags.contains(ServerFlags::IPV4_ADDR));
         assert!(!flags.contains(ServerFlags::IPV6_ADDR));
+    }
+
+    #[test]
+    fn test_select_server_general_pool() {
+        // Test basic server selection from general pool
+        let mut pool = UpstreamPool::new();
+        let addr1: SocketAddr = "8.8.8.8:53".parse().unwrap();
+        let addr2: SocketAddr = "1.1.1.1:53".parse().unwrap();
+        
+        pool.add_server(UpstreamServer::new(addr1, None, ServerFlags::IPV4_ADDR));
+        pool.add_server(UpstreamServer::new(addr2, None, ServerFlags::IPV4_ADDR));
+
+        // Create a test domain name for query
+        let test_domain = DomainName::new("example.com").unwrap();
+        
+        // Select server - should use general pool
+        let selected = pool.select_server(&test_domain, false);
+        assert!(selected.is_some());
+        let server = selected.unwrap();
+        assert!(server.addr == addr1 || server.addr == addr2);
+    }
+
+    #[test]
+    fn test_select_server_dnssec_filtering() {
+        // Test that DNSSEC requirement filters out non-DNSSEC servers
+        let mut pool = UpstreamPool::new();
+        let addr_no_dnssec: SocketAddr = "8.8.8.8:53".parse().unwrap();
+        let addr_with_dnssec: SocketAddr = "1.1.1.1:53".parse().unwrap();
+        
+        pool.add_server(UpstreamServer::new(addr_no_dnssec, None, ServerFlags::IPV4_ADDR));
+        pool.add_server(UpstreamServer::new(addr_with_dnssec, None, ServerFlags::IPV4_ADDR | ServerFlags::DO_DNSSEC));
+
+        let test_domain = DomainName::new("example.com").unwrap();
+
+        // Select without DNSSEC requirement - should get any available server
+        let selected_no_dnssec = pool.select_server(&test_domain, false);
+        assert!(selected_no_dnssec.is_some());
+
+        // Select with DNSSEC requirement - should only get DNSSEC-capable server
+        let selected_with_dnssec = pool.select_server(&test_domain, true);
+        assert!(selected_with_dnssec.is_some());
+        assert_eq!(selected_with_dnssec.unwrap().addr, addr_with_dnssec);
+    }
+
+    #[test]
+    fn test_select_server_round_robin() {
+        // Test round-robin selection among available servers
+        let mut pool = UpstreamPool::new();
+        let addr1: SocketAddr = "8.8.8.8:53".parse().unwrap();
+        let addr2: SocketAddr = "1.1.1.1:53".parse().unwrap();
+        let addr3: SocketAddr = "9.9.9.9:53".parse().unwrap();
+        
+        pool.add_server(UpstreamServer::new(addr1, None, ServerFlags::IPV4_ADDR));
+        pool.add_server(UpstreamServer::new(addr2, None, ServerFlags::IPV4_ADDR));
+        pool.add_server(UpstreamServer::new(addr3, None, ServerFlags::IPV4_ADDR));
+
+        let test_domain = DomainName::new("example.com").unwrap();
+
+        // Select multiple times and verify different servers are returned
+        let mut selected_addrs = std::collections::HashSet::new();
+        for _ in 0..10 {
+            if let Some(server) = pool.select_server(&test_domain, false) {
+                selected_addrs.insert(server.addr);
+            }
+        }
+        
+        // Should have cycled through multiple servers (at least 2)
+        assert!(selected_addrs.len() >= 2);
+    }
+
+    #[test]
+    fn test_select_server_skips_unavailable() {
+        // Test that unavailable servers are skipped
+        let mut pool = UpstreamPool::new();
+        let addr1: SocketAddr = "8.8.8.8:53".parse().unwrap();
+        let addr2: SocketAddr = "1.1.1.1:53".parse().unwrap();
+        
+        let mut server1 = UpstreamServer::new(addr1, None, ServerFlags::IPV4_ADDR);
+        let server2 = UpstreamServer::new(addr2, None, ServerFlags::IPV4_ADDR);
+        
+        // Mark server1 as failed
+        server1.record_failure();
+        
+        pool.add_server(server1);
+        pool.add_server(server2);
+
+        let test_domain = DomainName::new("example.com").unwrap();
+
+        // Should only select the available server (addr2)
+        let selected = pool.select_server(&test_domain, false);
+        assert!(selected.is_some());
+        assert_eq!(selected.unwrap().addr, addr2);
+    }
+
+    #[test]
+    fn test_select_server_all_unavailable() {
+        // Test behavior when all servers are unavailable
+        let mut pool = UpstreamPool::new();
+        let addr: SocketAddr = "8.8.8.8:53".parse().unwrap();
+        
+        let mut server = UpstreamServer::new(addr, None, ServerFlags::IPV4_ADDR);
+        server.record_failure();
+        
+        pool.add_server(server);
+
+        let test_domain = DomainName::new("example.com").unwrap();
+
+        // Should return None when no servers are available
+        let selected = pool.select_server(&test_domain, false);
+        assert!(selected.is_none());
+    }
+
+    #[test]
+    fn test_select_server_empty_pool() {
+        // Test behavior with empty server pool
+        let mut pool = UpstreamPool::new();
+        let test_domain = DomainName::new("example.com").unwrap();
+        let selected = pool.select_server(&test_domain, false);
+        assert!(selected.is_none());
     }
 }
