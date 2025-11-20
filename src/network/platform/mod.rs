@@ -217,7 +217,6 @@
 //! primitives (Mutex, RwLock) where needed.
 
 use std::boxed::Box;
-use std::sync::Arc;
 
 use crate::error::Result;
 
