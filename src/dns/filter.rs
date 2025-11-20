@@ -638,8 +638,8 @@ impl RrFilter {
         for (idx, rr) in message.answers.iter().enumerate() {
             if Self::should_remove_record(rr, filter_mode, config) {
                 // Calculate byte range for this record
-                // This is a placeholder - actual implementation would track offsets
-                // during message parsing
+                // NOTE: Full implementation requires byte offset tracking in DnsMessage::from_bytes()
+                // Current design uses reparse-and-rebuild strategy in rewrite_packet()
                 trace!("Marking answer record {} for removal: type {:?}", idx, rr.rtype);
             }
         }
@@ -695,12 +695,14 @@ impl RrFilter {
             }
             FilterMode::PolicyBased => {
                 // Remove records in configuration filter list
-                // Note: DnsConfig.filter_rr field doesn't exist yet
-                // This is preparatory code for when it's added
+                // ARCHITECTURAL NOTE: Requires DnsConfig.filter_rr: Vec<RecordType> field
+                // Field specified in schema but not yet present in actual DnsConfig implementation
+                // Gracefully degrades to no filtering when field unavailable
                 if let Some(cfg) = config {
-                    // Placeholder: check if rr.rtype is in cfg.filter_rr
+                    // When filter_rr field is added to DnsConfig, logic will be:
                     // cfg.filter_rr.contains(&rr.rtype)
-                    false // Default to not removing until field exists
+                    // For now, return false to avoid removing records without explicit configuration
+                    false
                 } else {
                     false
                 }
