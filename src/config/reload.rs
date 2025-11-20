@@ -297,10 +297,7 @@ impl ConfigReloader {
         debug!(state = ReloadState::Reading.as_str(), "Parsing configuration file");
 
         // Parse new configuration with timeout protection
-        let new_config = match timeout(
-            self.timeout_duration,
-            parse_file(&self.config_path)
-        ).await {
+        let new_config = match timeout(self.timeout_duration, parse_file(&self.config_path)).await {
             Ok(Ok(config)) => config,
             Ok(Err(e)) => {
                 error!(error = %e, "Configuration parsing failed");
@@ -343,7 +340,10 @@ impl ConfigReloader {
         }
 
         // State: Complete
-        info!(state = ReloadState::Complete.as_str(), "Configuration reload completed successfully");
+        info!(
+            state = ReloadState::Complete.as_str(),
+            "Configuration reload completed successfully"
+        );
 
         Ok(())
     }
@@ -385,9 +385,10 @@ impl ConfigReloader {
         use tokio::signal::unix::{signal, SignalKind};
 
         // Register SIGHUP handler
-        let mut sighup = signal(SignalKind::hangup()).map_err(|e| ConfigError::ValidationFailed {
-            reason: format!("Failed to register SIGHUP handler: {}", e),
-        })?;
+        let mut sighup =
+            signal(SignalKind::hangup()).map_err(|e| ConfigError::ValidationFailed {
+                reason: format!("Failed to register SIGHUP handler: {}", e),
+            })?;
 
         info!("SIGHUP signal handler registered, watching for configuration changes");
 
@@ -426,11 +427,7 @@ impl ConfigReloader {
 
         // DNS port configuration changes (port is in NetworkConfig)
         if old.network.port != new.network.port {
-            info!(
-                old_port = old.network.port,
-                new_port = new.network.port,
-                "DNS port changed"
-            );
+            info!(old_port = old.network.port, new_port = new.network.port, "DNS port changed");
             changes_detected = true;
         }
 
@@ -476,7 +473,7 @@ impl ConfigReloader {
         // Replaces C: daemon->dhcp || daemon->doing_dhcp6
         let old_dhcp_enabled = !old.dhcp.v4_ranges.is_empty() || !old.dhcp.v6_ranges.is_empty();
         let new_dhcp_enabled = !new.dhcp.v4_ranges.is_empty() || !new.dhcp.v6_ranges.is_empty();
-        
+
         if old_dhcp_enabled != new_dhcp_enabled {
             info!(
                 old_value = old_dhcp_enabled,
@@ -565,9 +562,7 @@ mod tests {
 
         // Create a temporary config file
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file
-            .write_all(b"port=5353\ncache-size=1000\n")
-            .unwrap();
+        temp_file.write_all(b"port=5353\ncache-size=1000\n").unwrap();
         temp_file.flush().unwrap();
 
         let reloader = ConfigReloader::new(config.clone(), temp_file.path().to_path_buf());
@@ -619,9 +614,7 @@ mod tests {
 
         // Create a temporary config file
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file
-            .write_all(b"port=5454\ncache-size=2000\n")
-            .unwrap();
+        temp_file.write_all(b"port=5454\ncache-size=2000\n").unwrap();
         temp_file.flush().unwrap();
 
         let path = temp_file.path().to_path_buf();
@@ -645,18 +638,14 @@ mod tests {
         temp_file.write_all(b"port=5555\n").unwrap();
         temp_file.flush().unwrap();
 
-        let reloader = Arc::new(ConfigReloader::new(
-            config.clone(),
-            temp_file.path().to_path_buf(),
-        ));
+        let reloader =
+            Arc::new(ConfigReloader::new(config.clone(), temp_file.path().to_path_buf()));
 
         // Launch multiple concurrent reload attempts
         let mut handles = vec![];
         for _ in 0..5 {
             let reloader_clone = reloader.clone();
-            handles.push(tokio::spawn(async move {
-                reloader_clone.handle_reload().await
-            }));
+            handles.push(tokio::spawn(async move { reloader_clone.handle_reload().await }));
         }
 
         // All should complete successfully (serialized by mutex)

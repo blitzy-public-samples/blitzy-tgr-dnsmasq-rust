@@ -651,24 +651,20 @@ pub fn create_firewall_backend(_config: &Config) -> Option<Box<dyn FirewallBacke
     // Configuration inspection would check for nftset directives in config
     // For now, returning None as backends are not yet implemented
     // Implementation will inspect _config.network.nftset_domains or similar field
-    
+
     // Check for ipset configuration (legacy Linux)
     // Similar config field inspection: _config.network.ipset_domains
-    
+
     // Placeholder: Backend implementations in ipset.rs and nftables.rs will be created separately
     None
 }
 
-#[cfg(any(
-    target_os = "freebsd",
-    target_os = "openbsd",
-    target_os = "netbsd"
-))]
+#[cfg(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))]
 pub fn create_firewall_backend(_config: &Config) -> Option<Box<dyn FirewallBackend>> {
     // Check for PF table configuration
     // On BSD, the --ipset directive is reused for PF table names
     // Configuration field: _config.network.pf_tables or _config.network.ipset_domains
-    
+
     // Placeholder: Backend implementation in pf.rs will be created separately
     None
 }

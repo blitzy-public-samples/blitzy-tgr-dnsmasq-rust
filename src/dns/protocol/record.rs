@@ -102,11 +102,9 @@
 //! - OPT pseudo-RR uses class field for UDP payload size, TTL for extended flags
 
 use crate::dns::edns0::Edns0Option;
-use crate::dns::protocol::constants::{
-    IN6ADDRSZ, INADDRSZ,
-};
+use crate::dns::protocol::constants::{IN6ADDRSZ, INADDRSZ};
 use crate::dns::protocol::name::DomainName;
-use crate::error::{Result, DnsError};
+use crate::error::{DnsError, Result};
 use crate::types::RecordType;
 
 #[cfg(test)]
@@ -144,29 +142,29 @@ type NomErrorType<'a> = NomError<&'a [u8]>;
 fn parse_domain_name<'a>(input: &'a [u8], message: &'a [u8]) -> IResult<&'a [u8], DomainName> {
     // Convert slices to Bytes for DomainName::from_wire
     let message_bytes = Bytes::copy_from_slice(message);
-    
+
     // Calculate offset of input within message
     let input_ptr = input.as_ptr() as usize;
     let message_ptr = message.as_ptr() as usize;
-    
+
     // Ensure input is within message bounds
     if input_ptr < message_ptr || input_ptr > message_ptr + message.len() {
         return Err(NomErr::Error(NomError::new(input, ErrorKind::Fail)));
     }
-    
+
     let offset = input_ptr - message_ptr;
-    
+
     // Call DomainName::from_wire
     match DomainName::from_wire(&message_bytes, offset) {
         Ok((domain_name, next_offset)) => {
             // Calculate how many bytes were consumed
             let bytes_consumed = next_offset - offset;
-            
+
             // Ensure we don't consume more than available
             if bytes_consumed > input.len() {
                 return Err(NomErr::Error(NomError::new(input, ErrorKind::Eof)));
             }
-            
+
             // Return remaining input and parsed name
             Ok((&input[bytes_consumed..], domain_name))
         }
@@ -196,11 +194,11 @@ fn parse_domain_name_rdata<'a>(
 ) -> Result<(&'a [u8], DomainName)> {
     // Convert slices to Bytes for DomainName::from_wire
     let message_bytes = Bytes::copy_from_slice(message);
-    
+
     // Calculate offset of input within message
     let input_ptr = input.as_ptr() as usize;
     let message_ptr = message.as_ptr() as usize;
-    
+
     // Ensure input is within message bounds
     if input_ptr < message_ptr || input_ptr > message_ptr + message.len() {
         return Err(crate::error::DnsmasqError::Dns(DnsError::ParseFailed {
@@ -208,15 +206,15 @@ fn parse_domain_name_rdata<'a>(
             reason: "Input not within message bounds".to_string(),
         }));
     }
-    
+
     let offset = input_ptr - message_ptr;
-    
+
     // Call DomainName::from_wire
     match DomainName::from_wire(&message_bytes, offset) {
         Ok((domain_name, next_offset)) => {
             // Calculate how many bytes were consumed
             let bytes_consumed = next_offset - offset;
-            
+
             // Ensure we don't consume more than available
             if bytes_consumed > input.len() {
                 return Err(crate::error::DnsmasqError::Dns(DnsError::ParseFailed {
@@ -224,7 +222,7 @@ fn parse_domain_name_rdata<'a>(
                     reason: "Domain name parsing consumed more bytes than available".to_string(),
                 }));
             }
-            
+
             // Return remaining input and parsed name
             Ok((&input[bytes_consumed..], domain_name))
         }
@@ -577,13 +575,7 @@ impl ResourceRecord {
     /// );
     /// ```
     pub fn new(name: DomainName, rtype: RecordType, class: u16, ttl: u32, rdata: RData) -> Self {
-        Self {
-            name,
-            rtype,
-            class,
-            ttl,
-            rdata,
-        }
+        Self { name, rtype, class, ttl, rdata }
     }
 
     /// Returns the domain name this record refers to.
@@ -705,16 +697,7 @@ impl ResourceRecord {
         let rdata = Self::parse_rdata(rdata_bytes, message, rtype, rdlength)
             .map_err(|_| NomErr::Error(NomError::new(input, ErrorKind::Fail)))?;
 
-        Ok((
-            input,
-            Self {
-                name,
-                rtype,
-                class,
-                ttl,
-                rdata,
-            },
-        ))
+        Ok((input, Self { name, rtype, class, ttl, rdata }))
     }
 
     /// Alias for `parse()` for API consistency.
@@ -773,16 +756,15 @@ impl ResourceRecord {
                     return Err(crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("A record RDATA must be {} bytes, got {}", INADDRSZ, rdlength),
+                            reason: format!(
+                                "A record RDATA must be {} bytes, got {}",
+                                INADDRSZ, rdlength
+                            ),
                         },
                     ));
                 }
-                let addr = Ipv4Addr::new(
-                    rdata_bytes[0],
-                    rdata_bytes[1],
-                    rdata_bytes[2],
-                    rdata_bytes[3],
-                );
+                let addr =
+                    Ipv4Addr::new(rdata_bytes[0], rdata_bytes[1], rdata_bytes[2], rdata_bytes[3]);
                 Ok(RData::A(addr))
             }
 
@@ -792,7 +774,10 @@ impl ResourceRecord {
                     return Err(crate::error::DnsmasqError::Dns(
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("AAAA record RDATA must be {} bytes, got {}", IN6ADDRSZ, rdlength),
+                            reason: format!(
+                                "AAAA record RDATA must be {} bytes, got {}",
+                                IN6ADDRSZ, rdlength
+                            ),
                         },
                     ));
                 }
@@ -824,38 +809,37 @@ impl ResourceRecord {
                         },
                     ));
                 }
-                let (input, preference) = be_u16::<_, NomErrorType<'_>>(rdata_bytes)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
+                let (input, preference) =
+                    be_u16::<_, NomErrorType<'_>>(rdata_bytes).map_err(|e| {
+                        crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!("Failed to parse MX preference: {:?}", e),
-                        },
-                    ))?;
+                        })
+                    })?;
                 let (_remaining, exchange) = parse_domain_name_rdata(input, message)?;
-                Ok(RData::Mx {
-                    preference,
-                    exchange,
-                })
+                Ok(RData::Mx { preference, exchange })
             }
 
             RecordType::TXT => {
                 // TXT record: Sequence of length-prefixed strings
                 let mut txt_data = Vec::new();
                 let mut input = rdata_bytes;
-                
+
                 while !input.is_empty() {
                     // Parse length-prefixed string
-                    let (remaining, txt_string) = length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
-                        .map_err(|e| crate::error::DnsmasqError::Dns(
-                            crate::error::DnsError::ParseFailed {
-                                server: "local".to_string(),
-                                reason: format!("Failed to parse TXT string: {:?}", e),
-                            },
-                        ))?;
+                    let (remaining, txt_string) = length_data::<_, _, NomErrorType<'_>, _>(
+                        be_u8::<_, NomErrorType<'_>>,
+                    )(input)
+                    .map_err(|e| {
+                        crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
+                            server: "local".to_string(),
+                            reason: format!("Failed to parse TXT string: {:?}", e),
+                        })
+                    })?;
                     txt_data.push(txt_string.to_vec());
                     input = remaining;
                 }
-                
+
                 Ok(RData::Txt { txt_data })
             }
 
@@ -869,24 +853,16 @@ impl ResourceRecord {
                         be_u32::<_, NomErrorType<'_>>,
                         be_u32::<_, NomErrorType<'_>>,
                         be_u32::<_, NomErrorType<'_>>,
-                        be_u32::<_, NomErrorType<'_>>
+                        be_u32::<_, NomErrorType<'_>>,
                     ))(input)
-                        .map_err(|e| crate::error::DnsmasqError::Dns(
-                            crate::error::DnsError::ParseFailed {
-                                server: "local".to_string(),
-                                reason: format!("Failed to parse SOA integers: {:?}", e),
-                            },
-                        ))?;
-                
-                Ok(RData::Soa {
-                    mname,
-                    rname,
-                    serial,
-                    refresh,
-                    retry,
-                    expire,
-                    minimum,
-                })
+                    .map_err(|e| {
+                        crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
+                            server: "local".to_string(),
+                            reason: format!("Failed to parse SOA integers: {:?}", e),
+                        })
+                    })?;
+
+                Ok(RData::Soa { mname, rname, serial, refresh, retry, expire, minimum })
             }
 
             RecordType::NS => {
@@ -908,28 +884,23 @@ impl ResourceRecord {
                 let (input, (priority, weight, port)) = tuple::<_, _, NomErrorType<'_>, _>((
                     be_u16::<_, NomErrorType<'_>>,
                     be_u16::<_, NomErrorType<'_>>,
-                    be_u16::<_, NomErrorType<'_>>
+                    be_u16::<_, NomErrorType<'_>>,
                 ))(rdata_bytes)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
-                            server: "local".to_string(),
-                            reason: format!("Failed to parse SRV fields: {:?}", e),
-                        },
-                    ))?;
-                let (_remaining, target) = parse_domain_name_rdata(input, message)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
+                .map_err(|e| {
+                    crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
+                        server: "local".to_string(),
+                        reason: format!("Failed to parse SRV fields: {:?}", e),
+                    })
+                })?;
+                let (_remaining, target) =
+                    parse_domain_name_rdata(input, message).map_err(|e| {
+                        crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!("Failed to parse SRV target: {:?}", e),
-                        },
-                    ))?;
-                
-                Ok(RData::Srv {
-                    priority,
-                    weight,
-                    port,
-                    target,
-                })
+                        })
+                    })?;
+
+                Ok(RData::Srv { priority, weight, port, target })
             }
 
             RecordType::NAPTR => {
@@ -944,62 +915,58 @@ impl ResourceRecord {
                 }
                 let (input, (order, preference)) = tuple::<_, _, NomErrorType<'_>, _>((
                     be_u16::<_, NomErrorType<'_>>,
-                    be_u16::<_, NomErrorType<'_>>
+                    be_u16::<_, NomErrorType<'_>>,
                 ))(rdata_bytes)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
-                            server: "local".to_string(),
-                            reason: format!("Failed to parse NAPTR order/preference: {:?}", e),
-                        },
-                    ))?;
-                
+                .map_err(|e| {
+                    crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
+                        server: "local".to_string(),
+                        reason: format!("Failed to parse NAPTR order/preference: {:?}", e),
+                    })
+                })?;
+
                 // Parse flags (length-prefixed string)
-                let (input, flags_bytes) = length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
+                let (input, flags_bytes) =
+                    length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
+                        .map_err(|e| {
+                        crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!("Failed to parse NAPTR flags: {:?}", e),
-                        },
-                    ))?;
+                        })
+                    })?;
                 let flags = String::from_utf8_lossy(flags_bytes).to_string();
-                
+
                 // Parse service (length-prefixed string)
-                let (input, service_bytes) = length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
+                let (input, service_bytes) =
+                    length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
+                        .map_err(|e| {
+                        crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!("Failed to parse NAPTR service: {:?}", e),
-                        },
-                    ))?;
+                        })
+                    })?;
                 let service = String::from_utf8_lossy(service_bytes).to_string();
-                
+
                 // Parse regexp (length-prefixed string)
-                let (input, regexp_bytes) = length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
+                let (input, regexp_bytes) =
+                    length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
+                        .map_err(|e| {
+                        crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!("Failed to parse NAPTR regexp: {:?}", e),
-                        },
-                    ))?;
+                        })
+                    })?;
                 let regexp = String::from_utf8_lossy(regexp_bytes).to_string();
-                
+
                 // Parse replacement domain name
-                let (_remaining, replacement) = parse_domain_name_rdata(input, message)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
+                let (_remaining, replacement) =
+                    parse_domain_name_rdata(input, message).map_err(|e| {
+                        crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!("Failed to parse NAPTR replacement: {:?}", e),
-                        },
-                    ))?;
-                
-                Ok(RData::Naptr {
-                    order,
-                    preference,
-                    flags,
-                    service,
-                    regexp,
-                    replacement,
-                })
+                        })
+                    })?;
+
+                Ok(RData::Naptr { order, preference, flags, service, regexp, replacement })
             }
 
             RecordType::DNSKEY => {
@@ -1015,24 +982,19 @@ impl ResourceRecord {
                 let (input, (flags, protocol, algorithm)) = tuple::<_, _, NomErrorType<'_>, _>((
                     be_u16::<_, NomErrorType<'_>>,
                     be_u8::<_, NomErrorType<'_>>,
-                    be_u8::<_, NomErrorType<'_>>
+                    be_u8::<_, NomErrorType<'_>>,
                 ))(rdata_bytes)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
-                            server: "local".to_string(),
-                            reason: format!("Failed to parse DNSKEY header: {:?}", e),
-                        },
-                    ))?;
-                
+                .map_err(|e| {
+                    crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
+                        server: "local".to_string(),
+                        reason: format!("Failed to parse DNSKEY header: {:?}", e),
+                    })
+                })?;
+
                 // Remaining bytes are the public key
                 let public_key = Bytes::copy_from_slice(input);
-                
-                Ok(RData::Dnskey {
-                    flags,
-                    protocol,
-                    algorithm,
-                    public_key,
-                })
+
+                Ok(RData::Dnskey { flags, protocol, algorithm, public_key })
             }
 
             RecordType::DS => {
@@ -1045,27 +1007,23 @@ impl ResourceRecord {
                         },
                     ));
                 }
-                let (input, (key_tag, algorithm, digest_type)) = tuple::<_, _, NomErrorType<'_>, _>((
-                    be_u16::<_, NomErrorType<'_>>,
-                    be_u8::<_, NomErrorType<'_>>,
-                    be_u8::<_, NomErrorType<'_>>
-                ))(rdata_bytes)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
+                let (input, (key_tag, algorithm, digest_type)) =
+                    tuple::<_, _, NomErrorType<'_>, _>((
+                        be_u16::<_, NomErrorType<'_>>,
+                        be_u8::<_, NomErrorType<'_>>,
+                        be_u8::<_, NomErrorType<'_>>,
+                    ))(rdata_bytes)
+                    .map_err(|e| {
+                        crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!("Failed to parse DS header: {:?}", e),
-                        },
-                    ))?;
-                
+                        })
+                    })?;
+
                 // Remaining bytes are the digest
                 let digest = Bytes::copy_from_slice(input);
-                
-                Ok(RData::Ds {
-                    key_tag,
-                    algorithm,
-                    digest_type,
-                    digest,
-                })
+
+                Ok(RData::Ds { key_tag, algorithm, digest_type, digest })
             }
 
             RecordType::RRSIG => {
@@ -1079,35 +1037,36 @@ impl ResourceRecord {
                         },
                     ));
                 }
-                let (input, (type_covered, algorithm, labels, original_ttl, expiration, inception, key_tag)) =
-                    tuple::<_, _, NomErrorType<'_>, _>((
-                        be_u16::<_, NomErrorType<'_>>,
-                        be_u8::<_, NomErrorType<'_>>,
-                        be_u8::<_, NomErrorType<'_>>,
-                        be_u32::<_, NomErrorType<'_>>,
-                        be_u32::<_, NomErrorType<'_>>,
-                        be_u32::<_, NomErrorType<'_>>,
-                        be_u16::<_, NomErrorType<'_>>
-                    ))(rdata_bytes)
-                        .map_err(|e| crate::error::DnsmasqError::Dns(
-                            crate::error::DnsError::ParseFailed {
-                                server: "local".to_string(),
-                                reason: format!("Failed to parse RRSIG header: {:?}", e),
-                            },
-                        ))?;
-                
+                let (
+                    input,
+                    (type_covered, algorithm, labels, original_ttl, expiration, inception, key_tag),
+                ) = tuple::<_, _, NomErrorType<'_>, _>((
+                    be_u16::<_, NomErrorType<'_>>,
+                    be_u8::<_, NomErrorType<'_>>,
+                    be_u8::<_, NomErrorType<'_>>,
+                    be_u32::<_, NomErrorType<'_>>,
+                    be_u32::<_, NomErrorType<'_>>,
+                    be_u32::<_, NomErrorType<'_>>,
+                    be_u16::<_, NomErrorType<'_>>,
+                ))(rdata_bytes)
+                .map_err(|e| {
+                    crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
+                        server: "local".to_string(),
+                        reason: format!("Failed to parse RRSIG header: {:?}", e),
+                    })
+                })?;
+
                 // Parse signer domain name
-                let (input, signer) = parse_domain_name_rdata(input, message)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
-                            server: "local".to_string(),
-                            reason: format!("Failed to parse RRSIG signer: {:?}", e),
-                        },
-                    ))?;
-                
+                let (input, signer) = parse_domain_name_rdata(input, message).map_err(|e| {
+                    crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
+                        server: "local".to_string(),
+                        reason: format!("Failed to parse RRSIG signer: {:?}", e),
+                    })
+                })?;
+
                 // Remaining bytes are the signature
                 let signature = Bytes::copy_from_slice(input);
-                
+
                 Ok(RData::Rrsig {
                     type_covered,
                     algorithm,
@@ -1123,21 +1082,18 @@ impl ResourceRecord {
 
             RecordType::NSEC => {
                 // NSEC record: next_domain + type_bitmap
-                let (input, next_domain) = parse_domain_name_rdata(rdata_bytes, message)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
+                let (input, next_domain) =
+                    parse_domain_name_rdata(rdata_bytes, message).map_err(|e| {
+                        crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!("Failed to parse NSEC next domain: {:?}", e),
-                        },
-                    ))?;
-                
+                        })
+                    })?;
+
                 // Remaining bytes are the type bitmap
                 let type_bitmap = Bytes::copy_from_slice(input);
-                
-                Ok(RData::Nsec {
-                    next_domain,
-                    type_bitmap,
-                })
+
+                Ok(RData::Nsec { next_domain, type_bitmap })
             }
 
             RecordType::NSEC3 => {
@@ -1151,41 +1107,44 @@ impl ResourceRecord {
                         },
                     ));
                 }
-                let (input, (hash_algorithm, flags, iterations)) = tuple::<_, _, NomErrorType<'_>, _>((
-                    be_u8::<_, NomErrorType<'_>>,
-                    be_u8::<_, NomErrorType<'_>>,
-                    be_u16::<_, NomErrorType<'_>>
-                ))(rdata_bytes)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
+                let (input, (hash_algorithm, flags, iterations)) =
+                    tuple::<_, _, NomErrorType<'_>, _>((
+                        be_u8::<_, NomErrorType<'_>>,
+                        be_u8::<_, NomErrorType<'_>>,
+                        be_u16::<_, NomErrorType<'_>>,
+                    ))(rdata_bytes)
+                    .map_err(|e| {
+                        crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!("Failed to parse NSEC3 header: {:?}", e),
-                        },
-                    ))?;
-                
+                        })
+                    })?;
+
                 // Parse salt (length-prefixed)
-                let (input, salt_bytes) = length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
+                let (input, salt_bytes) =
+                    length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
+                        .map_err(|e| {
+                        crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!("Failed to parse NSEC3 salt: {:?}", e),
-                        },
-                    ))?;
+                        })
+                    })?;
                 let salt = Bytes::copy_from_slice(salt_bytes);
-                
+
                 // Parse next hashed owner name (length-prefixed)
-                let (input, next_hashed_bytes) = length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
+                let (input, next_hashed_bytes) =
+                    length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
+                        .map_err(|e| {
+                        crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!("Failed to parse NSEC3 next hash: {:?}", e),
-                        },
-                    ))?;
+                        })
+                    })?;
                 let next_hashed = Bytes::copy_from_slice(next_hashed_bytes);
-                
+
                 // Remaining bytes are the type bitmap
                 let type_bitmap = Bytes::copy_from_slice(input);
-                
+
                 Ok(RData::Nsec3 {
                     hash_algorithm,
                     flags,
@@ -1200,38 +1159,44 @@ impl ResourceRecord {
                 // OPT pseudo-RR: Parse EDNS0 options
                 let mut options = Vec::new();
                 let mut input = rdata_bytes;
-                
+
                 while input.len() >= 4 {
                     // Each option: code(16) + length(16) + data(length)
-                    let (remaining, (option_code, option_length)) = tuple::<_, _, NomErrorType<'_>, _>((be_u16::<_, NomErrorType<'_>>, be_u16::<_, NomErrorType<'_>>))(input)
-                        .map_err(|e| crate::error::DnsmasqError::Dns(
-                            crate::error::DnsError::ParseFailed {
+                    let (remaining, (option_code, option_length)) =
+                        tuple::<_, _, NomErrorType<'_>, _>((
+                            be_u16::<_, NomErrorType<'_>>,
+                            be_u16::<_, NomErrorType<'_>>,
+                        ))(input)
+                        .map_err(|e| {
+                            crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                                 server: "local".to_string(),
                                 reason: format!("Failed to parse OPT option header: {:?}", e),
-                            },
-                        ))?;
-                    
-                    let (remaining, option_data) = take::<_, _, NomErrorType<'_>>(option_length as usize)(remaining)
-                        .map_err(|e| crate::error::DnsmasqError::Dns(
-                            crate::error::DnsError::ParseFailed {
-                                server: "local".to_string(),
-                                reason: format!("Failed to parse OPT option data: {:?}", e),
-                            },
-                        ))?;
-                    
+                            })
+                        })?;
+
+                    let (remaining, option_data) = take::<_, _, NomErrorType<'_>>(
+                        option_length as usize,
+                    )(remaining)
+                    .map_err(|e| {
+                        crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
+                            server: "local".to_string(),
+                            reason: format!("Failed to parse OPT option data: {:?}", e),
+                        })
+                    })?;
+
                     // Parse EDNS0 option based on code
-                    let option = Edns0Option::from_wire_format(option_code, option_data)
-                        .map_err(|e| crate::error::DnsmasqError::Dns(
-                            crate::error::DnsError::ParseFailed {
+                    let option =
+                        Edns0Option::from_wire_format(option_code, option_data).map_err(|e| {
+                            crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                                 server: "local".to_string(),
                                 reason: format!("Failed to parse EDNS0 option: {:?}", e),
-                            },
-                        ))?;
-                    
+                            })
+                        })?;
+
                     options.push(option);
                     input = remaining;
                 }
-                
+
                 Ok(RData::Opt(options))
             }
 
@@ -1245,27 +1210,27 @@ impl ResourceRecord {
                         },
                     ));
                 }
-                let (input, flags) = be_u8::<_, NomErrorType<'_>>(rdata_bytes)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
-                            server: "local".to_string(),
-                            reason: format!("Failed to parse CAA flags: {:?}", e),
-                        },
-                    ))?;
-                
+                let (input, flags) = be_u8::<_, NomErrorType<'_>>(rdata_bytes).map_err(|e| {
+                    crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
+                        server: "local".to_string(),
+                        reason: format!("Failed to parse CAA flags: {:?}", e),
+                    })
+                })?;
+
                 // Parse tag (length-prefixed string)
-                let (input, tag_bytes) = length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
-                    .map_err(|e| crate::error::DnsmasqError::Dns(
-                        crate::error::DnsError::ParseFailed {
+                let (input, tag_bytes) =
+                    length_data::<_, _, NomErrorType<'_>, _>(be_u8::<_, NomErrorType<'_>>)(input)
+                        .map_err(|e| {
+                        crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!("Failed to parse CAA tag: {:?}", e),
-                        },
-                    ))?;
+                        })
+                    })?;
                 let tag = String::from_utf8_lossy(tag_bytes).to_string();
-                
+
                 // Remaining bytes are the value
                 let value = String::from_utf8_lossy(input).to_string();
-                
+
                 Ok(RData::Caa { flags, tag, value })
             }
 
@@ -1300,20 +1265,20 @@ impl ResourceRecord {
     /// ```
     pub fn serialize(&self) -> Result<Vec<u8>> {
         let mut buf = BytesMut::new();
-        
+
         // Serialize name (with compression potential in full message context)
         self.name.to_wire(&mut buf, None)?;
-        
+
         // Serialize type, class, TTL
         buf.put_u16(self.rtype.into());
         buf.put_u16(self.class);
         buf.put_u32(self.ttl);
-        
+
         // Serialize RDATA
         let rdata_bytes = self.serialize_rdata()?;
         buf.put_u16(rdata_bytes.len() as u16); // rdlength
         buf.put_slice(&rdata_bytes);
-        
+
         Ok(buf.to_vec())
     }
 
@@ -1339,45 +1304,37 @@ impl ResourceRecord {
     /// ```
     pub fn serialize_rdata(&self) -> Result<Vec<u8>> {
         let mut buf = BytesMut::new();
-        
+
         match &self.rdata {
             RData::A(addr) => {
                 buf.put_slice(&addr.octets());
             }
-            
+
             RData::AAAA(addr) => {
                 buf.put_slice(&addr.octets());
             }
-            
+
             RData::Cname { cname } => {
                 cname.to_wire(&mut buf, None)?;
             }
-            
+
             RData::Ptr { ptrdname } => {
                 ptrdname.to_wire(&mut buf, None)?;
             }
-            
+
             RData::Mx { preference, exchange } => {
                 buf.put_u16(*preference);
                 exchange.to_wire(&mut buf, None)?;
             }
-            
+
             RData::Txt { txt_data } => {
                 for txt_string in txt_data {
                     buf.put_u8(txt_string.len() as u8);
                     buf.put_slice(txt_string);
                 }
             }
-            
-            RData::Soa {
-                mname,
-                rname,
-                serial,
-                refresh,
-                retry,
-                expire,
-                minimum,
-            } => {
+
+            RData::Soa { mname, rname, serial, refresh, retry, expire, minimum } => {
                 mname.to_wire(&mut buf, None)?;
                 rname.to_wire(&mut buf, None)?;
                 buf.put_u32(*serial);
@@ -1386,77 +1343,55 @@ impl ResourceRecord {
                 buf.put_u32(*expire);
                 buf.put_u32(*minimum);
             }
-            
+
             RData::Ns { nsdname } => {
                 nsdname.to_wire(&mut buf, None)?;
             }
-            
-            RData::Srv {
-                priority,
-                weight,
-                port,
-                target,
-            } => {
+
+            RData::Srv { priority, weight, port, target } => {
                 buf.put_u16(*priority);
                 buf.put_u16(*weight);
                 buf.put_u16(*port);
                 target.to_wire(&mut buf, None)?;
             }
-            
-            RData::Naptr {
-                order,
-                preference,
-                flags,
-                service,
-                regexp,
-                replacement,
-            } => {
+
+            RData::Naptr { order, preference, flags, service, regexp, replacement } => {
                 buf.put_u16(*order);
                 buf.put_u16(*preference);
-                
+
                 // Serialize flags (length-prefixed string)
                 let flags_bytes = flags.as_bytes();
                 buf.put_u8(flags_bytes.len() as u8);
                 buf.put_slice(flags_bytes);
-                
+
                 // Serialize service (length-prefixed string)
                 let service_bytes = service.as_bytes();
                 buf.put_u8(service_bytes.len() as u8);
                 buf.put_slice(service_bytes);
-                
+
                 // Serialize regexp (length-prefixed string)
                 let regexp_bytes = regexp.as_bytes();
                 buf.put_u8(regexp_bytes.len() as u8);
                 buf.put_slice(regexp_bytes);
-                
+
                 // Serialize replacement domain name
                 replacement.to_wire(&mut buf, None)?;
             }
-            
-            RData::Dnskey {
-                flags,
-                protocol,
-                algorithm,
-                public_key,
-            } => {
+
+            RData::Dnskey { flags, protocol, algorithm, public_key } => {
                 buf.put_u16(*flags);
                 buf.put_u8(*protocol);
                 buf.put_u8(*algorithm);
                 buf.put_slice(public_key);
             }
-            
-            RData::Ds {
-                key_tag,
-                algorithm,
-                digest_type,
-                digest,
-            } => {
+
+            RData::Ds { key_tag, algorithm, digest_type, digest } => {
                 buf.put_u16(*key_tag);
                 buf.put_u8(*algorithm);
                 buf.put_u8(*digest_type);
                 buf.put_slice(digest);
             }
-            
+
             RData::Rrsig {
                 type_covered,
                 algorithm,
@@ -1478,39 +1413,29 @@ impl ResourceRecord {
                 signer.to_wire(&mut buf, None)?;
                 buf.put_slice(signature);
             }
-            
-            RData::Nsec {
-                next_domain,
-                type_bitmap,
-            } => {
+
+            RData::Nsec { next_domain, type_bitmap } => {
                 next_domain.to_wire(&mut buf, None)?;
                 buf.put_slice(type_bitmap);
             }
-            
-            RData::Nsec3 {
-                hash_algorithm,
-                flags,
-                iterations,
-                salt,
-                next_hashed,
-                type_bitmap,
-            } => {
+
+            RData::Nsec3 { hash_algorithm, flags, iterations, salt, next_hashed, type_bitmap } => {
                 buf.put_u8(*hash_algorithm);
                 buf.put_u8(*flags);
                 buf.put_u16(*iterations);
-                
+
                 // Serialize salt (length-prefixed)
                 buf.put_u8(salt.len() as u8);
                 buf.put_slice(salt);
-                
+
                 // Serialize next hashed (length-prefixed)
                 buf.put_u8(next_hashed.len() as u8);
                 buf.put_slice(next_hashed);
-                
+
                 // Serialize type bitmap
                 buf.put_slice(type_bitmap);
             }
-            
+
             RData::Opt(options) => {
                 // Serialize EDNS0 options
                 for option in options {
@@ -1520,24 +1445,24 @@ impl ResourceRecord {
                     buf.put_slice(&option_data);
                 }
             }
-            
+
             RData::Caa { flags, tag, value } => {
                 buf.put_u8(*flags);
-                
+
                 // Serialize tag (length-prefixed string)
                 let tag_bytes = tag.as_bytes();
                 buf.put_u8(tag_bytes.len() as u8);
                 buf.put_slice(tag_bytes);
-                
+
                 // Serialize value (not length-prefixed, rest of RDATA)
                 buf.put_slice(value.as_bytes());
             }
-            
+
             RData::Unknown { rdata, .. } => {
                 buf.put_slice(rdata);
             }
         }
-        
+
         Ok(buf.to_vec())
     }
 }
@@ -1572,12 +1497,12 @@ mod tests {
             300,
             RData::A(Ipv4Addr::new(192, 0, 2, 1)),
         );
-        
+
         assert_eq!(rr.name().as_str(), "example.com");
         assert_eq!(rr.rtype(), RecordType::A);
         assert_eq!(rr.class(), C_IN);
         assert_eq!(rr.ttl(), 300);
-        
+
         match rr.rdata() {
             RData::A(addr) => assert_eq!(*addr, Ipv4Addr::new(192, 0, 2, 1)),
             _ => panic!("Expected A record"),
@@ -1595,7 +1520,7 @@ mod tests {
             300,
             RData::AAAA(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)),
         );
-        
+
         match rr.rdata() {
             RData::AAAA(addr) => {
                 assert_eq!(*addr, Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1));
@@ -1614,12 +1539,9 @@ mod tests {
             RecordType::MX,
             C_IN,
             300,
-            RData::Mx {
-                preference: 10,
-                exchange: exchange.clone(),
-            },
+            RData::Mx { preference: 10, exchange: exchange.clone() },
         );
-        
+
         match rr.rdata() {
             RData::Mx { preference, exchange: ex } => {
                 assert_eq!(*preference, 10);
@@ -1633,10 +1555,7 @@ mod tests {
     fn test_resource_record_txt() {
         // Test TXT record with multiple strings
         let name = DomainName::from_str("example.com").unwrap();
-        let txt_data = vec![
-            b"v=spf1 mx ~all".to_vec(),
-            b"another string".to_vec(),
-        ];
+        let txt_data = vec![b"v=spf1 mx ~all".to_vec(), b"another string".to_vec()];
         let rr = ResourceRecord::new(
             name.clone(),
             RecordType::TXT,
@@ -1644,7 +1563,7 @@ mod tests {
             300,
             RData::Txt { txt_data: txt_data.clone() },
         );
-        
+
         match rr.rdata() {
             RData::Txt { txt_data: data } => {
                 assert_eq!(data.len(), 2);
@@ -1665,7 +1584,7 @@ mod tests {
             300,
             RData::A(Ipv4Addr::new(192, 0, 2, 1)),
         );
-        
+
         let modified = rr.with_ttl(3600).with_class(1);
         assert_eq!(modified.ttl(), 3600);
         assert_eq!(modified.class(), 1);
@@ -1681,14 +1600,9 @@ mod tests {
             RecordType::SRV,
             C_IN,
             300,
-            RData::Srv {
-                priority: 10,
-                weight: 60,
-                port: 80,
-                target: target.clone(),
-            },
+            RData::Srv { priority: 10, weight: 60, port: 80, target: target.clone() },
         );
-        
+
         match rr.rdata() {
             RData::Srv { priority, weight, port, target: t } => {
                 assert_eq!(*priority, 10);
@@ -1721,7 +1635,7 @@ mod tests {
                 minimum: 300,
             },
         );
-        
+
         match rr.rdata() {
             RData::Soa { mname: m, rname: r, serial, refresh, retry, expire, minimum } => {
                 assert_eq!(m.as_str(), "ns1.example.com");
@@ -1748,7 +1662,7 @@ mod tests {
             300,
             RData::Cname { cname: cname.clone() },
         );
-        
+
         match rr.rdata() {
             RData::Cname { cname: c } => {
                 assert_eq!(c.as_str(), "example.com");
@@ -1769,7 +1683,7 @@ mod tests {
             300,
             RData::Ptr { ptrdname: ptrdname.clone() },
         );
-        
+
         match rr.rdata() {
             RData::Ptr { ptrdname: p } => {
                 assert_eq!(p.as_str(), "example.com");
@@ -1790,7 +1704,7 @@ mod tests {
             300,
             RData::Ns { nsdname: nsdname.clone() },
         );
-        
+
         match rr.rdata() {
             RData::Ns { nsdname: n } => {
                 assert_eq!(n.as_str(), "ns1.example.com");
@@ -1810,13 +1724,13 @@ mod tests {
             C_IN,
             300,
             RData::Dnskey {
-                flags: 257, // Zone Key + Secure Entry Point
-                protocol: 3, // DNSSEC
+                flags: 257,    // Zone Key + Secure Entry Point
+                protocol: 3,   // DNSSEC
                 algorithm: 13, // ECDSAP256SHA256
                 public_key: public_key.clone(),
             },
         );
-        
+
         match rr.rdata() {
             RData::Dnskey { flags, protocol, algorithm, public_key: pk } => {
                 assert_eq!(*flags, 257);
@@ -1840,12 +1754,12 @@ mod tests {
             300,
             RData::Ds {
                 key_tag: 12345,
-                algorithm: 13, // ECDSAP256SHA256
+                algorithm: 13,  // ECDSAP256SHA256
                 digest_type: 2, // SHA-256
                 digest: digest.clone(),
             },
         );
-        
+
         match rr.rdata() {
             RData::Ds { key_tag, algorithm, digest_type, digest: d } => {
                 assert_eq!(*key_tag, 12345);
@@ -1870,17 +1784,17 @@ mod tests {
             300,
             RData::Rrsig {
                 type_covered: T_A, // Covering A records
-                algorithm: 13, // ECDSAP256SHA256
+                algorithm: 13,     // ECDSAP256SHA256
                 labels: 2,
                 original_ttl: 300,
                 expiration: 1704110400, // 2024-01-01 12:00:00 UTC
-                inception: 1704024000, // 2023-12-31 12:00:00 UTC
+                inception: 1704024000,  // 2023-12-31 12:00:00 UTC
                 key_tag: 12345,
                 signer: signer.clone(),
                 signature: signature.clone(),
             },
         );
-        
+
         match rr.rdata() {
             RData::Rrsig {
                 type_covered,
@@ -1916,12 +1830,9 @@ mod tests {
             RecordType::NSEC,
             C_IN,
             300,
-            RData::Nsec {
-                next_domain: next_domain.clone(),
-                type_bitmap: type_bitmap.clone(),
-            },
+            RData::Nsec { next_domain: next_domain.clone(), type_bitmap: type_bitmap.clone() },
         );
-        
+
         match rr.rdata() {
             RData::Nsec { next_domain: nd, type_bitmap: tb } => {
                 assert_eq!(nd.as_str(), "mail.example.com");
@@ -1952,7 +1863,7 @@ mod tests {
                 type_bitmap: type_bitmap.clone(),
             },
         );
-        
+
         match rr.rdata() {
             RData::Nsec3 {
                 hash_algorithm,
@@ -1982,13 +1893,9 @@ mod tests {
             RecordType::CAA,
             C_IN,
             300,
-            RData::Caa {
-                flags: 0,
-                tag: "issue".to_string(),
-                value: "letsencrypt.org".to_string(),
-            },
+            RData::Caa { flags: 0, tag: "issue".to_string(), value: "letsencrypt.org".to_string() },
         );
-        
+
         match rr.rdata() {
             RData::Caa { flags, tag, value } => {
                 assert_eq!(*flags, 0);
@@ -2009,12 +1916,9 @@ mod tests {
             RecordType::Unknown(65535), // Max type value
             C_IN,
             300,
-            RData::Unknown {
-                rtype: 65535,
-                rdata: rdata.clone(),
-            },
+            RData::Unknown { rtype: 65535, rdata: rdata.clone() },
         );
-        
+
         match rr.rdata() {
             RData::Unknown { rtype, rdata: rd } => {
                 assert_eq!(*rtype, 65535);
@@ -2035,7 +1939,7 @@ mod tests {
             300,
             RData::A(Ipv4Addr::new(192, 0, 2, 1)),
         );
-        
+
         let display_str = format!("{}", rr);
         assert!(display_str.contains("example.com"));
         assert!(display_str.contains("300"));
@@ -2045,12 +1949,7 @@ mod tests {
     fn test_parse_rdata_invalid_a_length() {
         // Test A record with invalid length
         let rdata_bytes = &[192, 0, 2]; // Only 3 bytes, should be 4
-        let result = ResourceRecord::parse_rdata(
-            rdata_bytes,
-            &[],
-            RecordType::A,
-            3,
-        );
+        let result = ResourceRecord::parse_rdata(rdata_bytes, &[], RecordType::A, 3);
         assert!(result.is_err());
     }
 
@@ -2058,12 +1957,7 @@ mod tests {
     fn test_parse_rdata_invalid_aaaa_length() {
         // Test AAAA record with invalid length
         let rdata_bytes = &[0x20, 0x01, 0x0d, 0xb8]; // Only 4 bytes, should be 16
-        let result = ResourceRecord::parse_rdata(
-            rdata_bytes,
-            &[],
-            RecordType::AAAA,
-            4,
-        );
+        let result = ResourceRecord::parse_rdata(rdata_bytes, &[], RecordType::AAAA, 4);
         assert!(result.is_err());
     }
 }

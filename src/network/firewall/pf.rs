@@ -232,11 +232,11 @@
 //! - Original C implementation: src/tables.c
 
 use async_trait::async_trait;
-use std::os::unix::io::{AsRawFd, FromRawFd, OwnedFd};
-use std::sync::{Arc, Mutex};
 use nix::errno::Errno;
 use nix::fcntl::{open, OFlag};
 use nix::sys::stat::Mode;
+use std::os::unix::io::{AsRawFd, FromRawFd, OwnedFd};
+use std::sync::{Arc, Mutex};
 use tokio::task;
 use tracing::{debug, error, info, instrument, warn};
 
@@ -334,14 +334,14 @@ const DIOCRDELADDRS: libc::c_ulong = 0xc4504444;
 #[derive(Clone, Copy)]
 struct pfr_table {
     /// Anchor path (empty for global tables, e.g., "myanchor/nested")
-    pfrt_anchor: [u8; 1024],  // MAXPATHLEN on most BSD systems
-    
+    pfrt_anchor: [u8; 1024], // MAXPATHLEN on most BSD systems
+
     /// Table name (e.g., "blocked_domains", max 32 chars)
     pfrt_name: [u8; PF_TABLE_NAME_SIZE],
-    
+
     /// Flags: PFR_TFLAG_PERSIST, PFR_TFLAG_CONST, etc.
     pfrt_flags: u32,
-    
+
     /// Feedback byte (reserved for kernel use)
     pfrt_fback: u8,
 }
@@ -380,16 +380,16 @@ impl Default for pfr_table {
 struct pfr_addr {
     /// Union containing either IPv4 or IPv6 address
     pfra_u: pfra_union,
-    
+
     /// Address family: AF_INET (2) or AF_INET6 (10/28 depending on BSD)
     pfra_af: u8,
-    
+
     /// Network prefix length: 0x20 (32) for IPv4 /32, 0x80 (128) for IPv6 /128
     pfra_net: u8,
-    
+
     /// Negation flag (0 = normal, 1 = negated match)
     pfra_not: u8,
-    
+
     /// Feedback byte (reserved for kernel)
     pfra_fback: u8,
 }
@@ -408,7 +408,7 @@ struct pfr_addr {
 union pfra_union {
     /// IPv4 address (4 bytes)
     pfra_ip4addr: libc::in_addr,
-    
+
     /// IPv6 address (16 bytes)
     pfra_ip6addr: libc::in6_addr,
 }
@@ -419,9 +419,7 @@ impl Default for pfr_addr {
     /// Replaces C's `bzero(&addr, sizeof(addr))`.
     fn default() -> Self {
         pfr_addr {
-            pfra_u: pfra_union {
-                pfra_ip6addr: libc::in6_addr { s6_addr: [0; 16] },
-            },
+            pfra_u: pfra_union { pfra_ip6addr: libc::in6_addr { s6_addr: [0; 16] } },
             pfra_af: 0,
             pfra_net: 0,
             pfra_not: 0,
@@ -449,25 +447,25 @@ impl Default for pfr_addr {
 struct pfioc_table {
     /// Target table descriptor
     pfrio_table: pfr_table,
-    
+
     /// Pointer to data buffer (array of pfr_table or pfr_addr)
     pfrio_buffer: *mut libc::c_void,
-    
+
     /// Size of each element in buffer (sizeof(pfr_table) or sizeof(pfr_addr))
     pfrio_esize: libc::c_int,
-    
+
     /// Number of elements in buffer
     pfrio_size: libc::c_int,
-    
+
     /// Output: Number of entries added (set by kernel)
     pfrio_nadd: libc::c_int,
-    
+
     /// Output: Number of entries deleted (set by kernel)
     pfrio_ndel: libc::c_int,
-    
+
     /// Output: Number of entries changed (set by kernel)
     pfrio_nchange: libc::c_int,
-    
+
     /// Operation flags
     pfrio_flags: libc::c_int,
 }
@@ -563,9 +561,7 @@ impl PfBackend {
     #[instrument(name = "pf_backend_new")]
     pub fn new() -> Self {
         debug!("Creating new PF backend instance");
-        PfBackend {
-            pf_fd: Arc::new(Mutex::new(None)),
-        }
+        PfBackend { pf_fd: Arc::new(Mutex::new(None)) }
     }
 
     /// Initialize the PF backend by opening /dev/pf device.
@@ -605,27 +601,21 @@ impl PfBackend {
         debug!(device = %PF_DEVICE_PATH, "Initializing PF device");
 
         // Spawn blocking task to open /dev/pf (may block on device access)
-        let fd_result = task::spawn_blocking(|| {
-            open(
-                PF_DEVICE_PATH,
-                OFlag::O_RDWR,
-                Mode::empty(),
-            )
-        })
-        .await
-        .map_err(|e| {
-            error!(error = %e, "Tokio task join error during PF device open");
-            FirewallError::DeviceNotFound(format!("Task join failed: {}", e))
-        })?;
+        let fd_result = task::spawn_blocking(|| open(PF_DEVICE_PATH, OFlag::O_RDWR, Mode::empty()))
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Tokio task join error during PF device open");
+                FirewallError::DeviceNotFound(format!("Task join failed: {}", e))
+            })?;
 
         match fd_result {
             Ok(fd) => {
                 // SAFETY: open() returned a valid file descriptor
                 let owned_fd = unsafe { OwnedFd::from_raw_fd(fd) };
-                
+
                 let mut guard = self.pf_fd.lock().unwrap();
                 *guard = Some(owned_fd);
-                
+
                 info!(device = %PF_DEVICE_PATH, "Successfully opened PF device");
                 Ok(())
             }
@@ -635,14 +625,20 @@ impl PfBackend {
                     errno = %errno,
                     "Failed to open PF device"
                 );
-                
+
                 let error_msg = match errno {
-                    Errno::EACCES => format!("Permission denied: {} (need root privileges)", PF_DEVICE_PATH),
-                    Errno::ENOENT => format!("Device not found: {} (PF module not loaded?)", PF_DEVICE_PATH),
-                    Errno::ENXIO => format!("Device not configured: {} (PF not enabled)", PF_DEVICE_PATH),
+                    Errno::EACCES => {
+                        format!("Permission denied: {} (need root privileges)", PF_DEVICE_PATH)
+                    }
+                    Errno::ENOENT => {
+                        format!("Device not found: {} (PF module not loaded?)", PF_DEVICE_PATH)
+                    }
+                    Errno::ENXIO => {
+                        format!("Device not configured: {} (PF not enabled)", PF_DEVICE_PATH)
+                    }
                     _ => format!("Failed to open {}: {}", PF_DEVICE_PATH, errno),
                 };
-                
+
                 Err(FirewallError::DeviceNotFound(error_msg))
             }
         }
@@ -660,9 +656,7 @@ impl PfBackend {
             Some(fd) => Ok(fd.as_raw_fd()),
             None => {
                 warn!("PF device not initialized, call initialize() first");
-                Err(FirewallError::DeviceNotFound(
-                    "PF device not initialized".to_string(),
-                ))
+                Err(FirewallError::DeviceNotFound("PF device not initialized".to_string()))
             }
         }
     }
@@ -705,11 +699,8 @@ impl PfBackend {
         }
 
         // Construct pfr_table structure
-        let mut table = pfr_table {
-            pfrt_flags: PFR_TFLAG_PERSIST,
-            ..Default::default()
-        };
-        
+        let mut table = pfr_table { pfrt_flags: PFR_TFLAG_PERSIST, ..Default::default() };
+
         // Copy table name into pfrt_name field (safe: length validated above)
         let name_bytes = table_name.as_bytes();
         table.pfrt_name[..name_bytes.len()].copy_from_slice(name_bytes);
@@ -731,19 +722,19 @@ impl PfBackend {
 
         if result < 0 {
             let errno = Errno::last();
-            
+
             // EEXIST means table already exists - this is success (idempotent operation)
             if errno == Errno::EEXIST {
                 debug!(table = %table_name, "PF table already exists");
                 return Ok(());
             }
-            
+
             error!(
                 table = %table_name,
                 errno = %errno,
                 "DIOCRADDTABLES ioctl failed"
             );
-            
+
             let error_msg = pf_strerror(errno);
             return Err(FirewallError::TableCreateFailed(format!(
                 "Failed to create table '{}': {}",
@@ -780,25 +771,24 @@ impl PfBackend {
 
         // Construct pfr_addr structure based on address family
         let mut addr = pfr_addr::default();
-        
+
         match ip {
             IpAddr::V4(ipv4) => {
                 addr.pfra_af = libc::AF_INET as u8;
-                addr.pfra_net = 0x20;  // /32 prefix for single IPv4 address
-                
+                addr.pfra_net = 0x20; // /32 prefix for single IPv4 address
+
                 // SAFETY: pfra_union discriminated by pfra_af = AF_INET
                 unsafe {
-                    addr.pfra_u.pfra_ip4addr = std::mem::transmute::<[u8; 4], libc::in_addr>(ipv4.octets());
+                    addr.pfra_u.pfra_ip4addr =
+                        std::mem::transmute::<[u8; 4], libc::in_addr>(ipv4.octets());
                 }
             }
             IpAddr::V6(ipv6) => {
                 addr.pfra_af = libc::AF_INET6 as u8;
-                addr.pfra_net = 0x80;  // /128 prefix for single IPv6 address
-                
+                addr.pfra_net = 0x80; // /128 prefix for single IPv6 address
+
                 // SAFETY: pfra_union discriminated by pfra_af = AF_INET6
-                addr.pfra_u.pfra_ip6addr = libc::in6_addr {
-                    s6_addr: ipv6.octets(),
-                };
+                addr.pfra_u.pfra_ip6addr = libc::in6_addr { s6_addr: ipv6.octets() };
             }
         }
 
@@ -819,9 +809,8 @@ impl PfBackend {
 
         // Execute DIOCRADDADDRS ioctl
         // SAFETY: fd is valid, io structure is properly initialized
-        let result = unsafe {
-            libc::ioctl(fd, DIOCRADDADDRS as libc::c_ulong, &mut io as *mut pfioc_table)
-        };
+        let result =
+            unsafe { libc::ioctl(fd, DIOCRADDADDRS as libc::c_ulong, &mut io as *mut pfioc_table) };
 
         if result < 0 {
             let errno = Errno::last();
@@ -831,7 +820,7 @@ impl PfBackend {
                 errno = %errno,
                 "DIOCRADDADDRS ioctl failed"
             );
-            
+
             let error_msg = pf_strerror(errno);
             return Err(FirewallError::AddressFailed(format!(
                 "Failed to add {} to table '{}': {}",
@@ -866,24 +855,23 @@ impl PfBackend {
 
         // Construct pfr_addr structure (same as add_address_sync)
         let mut addr = pfr_addr::default();
-        
+
         match ip {
             IpAddr::V4(ipv4) => {
                 addr.pfra_af = libc::AF_INET as u8;
                 addr.pfra_net = 0x20;
-                
+
                 unsafe {
-                    addr.pfra_u.pfra_ip4addr = std::mem::transmute::<[u8; 4], libc::in_addr>(ipv4.octets());
+                    addr.pfra_u.pfra_ip4addr =
+                        std::mem::transmute::<[u8; 4], libc::in_addr>(ipv4.octets());
                 }
             }
             IpAddr::V6(ipv6) => {
                 addr.pfra_af = libc::AF_INET6 as u8;
                 addr.pfra_net = 0x80;
-                
+
                 // SAFETY: pfra_union discriminated by pfra_af = AF_INET6
-                addr.pfra_u.pfra_ip6addr = libc::in6_addr {
-                    s6_addr: ipv6.octets(),
-                };
+                addr.pfra_u.pfra_ip6addr = libc::in6_addr { s6_addr: ipv6.octets() };
             }
         }
 
@@ -904,26 +892,25 @@ impl PfBackend {
 
         // Execute DIOCRDELADDRS ioctl
         // SAFETY: fd is valid, io structure is properly initialized
-        let result = unsafe {
-            libc::ioctl(fd, DIOCRDELADDRS as libc::c_ulong, &mut io as *mut pfioc_table)
-        };
+        let result =
+            unsafe { libc::ioctl(fd, DIOCRDELADDRS as libc::c_ulong, &mut io as *mut pfioc_table) };
 
         if result < 0 {
             let errno = Errno::last();
-            
+
             // ENOENT means address doesn't exist - this is success (idempotent)
             if errno == Errno::ENOENT {
                 debug!(table = %table_name, ip = %ip, "Address not in table (already removed)");
                 return Ok(());
             }
-            
+
             error!(
                 table = %table_name,
                 ip = %ip,
                 errno = %errno,
                 "DIOCRDELADDRS ioctl failed"
             );
-            
+
             let error_msg = pf_strerror(errno);
             return Err(FirewallError::AddressFailed(format!(
                 "Failed to remove {} from table '{}': {}",
@@ -974,7 +961,7 @@ impl PfBackend {
             // Ensure table exists
             let backend_temp = PfBackend { pf_fd: pf_fd.clone() };
             backend_temp.ensure_table_exists_sync(fd, &table_name)?;
-            
+
             // Add address
             backend_temp.add_address_sync(fd, &table_name, ip)
         })
@@ -1173,19 +1160,16 @@ mod tests {
     #[test]
     fn test_pf_strerror() {
         assert_eq!(pf_strerror(Errno::ESRCH), "Table does not exist");
-        assert_eq!(
-            pf_strerror(Errno::ENOENT),
-            "Anchor or Ruleset does not exist"
-        );
+        assert_eq!(pf_strerror(Errno::ENOENT), "Anchor or Ruleset does not exist");
     }
 
     #[test]
     fn test_table_name_size() {
         assert_eq!(PF_TABLE_NAME_SIZE, 32);
-        
+
         let valid_name = "blocked_domains";
         assert!(valid_name.len() < PF_TABLE_NAME_SIZE);
-        
+
         let too_long = "a".repeat(PF_TABLE_NAME_SIZE);
         assert!(too_long.len() >= PF_TABLE_NAME_SIZE);
     }

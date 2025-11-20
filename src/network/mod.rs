@@ -51,9 +51,9 @@ use std::net::SocketAddr;
 use tokio::net::UdpSocket;
 
 // Declare submodules
+pub mod firewall;
 pub mod interfaces;
 pub mod sockets;
-pub mod firewall;
 
 // Platform-specific modules
 #[cfg(target_os = "linux")]
@@ -155,16 +155,16 @@ pub async fn create_dhcp_socket(addr: &str) -> Result<UdpSocket> {
 /// ```
 pub async fn enumerate_interfaces() -> Result<Vec<NetworkInterface>> {
     use std::sync::Arc;
-    
+
     // Create platform-specific handler (returns Box<dyn NetworkPlatform>)
     let platform = platform::create_platform_handler().await?;
-    
+
     // Convert Box to Arc for InterfaceManager
     let platform_arc: Arc<dyn platform::NetworkPlatform> = Arc::from(platform);
-    
+
     // Create interface manager
     let manager = interfaces::InterfaceManager::new(platform_arc);
-    
+
     // Enumerate interfaces
     manager.enumerate_interfaces().await
 }

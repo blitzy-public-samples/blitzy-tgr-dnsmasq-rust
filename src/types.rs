@@ -1180,9 +1180,7 @@ impl std::ops::Add<Duration> for Timestamp {
     type Output = Self;
 
     fn add(self, duration: Duration) -> Self::Output {
-        Self {
-            instant: self.instant + duration,
-        }
+        Self { instant: self.instant + duration }
     }
 }
 

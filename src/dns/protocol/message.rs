@@ -267,14 +267,7 @@ pub struct DnsHeader {
 impl DnsHeader {
     /// Create new DNS header with given ID and all counts set to zero.
     pub fn new(id: u16) -> Self {
-        Self {
-            id,
-            flags: DnsFlags::new(),
-            qdcount: 0,
-            ancount: 0,
-            nscount: 0,
-            arcount: 0,
-        }
+        Self { id, flags: DnsFlags::new(), qdcount: 0, ancount: 0, nscount: 0, arcount: 0 }
     }
 
     /// Parse DNS header from 12-byte slice.
@@ -295,14 +288,7 @@ impl DnsHeader {
         let nscount = u16::from_be_bytes([input[8], input[9]]);
         let arcount = u16::from_be_bytes([input[10], input[11]]);
 
-        Ok(Self {
-            id,
-            flags,
-            qdcount,
-            ancount,
-            nscount,
-            arcount,
-        })
+        Ok(Self { id, flags, qdcount, ancount, nscount, arcount })
     }
 
     /// Serialize DNS header to 12 bytes.
@@ -337,11 +323,7 @@ pub struct Question {
 impl Question {
     /// Create new question with given name, type, and class.
     pub fn new(qname: DomainName, qtype: RecordType, qclass: u16) -> Self {
-        Self {
-            qname,
-            qtype,
-            qclass,
-        }
+        Self { qname, qtype, qclass }
     }
 
     /// Parse question from wire format.
@@ -350,9 +332,9 @@ impl Question {
     /// packet parameter is the full packet for decompression.
     pub fn from_bytes(input: &[u8], packet: &[u8], offset: usize) -> Result<(Self, usize)> {
         // Decompress domain name - returns (absolute_offset_after_name, domain_name_string)
-        let (name_end_offset, name_string) = decompress_name(packet, offset)
-            .map_err(DnsmasqError::Dns)?;
-        
+        let (name_end_offset, name_string) =
+            decompress_name(packet, offset).map_err(DnsmasqError::Dns)?;
+
         // Calculate bytes consumed by the name (relative to input)
         let name_bytes_consumed = name_end_offset - offset;
         let remaining = &input[name_bytes_consumed..];
@@ -371,7 +353,7 @@ impl Question {
 
         // Create DomainName from the decompressed string
         let qname = DomainName::new(&name_string)?;
-        
+
         let total_len = name_bytes_consumed + 4;
         Ok((Self::new(qname, qtype, qclass), total_len))
     }
@@ -379,8 +361,7 @@ impl Question {
     /// Serialize question to wire format with compression.
     pub fn to_bytes(&self, buf: &mut BytesMut, compression: &mut CompressionMap) -> Result<()> {
         // Compress and write QNAME
-        compress_name(self.qname.as_str(), buf, Some(compression))
-            .map_err(DnsmasqError::Dns)?;
+        compress_name(self.qname.as_str(), buf, Some(compression)).map_err(DnsmasqError::Dns)?;
 
         // Write QTYPE and QCLASS
         let qtype_val: u16 = self.qtype.into();
@@ -466,11 +447,12 @@ impl DnsMessage {
             }
 
             let input_before = &packet[offset..];
-            let (remaining, rr) = ResourceRecord::from_wire(input_before, packet)
-                .map_err(|e| DnsmasqError::Dns(DnsError::ParseFailed {
+            let (remaining, rr) = ResourceRecord::from_wire(input_before, packet).map_err(|e| {
+                DnsmasqError::Dns(DnsError::ParseFailed {
                     server: "local".to_string(),
                     reason: format!("Failed to parse answer RR: {:?}", e),
-                }))?;
+                })
+            })?;
             let consumed = input_before.len() - remaining.len();
             answers.push(rr);
             offset += consumed;
@@ -487,11 +469,13 @@ impl DnsMessage {
             }
 
             let input_before = &packet[offset..];
-            let (remaining, rr) = ResourceRecord::from_wire(input_before, packet)
-                .map_err(|_| DnsmasqError::Dns(DnsError::ParseFailed {
-                    server: "local".to_string(),
-                    reason: "Failed to parse authority RR".to_string(),
-                }))?;
+            let (remaining, rr) =
+                ResourceRecord::from_wire(input_before, packet).map_err(|_| {
+                    DnsmasqError::Dns(DnsError::ParseFailed {
+                        server: "local".to_string(),
+                        reason: "Failed to parse authority RR".to_string(),
+                    })
+                })?;
             let consumed = input_before.len() - remaining.len();
             authority.push(rr);
             offset += consumed;
@@ -508,23 +492,19 @@ impl DnsMessage {
             }
 
             let input_before = &packet[offset..];
-            let (remaining, rr) = ResourceRecord::from_wire(input_before, packet)
-                .map_err(|_| DnsmasqError::Dns(DnsError::ParseFailed {
-                    server: "local".to_string(),
-                    reason: "Failed to parse additional RR".to_string(),
-                }))?;
+            let (remaining, rr) =
+                ResourceRecord::from_wire(input_before, packet).map_err(|_| {
+                    DnsmasqError::Dns(DnsError::ParseFailed {
+                        server: "local".to_string(),
+                        reason: "Failed to parse additional RR".to_string(),
+                    })
+                })?;
             let consumed = input_before.len() - remaining.len();
             additional.push(rr);
             offset += consumed;
         }
 
-        Ok(Self {
-            header,
-            questions,
-            answers,
-            authority,
-            additional,
-        })
+        Ok(Self { header, questions, answers, authority, additional })
     }
 
     /// Serialize complete DNS message to wire format with name compression.
@@ -589,8 +569,7 @@ impl DnsMessage {
         compression: &mut CompressionMap,
     ) -> Result<()> {
         // Serialize and write the name with compression
-        compress_name(rr.name().as_str(), buf, Some(compression))
-            .map_err(DnsmasqError::Dns)?;
+        compress_name(rr.name().as_str(), buf, Some(compression)).map_err(DnsmasqError::Dns)?;
 
         // Write TYPE (2 bytes)
         let rtype_val: u16 = u16::from(rr.rtype());
@@ -740,9 +719,7 @@ pub struct DnsMessageBuilder {
 impl DnsMessageBuilder {
     /// Create new builder with random ID.
     pub fn new() -> Self {
-        Self {
-            message: DnsMessage::new(0),
-        }
+        Self { message: DnsMessage::new(0) }
     }
 
     /// Set message ID.
@@ -917,16 +894,16 @@ mod tests {
     #[test]
     fn test_dns_flags_aa_tc_rd() {
         let mut flags = DnsFlags::new();
-        
+
         flags.set_aa(true);
         assert_eq!(flags.aa(), true);
-        
+
         flags.set_tc(true);
         assert_eq!(flags.tc(), true);
-        
+
         flags.set_rd(true);
         assert_eq!(flags.rd(), true);
-        
+
         // Verify all stay set
         assert_eq!(flags.aa(), true);
         assert_eq!(flags.tc(), true);
@@ -936,13 +913,13 @@ mod tests {
     #[test]
     fn test_dns_flags_ra_ad_cd() {
         let mut flags = DnsFlags::new();
-        
+
         flags.set_ra(true);
         assert_eq!(flags.ra(), true);
-        
+
         flags.set_ad(true);
         assert_eq!(flags.ad(), true);
-        
+
         flags.set_cd(true);
         assert_eq!(flags.cd(), true);
     }
@@ -951,10 +928,10 @@ mod tests {
     fn test_dns_flags_rcode() {
         let mut flags = DnsFlags::new();
         assert_eq!(flags.rcode(), 0); // NOERROR
-        
+
         flags.set_rcode(3); // NXDOMAIN
         assert_eq!(flags.rcode(), 3);
-        
+
         flags.set_rcode(2); // SERVFAIL
         assert_eq!(flags.rcode(), 2);
     }
@@ -967,10 +944,10 @@ mod tests {
         flags.set_rd(true);
         flags.set_ra(true);
         flags.set_rcode(3);
-        
+
         let (hb3, hb4) = flags.to_bytes();
         let restored = DnsFlags::from_bytes(hb3, hb4);
-        
+
         assert_eq!(restored.qr(), true);
         assert_eq!(restored.aa(), true);
         assert_eq!(restored.rd(), true);
@@ -998,7 +975,7 @@ mod tests {
             0x00, 0x00, // NSCOUNT = 0
             0x00, 0x01, // ARCOUNT = 1
         ];
-        
+
         let header = DnsHeader::from_bytes(&data).unwrap();
         assert_eq!(header.id, 0x1234);
         assert_eq!(header.flags.qr(), true);
@@ -1018,10 +995,10 @@ mod tests {
         header.qdcount = 1;
         header.ancount = 2;
         header.arcount = 1;
-        
+
         let mut buf = BytesMut::new();
         header.to_bytes(&mut buf);
-        
+
         assert_eq!(buf.len(), 12);
         assert_eq!(&buf[0..2], &[0x12, 0x34]); // ID
         assert_eq!(&buf[4..6], &[0x00, 0x01]); // QDCOUNT
@@ -1048,7 +1025,7 @@ mod tests {
             .set_authoritative()
             .set_recursion_available()
             .build();
-        
+
         assert_eq!(message.id(), 12345);
         assert_eq!(message.is_response(), true);
         assert_eq!(message.flags().aa(), true);
@@ -1059,7 +1036,7 @@ mod tests {
     fn test_question_new() {
         let name = DomainName::new("example.com").unwrap();
         let question = Question::new(name.clone(), RecordType::A, C_IN);
-        
+
         assert_eq!(question.qname, name);
         assert_eq!(question.qtype, RecordType::A);
         assert_eq!(question.qclass, C_IN);
@@ -1068,11 +1045,11 @@ mod tests {
     #[test]
     fn test_dns_message_add_sections() {
         let mut message = DnsMessage::new(1);
-        
+
         let name = DomainName::new("test.com").unwrap();
         let question = Question::new(name.clone(), RecordType::A, C_IN);
         message.add_question(question);
-        
+
         assert_eq!(message.qdcount(), 1);
         assert_eq!(message.questions[0].qname.as_str(), "test.com");
     }
@@ -1081,10 +1058,10 @@ mod tests {
     fn test_dns_query_from_message() {
         let name = DomainName::new("example.org").unwrap();
         let question = Question::new(name.clone(), RecordType::AAAA, C_IN);
-        
+
         let mut message = DnsMessage::new(100);
         message.add_question(question);
-        
+
         let query = DnsQuery::from_message(&message).unwrap();
         assert_eq!(query.name, name);
         assert_eq!(query.qtype, RecordType::AAAA);
@@ -1095,15 +1072,15 @@ mod tests {
     fn test_dns_response_from_query() {
         let name = DomainName::new("test.net").unwrap();
         let question = Question::new(name.clone(), RecordType::A, C_IN);
-        
+
         let mut query_msg = DnsMessage::new(555);
         query_msg.add_question(question);
-        
+
         let mut response = DnsResponse::from_query(&query_msg);
         assert_eq!(response.message_mut().id(), 555);
         assert_eq!(response.message_mut().is_response(), true);
         assert_eq!(response.message_mut().qdcount(), 1);
-        
+
         response.set_rcode(NOERROR);
         assert_eq!(response.message_mut().get_rcode(), NOERROR);
     }
@@ -1120,10 +1097,10 @@ mod tests {
         flags.set_ad(true);
         flags.set_cd(false);
         flags.set_rcode(0);
-        
+
         let raw = flags.raw();
         let restored = DnsFlags::from_raw(raw);
-        
+
         assert_eq!(restored.qr(), true);
         assert_eq!(restored.opcode(), 4);
         assert_eq!(restored.aa(), true);

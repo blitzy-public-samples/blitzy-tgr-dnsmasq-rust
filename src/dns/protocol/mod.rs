@@ -285,7 +285,7 @@ pub use constants::{NAMESERVER_PORT, NOERROR, SERVFAIL, T_A, T_AAAA, T_CNAME};
 // `use dnsmasq::dns::protocol::name::DomainName`
 pub use message::{DnsMessage, DnsQuery, DnsResponse};
 pub use name::DomainName;
-pub use record::{ResourceRecord, RData};
+pub use record::{RData, ResourceRecord};
 
 #[cfg(test)]
 mod tests {

@@ -508,7 +508,7 @@ impl NftablesBackend {
         // Check for address family prefix: "4 " or "6 "
         if set_spec.len() >= 2 && set_spec.as_bytes()[1] == b' ' {
             let prefix = set_spec.as_bytes()[0];
-            
+
             match (prefix, ip) {
                 // "4 " prefix with IPv4 address - pass, remove prefix
                 (b'4', IpAddr::V4(_)) => {
@@ -606,9 +606,7 @@ impl NftablesBackend {
         // - self.ctx.as_ptr() is a valid non-null pointer to nft_ctx
         // - command_cstr.as_ptr() is a valid null-terminated C string
         // - Both pointers remain valid for the duration of the call
-        let result = unsafe {
-            nft_run_cmd_from_buffer(self.ctx.as_ptr(), command_cstr.as_ptr())
-        };
+        let result = unsafe { nft_run_cmd_from_buffer(self.ctx.as_ptr(), command_cstr.as_ptr()) };
 
         if result != 0 {
             // Command failed - retrieve error message from context
@@ -621,10 +619,10 @@ impl NftablesBackend {
                 // SAFETY: error_ptr is not null and points to valid null-terminated C string
                 // The string is owned by the context and remains valid until next command
                 let error_cstr = unsafe { CStr::from_ptr(error_ptr) };
-                
+
                 // Convert to Rust string, handling invalid UTF-8 gracefully
                 let error_str = error_cstr.to_string_lossy();
-                
+
                 // Take only the first line (original C code did this)
                 error_str.lines().next().unwrap_or("").to_string()
             };
@@ -636,10 +634,7 @@ impl NftablesBackend {
                 "nftables command failed"
             );
 
-            return Err(FirewallError::ProtocolError(format!(
-                "nftset {} {}",
-                set_spec, error_msg
-            )));
+            return Err(FirewallError::ProtocolError(format!("nftset {} {}", set_spec, error_msg)));
         }
 
         debug!("nftables command executed successfully");
@@ -768,7 +763,7 @@ impl FirewallBackend for NftablesBackend {
         // Clone data for move into blocking task
         let domain = domain.to_string();
         let set_name = set_name.to_string();
-        
+
         // Clone the context pointer (just the pointer value, not the context itself)
         // This is safe because we only access it in the blocking task
         let ctx_ptr = self.ctx;
@@ -782,10 +777,10 @@ impl FirewallBackend for NftablesBackend {
             // 3. We only need this for method access
             let temp_backend = NftablesBackend { ctx: ctx_ptr };
             let result = temp_backend.modify_set_impl(&domain, ip, &set_name, false);
-            
+
             // Prevent dropping temp_backend (which would free the context)
             std::mem::forget(temp_backend);
-            
+
             result
         })
         .await
@@ -832,7 +827,7 @@ impl FirewallBackend for NftablesBackend {
         // Clone data for move into blocking task
         let domain = domain.to_string();
         let set_name = set_name.to_string();
-        
+
         // Clone the context pointer
         let ctx_ptr = self.ctx;
 
@@ -861,14 +856,8 @@ mod tests {
         let ip_v6: IpAddr = "2001:db8::1".parse().unwrap();
 
         // No prefix - both addresses pass
-        assert_eq!(
-            NftablesBackend::parse_set_spec("ip#filter#set", ip_v4),
-            Some("ip#filter#set")
-        );
-        assert_eq!(
-            NftablesBackend::parse_set_spec("ip#filter#set", ip_v6),
-            Some("ip#filter#set")
-        );
+        assert_eq!(NftablesBackend::parse_set_spec("ip#filter#set", ip_v4), Some("ip#filter#set"));
+        assert_eq!(NftablesBackend::parse_set_spec("ip#filter#set", ip_v6), Some("ip#filter#set"));
     }
 
     #[test]
@@ -881,10 +870,7 @@ mod tests {
             NftablesBackend::parse_set_spec("4 ip#filter#set", ip_v4),
             Some("ip#filter#set")
         );
-        assert_eq!(
-            NftablesBackend::parse_set_spec("4 ip#filter#set", ip_v6),
-            None
-        );
+        assert_eq!(NftablesBackend::parse_set_spec("4 ip#filter#set", ip_v6), None);
     }
 
     #[test]
@@ -893,10 +879,7 @@ mod tests {
         let ip_v6: IpAddr = "2001:db8::1".parse().unwrap();
 
         // "6 " prefix - only IPv6 passes
-        assert_eq!(
-            NftablesBackend::parse_set_spec("6 ip6#filter#set", ip_v4),
-            None
-        );
+        assert_eq!(NftablesBackend::parse_set_spec("6 ip6#filter#set", ip_v4), None);
         assert_eq!(
             NftablesBackend::parse_set_spec("6 ip6#filter#set", ip_v6),
             Some("ip6#filter#set")

@@ -259,15 +259,8 @@ impl TrustAnchor {
         digest: Vec<u8>,
     ) -> Result<Self> {
         // Create the anchor first
-        let anchor = Self {
-            domain,
-            class,
-            keytag,
-            algorithm,
-            digest_type,
-            digest,
-            rfc5011_status: None,
-        };
+        let anchor =
+            Self { domain, class, keytag, algorithm, digest_type, digest, rfc5011_status: None };
 
         // Validate all parameters before returning
         anchor.validate()?;
@@ -327,7 +320,7 @@ impl TrustAnchor {
         // Common algorithms: 1=RSAMD5, 3=DSA, 5=RSASHA1, 7=RSASHA1-NSEC3-SHA1,
         // 8=RSASHA256, 10=RSASHA512, 13=ECDSAP256SHA256, 14=ECDSAP384SHA384, 15=ED25519, 16=ED448
         const VALID_ALGORITHMS: &[u8] = &[1, 3, 5, 6, 7, 8, 10, 12, 13, 14, 15, 16];
-        
+
         if !VALID_ALGORITHMS.contains(&self.algorithm) {
             return Err(crate::error::DnsmasqError::Dnssec(
                 crate::error::DnssecError::TrustAnchorFailed {
@@ -456,9 +449,7 @@ impl TrustAnchorStore {
     /// ```
     pub fn new() -> Self {
         debug!("Creating new TrustAnchorStore");
-        Self {
-            anchors: BTreeMap::new(),
-        }
+        Self { anchors: BTreeMap::new() }
     }
 
     /// Loads trust anchors from a trust-anchors.conf file.
@@ -554,11 +545,7 @@ impl TrustAnchorStore {
             }
         }
 
-        info!(
-            "Successfully loaded {} trust anchors from {}",
-            loaded_count,
-            path.display()
-        );
+        info!("Successfully loaded {} trust anchors from {}", loaded_count, path.display());
         Ok(())
     }
 
@@ -575,7 +562,12 @@ impl TrustAnchorStore {
     /// # Returns
     ///
     /// Result containing parsed TrustAnchor or detailed error.
-    fn parse_trust_anchor_line(&self, line: &str, line_num: usize, file_path: &str) -> Result<TrustAnchor> {
+    fn parse_trust_anchor_line(
+        &self,
+        line: &str,
+        line_num: usize,
+        file_path: &str,
+    ) -> Result<TrustAnchor> {
         // Strip "trust-anchor=" prefix if present
         let line = line.strip_prefix("trust-anchor=").unwrap_or(line);
 
@@ -593,7 +585,7 @@ impl TrustAnchorStore {
         }
 
         let domain_str = parts[0];
-        
+
         // Determine if class is specified (check if second field is a class name)
         let (class, keytag_idx) = if parts.len() >= 6 {
             let maybe_class = parts[1].to_uppercase();
@@ -603,7 +595,7 @@ impl TrustAnchorStore {
                 "HS" | "HESIOD" => C_HESIOD,
                 _ => C_IN, // Not a class, assume default IN
             };
-            
+
             if ["IN", "CH", "CHAOS", "HS", "HESIOD"].contains(&maybe_class.as_str()) {
                 // Class was specified, keytag starts at index 2
                 (class, 2)
@@ -624,7 +616,7 @@ impl TrustAnchorStore {
                 reason: "missing keytag field".to_string(),
             })
         })?;
-        
+
         let algo_str: &&str = parts.get(keytag_idx + 1).ok_or_else(|| {
             crate::error::DnsmasqError::Config(crate::error::ConfigError::ParseError {
                 file_path: file_path.to_string(),
@@ -632,7 +624,7 @@ impl TrustAnchorStore {
                 reason: "missing algorithm field".to_string(),
             })
         })?;
-        
+
         let digest_type_str: &&str = parts.get(keytag_idx + 2).ok_or_else(|| {
             crate::error::DnsmasqError::Config(crate::error::ConfigError::ParseError {
                 file_path: file_path.to_string(),
@@ -640,7 +632,7 @@ impl TrustAnchorStore {
                 reason: "missing digest_type field".to_string(),
             })
         })?;
-        
+
         let digest_hex = parts.get(keytag_idx + 3).ok_or_else(|| {
             crate::error::DnsmasqError::Config(crate::error::ConfigError::ParseError {
                 file_path: file_path.to_string(),
@@ -782,10 +774,7 @@ impl TrustAnchorStore {
         // Try root zone "."
         if let Ok(root_domain) = DomainName::new(".") {
             if let Some(anchors) = self.anchors.get(&root_domain) {
-                debug!(
-                    "Found trust anchor for root zone (queried: {})",
-                    domain.as_str()
-                );
+                debug!("Found trust anchor for root zone (queried: {})", domain.as_str());
                 return Some(anchors.as_slice());
             }
         }
@@ -835,10 +824,7 @@ impl TrustAnchorStore {
         );
 
         // Add to appropriate zone in BTreeMap
-        self.anchors
-            .entry(domain)
-            .or_default()
-            .push(anchor);
+        self.anchors.entry(domain).or_default().push(anchor);
 
         Ok(())
     }
@@ -875,11 +861,7 @@ impl TrustAnchorStore {
             anchors.retain(|a| a.keytag != keytag);
 
             if anchors.len() < original_len {
-                info!(
-                    "Removed trust anchor: domain={}, keytag={}",
-                    domain.as_str(),
-                    keytag
-                );
+                info!("Removed trust anchor: domain={}, keytag={}", domain.as_str(), keytag);
 
                 // Remove domain entry if no anchors remain
                 if anchors.is_empty() {
@@ -890,21 +872,15 @@ impl TrustAnchorStore {
             }
         }
 
-        warn!(
-            "Trust anchor not found for removal: domain={}, keytag={}",
-            domain.as_str(),
-            keytag
-        );
+        warn!("Trust anchor not found for removal: domain={}, keytag={}", domain.as_str(), keytag);
 
-        Err(crate::error::DnsmasqError::Dnssec(
-            crate::error::DnssecError::TrustAnchorFailed {
-                reason: format!(
-                    "Trust anchor not found: domain={}, keytag={}",
-                    domain.as_str(),
-                    keytag
-                ),
-            },
-        ))
+        Err(crate::error::DnsmasqError::Dnssec(crate::error::DnssecError::TrustAnchorFailed {
+            reason: format!(
+                "Trust anchor not found: domain={}, keytag={}",
+                domain.as_str(),
+                keytag
+            ),
+        }))
     }
 
     /// Validates all trust anchors in the store.
@@ -962,9 +938,7 @@ impl TrustAnchorStore {
     /// }
     /// ```
     pub fn iter(&self) -> impl Iterator<Item = (&DomainName, &[TrustAnchor])> {
-        self.anchors
-            .iter()
-            .map(|(domain, anchors)| (domain, anchors.as_slice()))
+        self.anchors.iter().map(|(domain, anchors)| (domain, anchors.as_slice()))
     }
 
     /// Returns the total number of trust anchors across all zones.
@@ -1033,21 +1007,19 @@ mod tests {
     async fn test_trust_anchor_creation_valid() {
         let domain = DomainName::new(".").unwrap();
         let digest = vec![
-            0x49, 0xAA, 0xC1, 0x1D, 0x7B, 0x6F, 0x64, 0x46, 
-            0x70, 0x2E, 0x54, 0xA1, 0x60, 0x73, 0x71, 0x60,
-            0x7A, 0x1A, 0x41, 0x85, 0x52, 0x00, 0xFD, 0x2C,
-            0xE1, 0xCD, 0xDE, 0x32, 0xF2, 0x4E, 0x8F, 0xB5,
+            0x49, 0xAA, 0xC1, 0x1D, 0x7B, 0x6F, 0x64, 0x46, 0x70, 0x2E, 0x54, 0xA1, 0x60, 0x73,
+            0x71, 0x60, 0x7A, 0x1A, 0x41, 0x85, 0x52, 0x00, 0xFD, 0x2C, 0xE1, 0xCD, 0xDE, 0x32,
+            0xF2, 0x4E, 0x8F, 0xB5,
         ];
-        
+
         let anchor = TrustAnchor::new(
-            domain,
-            1,     // class IN
+            domain, 1,     // class IN
             20326, // keytag
             8,     // algorithm RSASHA256
             2,     // digest_type SHA256
             digest,
         );
-        
+
         assert!(anchor.is_ok());
         let anchor = anchor.unwrap();
         assert_eq!(anchor.keytag, 20326);
@@ -1060,16 +1032,12 @@ mod tests {
     async fn test_trust_anchor_invalid_algorithm() {
         let domain = DomainName::new(".").unwrap();
         let digest = vec![0u8; 32];
-        
+
         let anchor = TrustAnchor::new(
-            domain,
-            1,
-            20326,
-            99,  // Invalid algorithm
-            2,
-            digest,
+            domain, 1, 20326, 99, // Invalid algorithm
+            2, digest,
         );
-        
+
         assert!(anchor.is_err());
     }
 
@@ -1086,9 +1054,9 @@ mod tests {
         let mut store = TrustAnchorStore::new();
         let domain = DomainName::new("example.com").unwrap();
         let digest = vec![0u8; 32];
-        
+
         let anchor = TrustAnchor::new(domain.clone(), 1, 12345, 8, 2, digest).unwrap();
-        
+
         let result = store.add_anchor(anchor);
         assert!(result.is_ok());
         assert_eq!(store.len(), 1);
@@ -1100,13 +1068,13 @@ mod tests {
         let mut store = TrustAnchorStore::new();
         let domain = DomainName::new("example.com").unwrap();
         let digest = vec![0u8; 32];
-        
+
         let anchor = TrustAnchor::new(domain.clone(), 1, 12345, 8, 2, digest).unwrap();
         store.add_anchor(anchor).unwrap();
-        
+
         let query_name = DomainName::new("example.com").unwrap();
         let found = store.find_anchor(&query_name);
-        
+
         assert!(found.is_some());
         let anchors = found.unwrap();
         assert_eq!(anchors.len(), 1);
@@ -1117,10 +1085,10 @@ mod tests {
     #[test]
     fn test_find_anchor_none() {
         let store = TrustAnchorStore::new();
-        
+
         let query_name = DomainName::new("example.com").unwrap();
         let found = store.find_anchor(&query_name);
-        
+
         assert!(found.is_none());
     }
 
@@ -1130,11 +1098,11 @@ mod tests {
         let mut store = TrustAnchorStore::new();
         let domain = DomainName::new("example.com").unwrap();
         let digest = vec![0u8; 32];
-        
+
         let anchor = TrustAnchor::new(domain.clone(), 1, 12345, 8, 2, digest).unwrap();
         store.add_anchor(anchor).unwrap();
         assert_eq!(store.len(), 1);
-        
+
         let result = store.remove_anchor(&domain, 12345);
         assert!(result.is_ok());
         assert_eq!(store.len(), 0);
@@ -1146,11 +1114,11 @@ mod tests {
         let mut store = TrustAnchorStore::new();
         let domain = DomainName::new(".").unwrap();
         let digest = vec![0u8; 32];
-        
+
         let anchor = TrustAnchor::new(domain, 1, 20326, 8, 2, digest).unwrap();
         store.add_anchor(anchor).unwrap();
         assert_eq!(store.len(), 1);
-        
+
         store.clear();
         assert_eq!(store.len(), 0);
     }
@@ -1159,17 +1127,17 @@ mod tests {
     #[test]
     fn test_case_insensitive_matching() {
         let mut store = TrustAnchorStore::new();
-        
+
         // Add anchor with mixed case
         let domain = DomainName::new("Example.COM").unwrap();
         let digest = vec![0u8; 32];
         let anchor = TrustAnchor::new(domain, 1, 12345, 8, 2, digest).unwrap();
         store.add_anchor(anchor).unwrap();
-        
+
         // Query with different case
         let query_name = DomainName::new("example.com").unwrap();
         let found = store.find_anchor(&query_name);
-        
+
         assert!(found.is_some());
     }
 
@@ -1178,20 +1146,20 @@ mod tests {
     fn test_multiple_anchors_same_domain() {
         let mut store = TrustAnchorStore::new();
         let domain = DomainName::new(".").unwrap();
-        
+
         // Add old key
         let digest1 = vec![1u8; 32];
         let anchor1 = TrustAnchor::new(domain.clone(), 1, 19036, 8, 2, digest1).unwrap();
         store.add_anchor(anchor1).unwrap();
-        
+
         // Add new key
         let digest2 = vec![2u8; 32];
         let anchor2 = TrustAnchor::new(domain.clone(), 1, 20326, 8, 2, digest2).unwrap();
         store.add_anchor(anchor2).unwrap();
-        
+
         // Should have both anchors
         assert_eq!(store.len(), 2);
-        
+
         let query_name = DomainName::new(".").unwrap();
         let found = store.find_anchor(&query_name);
         assert!(found.is_some());

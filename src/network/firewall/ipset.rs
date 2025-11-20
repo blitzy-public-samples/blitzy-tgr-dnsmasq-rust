@@ -84,7 +84,7 @@
 //! ```rust,ignore
 //! // Rust: Explicit, testable kernel version detection
 //! let version = detect_kernel_version()?;
-//! let is_legacy = version.0 < 2 || (version.0 == 2 && version.1 < 6) || 
+//! let is_legacy = version.0 < 2 || (version.0 == 2 && version.1 < 6) ||
 //!                 (version.0 == 2 && version.1 == 6 && version.2 < 32);
 //! ```
 //!
@@ -349,7 +349,7 @@ struct NfGenMsg {
     /// Netlink protocol version: NFNETLINK_V0 (0)
     version: u8,
     /// Resource ID (typically 0 for ipset)
-    res_id: u16,  // Network byte order (__be16)
+    res_id: u16, // Network byte order (__be16)
 }
 
 /// Netlink attribute header structure (corresponds to struct nlattr)
@@ -376,8 +376,8 @@ struct IpSetReqAdtGet {
 struct IpSetReqAdt {
     op: u32,
     index: u16,
-    _padding: u16,  // Alignment padding
-    ip: u32,  // IPv4 address in host byte order
+    _padding: u16, // Alignment padding
+    ip: u32,       // IPv4 address in host byte order
 }
 
 // ============================================================================
@@ -414,10 +414,10 @@ fn detect_kernel_version() -> Result<(u32, u32, u32)> {
     })?;
 
     let release = utsname.release().to_string_lossy();
-    
+
     // Parse version string like "5.15.0-91-generic" → (5, 15, 0)
     let parts: Vec<&str> = release.split(&['.', '-'][..]).collect();
-    
+
     if parts.len() < 3 {
         return Err(FirewallError::ProtocolError(format!(
             "Invalid kernel release format: {}",
@@ -437,12 +437,7 @@ fn detect_kernel_version() -> Result<(u32, u32, u32)> {
         FirewallError::ProtocolError(format!("Failed to parse patch version: {}", e))
     })?;
 
-    debug!(
-        major = major,
-        minor = minor,
-        patch = patch,
-        "Detected kernel version"
-    );
+    debug!(major = major, minor = minor, patch = patch, "Detected kernel version");
 
     Ok((major, minor, patch))
 }
@@ -490,11 +485,7 @@ impl IpsetBackend {
     /// backend.initialize().await?;
     /// ```
     pub fn new() -> Self {
-        Self {
-            socket_fd: None,
-            is_legacy_kernel: false,
-            kernel_version: None,
-        }
+        Self { socket_fd: None, is_legacy_kernel: false, kernel_version: None }
     }
 
     /// Initialize ipset backend by detecting kernel version and creating control socket.
@@ -535,15 +526,11 @@ impl IpsetBackend {
             );
 
             // Create raw socket for legacy API
-            let fd = socket(
-                NixAddressFamily::Inet,
-                SockType::Raw,
-                SockFlag::empty(),
-                SockProtocol::Raw,
-            )
-            .map_err(|e| {
-                FirewallError::ProtocolError(format!("Failed to create raw socket: {}", e))
-            })?;
+            let fd =
+                socket(NixAddressFamily::Inet, SockType::Raw, SockFlag::empty(), SockProtocol::Raw)
+                    .map_err(|e| {
+                        FirewallError::ProtocolError(format!("Failed to create raw socket: {}", e))
+                    })?;
 
             self.socket_fd = Some(fd.as_raw_fd());
         } else {
@@ -564,7 +551,7 @@ impl IpsetBackend {
             })?;
 
             // Bind netlink socket
-            let addr = NetlinkAddr::new(0, 0);  // pid=0 (kernel assigns), groups=0
+            let addr = NetlinkAddr::new(0, 0); // pid=0 (kernel assigns), groups=0
             let raw_fd = fd.as_raw_fd();
             bind(raw_fd, &addr).map_err(|e| {
                 FirewallError::ProtocolError(format!("Failed to bind netlink socket: {}", e))
@@ -647,7 +634,7 @@ impl IpsetBackend {
         // Build netlink message in blocking task
         let set_name_owned = set_name.to_string();
         let operation = if remove { "remove" } else { "add" };
-        
+
         task::spawn_blocking(move || {
             // Allocate buffer
             let mut buffer = BytesMut::with_capacity(BUFF_SZ);
@@ -678,7 +665,7 @@ impl IpsetBackend {
             let nfg = NfGenMsg {
                 nfgen_family: af,
                 version: NFNETLINK_V0,
-                res_id: 0u16.to_be(),  // Network byte order
+                res_id: 0u16.to_be(), // Network byte order
             };
 
             buffer.put_u8(nfg.nfgen_family);
@@ -693,10 +680,7 @@ impl IpsetBackend {
             // Helper function to add netlink attribute
             let add_attr = |buf: &mut BytesMut, attr_type: u16, data: &[u8]| {
                 let payload_len = nl_align(mem::size_of::<NlAttr>()) + data.len();
-                let attr = NlAttr {
-                    nla_len: payload_len as u16,
-                    nla_type: attr_type,
-                };
+                let attr = NlAttr { nla_len: payload_len as u16, nla_type: attr_type };
 
                 buf.put_slice(&attr.nla_len.to_ne_bytes());
                 buf.put_slice(&attr.nla_type.to_ne_bytes());
@@ -720,17 +704,17 @@ impl IpsetBackend {
 
             // 4. Add IPSET_ATTR_SETNAME
             let mut setname_bytes = set_name_owned.as_bytes().to_vec();
-            setname_bytes.push(0);  // Null terminator
+            setname_bytes.push(0); // Null terminator
             add_attr(&mut buffer, IPSET_ATTR_SETNAME, &setname_bytes);
 
             // 5. Add nested IPSET_ATTR_DATA
             let nested_data_start = buffer.len();
-            buffer.put_u16(0);  // Placeholder for nla_len
+            buffer.put_u16(0); // Placeholder for nla_len
             buffer.put_u16(NLA_F_NESTED | IPSET_ATTR_DATA);
 
             // 6. Add nested IPSET_ATTR_IP
             let nested_ip_start = buffer.len();
-            buffer.put_u16(0);  // Placeholder for nla_len
+            buffer.put_u16(0); // Placeholder for nla_len
             buffer.put_u16(NLA_F_NESTED | IPSET_ATTR_IP);
 
             // 7. Add IPSET_ATTR_IPADDR_IPV4 or IPSET_ATTR_IPADDR_IPV6
@@ -744,7 +728,8 @@ impl IpsetBackend {
 
             // Fix nested IP attribute length
             let nested_ip_len = (buffer.len() - nested_ip_start) as u16;
-            buffer[nested_ip_start..nested_ip_start + 2].copy_from_slice(&nested_ip_len.to_ne_bytes());
+            buffer[nested_ip_start..nested_ip_start + 2]
+                .copy_from_slice(&nested_ip_len.to_ne_bytes());
 
             // Align buffer
             while !buffer.len().is_multiple_of(4) {
@@ -789,9 +774,7 @@ impl IpsetBackend {
             }
         })
         .await
-        .map_err(|e| {
-            FirewallError::ProtocolError(format!("Blocking task panicked: {}", e))
-        })?
+        .map_err(|e| FirewallError::ProtocolError(format!("Blocking task panicked: {}", e)))?
     }
 
     /// Add or remove IPv4 address to/from ipset using legacy setsockopt API (kernel < 2.6.32).
@@ -818,10 +801,7 @@ impl IpsetBackend {
 
         // Validate set name length
         if set_name.len() >= IPSET_MAXNAMELEN {
-            return Err(FirewallError::SetNotFound(format!(
-                "ipset name too long: {}",
-                set_name
-            )));
+            return Err(FirewallError::SetNotFound(format!("ipset name too long: {}", set_name)));
         }
 
         let set_name_owned = set_name.to_string();
@@ -845,7 +825,7 @@ impl IpsetBackend {
                 libc::getsockopt(
                     socket_fd,
                     libc::SOL_IP,
-                    83,  // IP_SET socket option
+                    83, // IP_SET socket option
                     &mut req_get as *mut _ as *mut libc::c_void,
                     &mut optlen,
                 )
@@ -871,18 +851,14 @@ impl IpsetBackend {
                 *ptr
             };
 
-            debug!(
-                set_name = set_name_owned,
-                set_index = set_index,
-                "Retrieved ipset index"
-            );
+            debug!(set_name = set_name_owned, set_index = set_index, "Retrieved ipset index");
 
             // Step 2: Add/delete IP using setsockopt
             let req_adt = IpSetReqAdt {
                 op: if remove { IP_SET_OP_DEL_IP } else { IP_SET_OP_ADD_IP },
                 index: set_index,
                 _padding: 0,
-                ip: u32::from(ipv4).to_be(),  // Network byte order, then to host order for legacy API
+                ip: u32::from(ipv4).to_be(), // Network byte order, then to host order for legacy API
             };
 
             let result = unsafe {
@@ -921,9 +897,7 @@ impl IpsetBackend {
             Ok(())
         })
         .await
-        .map_err(|e| {
-            FirewallError::ProtocolError(format!("Blocking task panicked: {}", e))
-        })?
+        .map_err(|e| FirewallError::ProtocolError(format!("Blocking task panicked: {}", e)))?
     }
 }
 
@@ -1097,7 +1071,7 @@ mod tests {
     async fn test_ipset_backend_initialize() {
         let mut backend = IpsetBackend::new();
         let result = backend.initialize().await;
-        
+
         // Initialize should succeed on Linux systems
         if cfg!(target_os = "linux") {
             assert!(result.is_ok());

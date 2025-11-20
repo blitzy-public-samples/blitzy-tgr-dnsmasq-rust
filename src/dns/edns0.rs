@@ -49,8 +49,8 @@
 //! ```
 
 use crate::dns::protocol::constants::{
-    EDNS0_OPTION_CLIENT_SUBNET, EDNS0_OPTION_MAC, EDNS0_OPTION_NOMCPEID,
-    EDNS0_OPTION_NOMDEVICEID, EDNS0_OPTION_UMBRELLA, IN6ADDRSZ, INADDRSZ, T_OPT, T_TKEY, T_TSIG,
+    EDNS0_OPTION_CLIENT_SUBNET, EDNS0_OPTION_MAC, EDNS0_OPTION_NOMCPEID, EDNS0_OPTION_NOMDEVICEID,
+    EDNS0_OPTION_UMBRELLA, IN6ADDRSZ, INADDRSZ, T_OPT, T_TKEY, T_TSIG,
 };
 use crate::error::{DnsError, Result};
 use crate::types::{IpAddr, MacAddress};
@@ -204,12 +204,8 @@ impl Edns0Option {
     /// Returns the wire-format serialized option data length
     pub fn data_len(&self) -> usize {
         match self {
-            Edns0Option::ClientSubnet { family,  .. } => {
-                let addr_len = if *family == 1 {
-                    INADDRSZ
-                } else {
-                    IN6ADDRSZ
-                };
+            Edns0Option::ClientSubnet { family, .. } => {
+                let addr_len = if *family == 1 { INADDRSZ } else { IN6ADDRSZ };
                 4 + addr_len // family(2) + source(1) + scope(1) + address
             }
             Edns0Option::DnssecOk => 0,
@@ -233,12 +229,7 @@ impl Edns0Option {
         let mut buf = Vec::with_capacity(self.data_len());
 
         match self {
-            Edns0Option::ClientSubnet {
-                family,
-                source_netmask,
-                scope_netmask,
-                address,
-            } => {
+            Edns0Option::ClientSubnet { family, source_netmask, scope_netmask, address } => {
                 buf.extend_from_slice(&family.to_be_bytes());
                 buf.push(*source_netmask);
                 buf.push(*scope_netmask);
@@ -265,10 +256,7 @@ impl Edns0Option {
                 }
             }
 
-            Edns0Option::ExtendedError {
-                info_code,
-                extra_text,
-            } => {
+            Edns0Option::ExtendedError { info_code, extra_text } => {
                 buf.extend_from_slice(&info_code.to_be_bytes());
                 buf.extend_from_slice(extra_text.as_bytes());
             }
@@ -324,23 +312,14 @@ impl Edns0Option {
     pub fn from_wire_format(code: u16, data: &[u8]) -> Result<Self> {
         match code {
             EDNS0_OPTION_CLIENT_SUBNET => Self::parse_client_subnet(data),
-            10 => Self::parse_cookie(data), // RFC 7873
+            10 => Self::parse_cookie(data),         // RFC 7873
             15 => Self::parse_extended_error(data), // RFC 8914
             12 => Ok(Edns0Option::Padding { length: data.len() }),
             EDNS0_OPTION_MAC => Self::parse_mac(data),
-            EDNS0_OPTION_NOMDEVICEID => Ok(Edns0Option::NomDeviceId {
-                device_id: data.to_vec(),
-            }),
-            EDNS0_OPTION_NOMCPEID => Ok(Edns0Option::NomCpeId {
-                cpe_id: data.to_vec(),
-            }),
-            EDNS0_OPTION_UMBRELLA => Ok(Edns0Option::Umbrella {
-                device_id: data.to_vec(),
-            }),
-            _ => Ok(Edns0Option::Unknown {
-                code,
-                data: data.to_vec(),
-            }),
+            EDNS0_OPTION_NOMDEVICEID => Ok(Edns0Option::NomDeviceId { device_id: data.to_vec() }),
+            EDNS0_OPTION_NOMCPEID => Ok(Edns0Option::NomCpeId { cpe_id: data.to_vec() }),
+            EDNS0_OPTION_UMBRELLA => Ok(Edns0Option::Umbrella { device_id: data.to_vec() }),
+            _ => Ok(Edns0Option::Unknown { code, data: data.to_vec() }),
         }
     }
 
@@ -363,7 +342,10 @@ impl Edns0Option {
                 // IPv4
                 if addr_data.len() > INADDRSZ {
                     return Err(DnsError::Edns0Failed {
-                        reason: format!("IPv4 client subnet address too long: {} bytes", addr_data.len()),
+                        reason: format!(
+                            "IPv4 client subnet address too long: {} bytes",
+                            addr_data.len()
+                        ),
                     }
                     .into());
                 }
@@ -375,7 +357,10 @@ impl Edns0Option {
                 // IPv6
                 if addr_data.len() > IN6ADDRSZ {
                     return Err(DnsError::Edns0Failed {
-                        reason: format!("IPv6 client subnet address too long: {} bytes", addr_data.len()),
+                        reason: format!(
+                            "IPv6 client subnet address too long: {} bytes",
+                            addr_data.len()
+                        ),
                     }
                     .into());
                 }
@@ -391,12 +376,7 @@ impl Edns0Option {
             }
         };
 
-        Ok(Edns0Option::ClientSubnet {
-            family,
-            source_netmask,
-            scope_netmask,
-            address,
-        })
+        Ok(Edns0Option::ClientSubnet { family, source_netmask, scope_netmask, address })
     }
 
     /// Parses DNS Cookie option (RFC 7873)
@@ -443,10 +423,7 @@ impl Edns0Option {
             String::new()
         };
 
-        Ok(Edns0Option::ExtendedError {
-            info_code,
-            extra_text,
-        })
+        Ok(Edns0Option::ExtendedError { info_code, extra_text })
     }
 
     /// Parses MAC address option
@@ -469,12 +446,7 @@ impl Edns0Option {
 impl std::fmt::Display for Edns0Option {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Edns0Option::ClientSubnet {
-                family,
-                source_netmask,
-                scope_netmask,
-                address,
-            } => {
+            Edns0Option::ClientSubnet { family, source_netmask, scope_netmask, address } => {
                 write!(
                     f,
                     "CLIENT-SUBNET: family={} source={} scope={} addr={}",
@@ -489,10 +461,7 @@ impl std::fmt::Display for Edns0Option {
                 }
                 Ok(())
             }
-            Edns0Option::ExtendedError {
-                info_code,
-                extra_text,
-            } => {
+            Edns0Option::ExtendedError { info_code, extra_text } => {
                 write!(f, "EDE: code={} text='{}'", info_code, extra_text)
             }
             Edns0Option::Padding { length } => write!(f, "PADDING: {} bytes", length),
@@ -731,24 +700,12 @@ impl OptRecord {
                 Err(e) => {
                     warn!("Failed to parse EDNS0 option {}: {}", opt_code, e);
                     // Store as unknown option for transparency
-                    options.push(Edns0Option::Unknown {
-                        code: opt_code,
-                        data: opt_data.to_vec(),
-                    });
+                    options.push(Edns0Option::Unknown { code: opt_code, data: opt_data.to_vec() });
                 }
             }
         }
 
-        Ok((
-            OptRecord {
-                udp_payload_size,
-                extended_rcode,
-                version,
-                flags,
-                options,
-            },
-            offset,
-        ))
+        Ok((OptRecord { udp_payload_size, extended_rcode, version, flags, options }, offset))
     }
 }
 
@@ -772,9 +729,7 @@ pub struct Edns0Handler {
 impl Edns0Handler {
     /// Creates a new EDNS0 handler
     pub fn new() -> Self {
-        Self {
-            check_source: false,
-        }
+        Self { check_source: false }
     }
 
     /// Finds an existing OPT pseudo-RR in the additional section
@@ -926,10 +881,7 @@ impl Edns0Handler {
         info_code: u16,
         extra_text: &str,
     ) -> Result<()> {
-        let option = Edns0Option::ExtendedError {
-            info_code,
-            extra_text: extra_text.to_string(),
-        };
+        let option = Edns0Option::ExtendedError { info_code, extra_text: extra_text.to_string() };
 
         debug!("Adding extended error: code={} text='{}'", info_code, extra_text);
         opt_record.add_option(option);
@@ -985,17 +937,12 @@ impl Edns0Handler {
                         ipv4.is_private() || ipv4.is_loopback() || ipv4.is_link_local()
                     }
                     std::net::IpAddr::V6(ipv6) => {
-                        ipv6.is_loopback()
-                            || ipv6.is_unicast_link_local()
-                            || ipv6.is_unique_local()
+                        ipv6.is_loopback() || ipv6.is_unicast_link_local() || ipv6.is_unique_local()
                     }
                 };
 
                 if !is_local {
-                    warn!(
-                        "Rejecting device ID option {} from non-local source {}",
-                        option, source
-                    );
+                    warn!("Rejecting device ID option {} from non-local source {}", option, source);
                 }
 
                 is_local
@@ -1036,11 +983,7 @@ pub struct Edns0Builder {
 impl Edns0Builder {
     /// Creates a new builder with default values
     pub fn new() -> Self {
-        Self {
-            udp_payload_size: DEFAULT_UDP_PAYLOAD,
-            do_bit: false,
-            options: Vec::new(),
-        }
+        Self { udp_payload_size: DEFAULT_UDP_PAYLOAD, do_bit: false, options: Vec::new() }
     }
 
     /// Sets the UDP payload size
@@ -1087,10 +1030,7 @@ impl Edns0Builder {
     /// * `info_code` - EDE info code
     /// * `extra_text` - Human-readable error text
     pub fn extended_error(mut self, info_code: u16, extra_text: impl Into<String>) -> Self {
-        self.options.push(Edns0Option::ExtendedError {
-            info_code,
-            extra_text: extra_text.into(),
-        });
+        self.options.push(Edns0Option::ExtendedError { info_code, extra_text: extra_text.into() });
         self
     }
 
@@ -1120,10 +1060,7 @@ impl Edns0Builder {
 
         // Validate UDP payload size
         if opt.udp_payload_size < 512 {
-            warn!(
-                "UDP payload size {} is below minimum 512, using default",
-                opt.udp_payload_size
-            );
+            warn!("UDP payload size {} is below minimum 512, using default", opt.udp_payload_size);
             opt.udp_payload_size = DEFAULT_UDP_PAYLOAD;
         }
 
@@ -1288,12 +1225,7 @@ mod tests {
             .expect("Failed to parse");
 
         match option {
-            Edns0Option::ClientSubnet {
-                family,
-                source_netmask,
-                scope_netmask,
-                address,
-            } => {
+            Edns0Option::ClientSubnet { family, source_netmask, scope_netmask, address } => {
                 assert_eq!(family, 1);
                 assert_eq!(source_netmask, 24);
                 assert_eq!(scope_netmask, 0);
@@ -1309,14 +1241,10 @@ mod tests {
         let mut data = vec![0x00, 0x06]; // info code = 6
         data.extend_from_slice(b"signature expired");
 
-        let option =
-            Edns0Option::from_wire_format(15, &data).expect("Failed to parse EDE");
+        let option = Edns0Option::from_wire_format(15, &data).expect("Failed to parse EDE");
 
         match option {
-            Edns0Option::ExtendedError {
-                info_code,
-                extra_text,
-            } => {
+            Edns0Option::ExtendedError { info_code, extra_text } => {
                 assert_eq!(info_code, 6);
                 assert_eq!(extra_text, "signature expired");
             }
@@ -1324,4 +1252,3 @@ mod tests {
         }
     }
 }
-

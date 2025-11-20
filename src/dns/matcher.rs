@@ -317,10 +317,7 @@ impl DomainMatcher {
     /// let matcher = DomainMatcher::new();
     /// ```
     pub fn new() -> Self {
-        Self {
-            patterns: BTreeMap::new(),
-            has_wildcards: false,
-        }
+        Self { patterns: BTreeMap::new(), has_wildcards: false }
     }
 
     /// Creates a new domain matcher with pre-allocated capacity.
@@ -385,12 +382,7 @@ impl DomainMatcher {
         let label_count = domain.labels().count();
         let key = self.normalize_pattern(&domain);
 
-        let entry = PatternEntry {
-            domain,
-            servers,
-            is_wildcard,
-            label_count,
-        };
+        let entry = PatternEntry { domain, servers, is_wildcard, label_count };
 
         trace!("Adding pattern: {} (wildcard: {}, labels: {})", key, is_wildcard, label_count);
         self.patterns.insert(key, entry);
@@ -486,7 +478,10 @@ impl DomainMatcher {
                 trace!("Checking wildcard pattern: {}", wildcard_pattern);
                 if let Some(entry) = self.patterns.get(&wildcard_pattern.to_lowercase()) {
                     if entry.is_wildcard {
-                        debug!("Found wildcard match: {} ({} labels)", wildcard_pattern, entry.label_count);
+                        debug!(
+                            "Found wildcard match: {} ({} labels)",
+                            wildcard_pattern, entry.label_count
+                        );
                         return Some(MatchResult {
                             domain: entry.domain.clone(),
                             servers: entry.servers.clone(),
@@ -634,11 +629,7 @@ mod tests {
 
     /// Helper to create a test server
     fn test_server(addr: &str, domain: Option<&str>) -> ServerDetails {
-        ServerDetails::new(
-            addr.parse().unwrap(),
-            domain,
-            0,
-        ).unwrap()
+        ServerDetails::new(addr.parse().unwrap(), domain, 0).unwrap()
     }
 
     #[test]
@@ -646,10 +637,7 @@ mod tests {
         let mut matcher = DomainMatcher::new();
         let server = test_server("8.8.8.8:53", Some("example.com"));
 
-        matcher.add_pattern(
-            DomainName::new("example.com").unwrap(),
-            vec![server],
-        ).unwrap();
+        matcher.add_pattern(DomainName::new("example.com").unwrap(), vec![server]).unwrap();
 
         let query = DomainName::new("example.com").unwrap();
         assert!(matcher.is_match(&query));
@@ -665,15 +653,12 @@ mod tests {
         let mut matcher = DomainMatcher::new();
         let server = test_server("8.8.8.8:53", Some("example.com"));
 
-        matcher.add_pattern(
-            DomainName::new("example.com").unwrap(),
-            vec![server],
-        ).unwrap();
+        matcher.add_pattern(DomainName::new("example.com").unwrap(), vec![server]).unwrap();
 
         // Subdomain should match parent domain
         let query = DomainName::new("www.example.com").unwrap();
         let result = matcher.find_longest_match(&query);
-        
+
         // Should find parent domain match
         assert!(result.is_some());
         let result = result.unwrap();
@@ -688,16 +673,13 @@ mod tests {
 
         // But the pattern key can contain wildcard
         let pattern = DomainName::new_pattern("*.example.com").unwrap();
-        matcher.add_pattern(
-            pattern,
-            vec![server],
-        ).unwrap();
+        matcher.add_pattern(pattern, vec![server]).unwrap();
 
         assert!(matcher.has_wildcard_patterns());
 
         let query = DomainName::new("www.example.com").unwrap();
         let result = matcher.find_longest_match(&query).unwrap();
-        
+
         assert_eq!(result.domain.as_str(), "*.example.com");
         assert!(result.is_wildcard_match);
     }
@@ -705,23 +687,17 @@ mod tests {
     #[test]
     fn test_longest_match_wins() {
         let mut matcher = DomainMatcher::new();
-        
+
         let server1 = test_server("8.8.8.8:53", Some("example.com"));
         let server2 = test_server("8.8.4.4:53", Some("mail.example.com"));
 
-        matcher.add_pattern(
-            DomainName::new("example.com").unwrap(),
-            vec![server1],
-        ).unwrap();
-        
-        matcher.add_pattern(
-            DomainName::new("mail.example.com").unwrap(),
-            vec![server2],
-        ).unwrap();
+        matcher.add_pattern(DomainName::new("example.com").unwrap(), vec![server1]).unwrap();
+
+        matcher.add_pattern(DomainName::new("mail.example.com").unwrap(), vec![server2]).unwrap();
 
         let query = DomainName::new("mail.example.com").unwrap();
         let result = matcher.find_longest_match(&query).unwrap();
-        
+
         // Should match more specific pattern
         assert_eq!(result.domain.as_str(), "mail.example.com");
         assert_eq!(result.match_length, 3);
@@ -732,10 +708,7 @@ mod tests {
         let mut matcher = DomainMatcher::new();
         let server = test_server("8.8.8.8:53", Some("Example.COM"));
 
-        matcher.add_pattern(
-            DomainName::new("Example.COM").unwrap(),
-            vec![server],
-        ).unwrap();
+        matcher.add_pattern(DomainName::new("Example.COM").unwrap(), vec![server]).unwrap();
 
         let query = DomainName::new("example.com").unwrap();
         assert!(matcher.is_match(&query));
@@ -749,10 +722,7 @@ mod tests {
         let mut matcher = DomainMatcher::new();
         let server = test_server("8.8.8.8:53", Some("example.com"));
 
-        matcher.add_pattern(
-            DomainName::new("example.com").unwrap(),
-            vec![server],
-        ).unwrap();
+        matcher.add_pattern(DomainName::new("example.com").unwrap(), vec![server]).unwrap();
 
         let query = DomainName::new("different.org").unwrap();
         assert!(!matcher.is_match(&query));
@@ -762,13 +732,15 @@ mod tests {
     #[test]
     fn test_find_all_matches() {
         let mut matcher = DomainMatcher::new();
-        
+
         let server1 = test_server("8.8.8.8:53", Some("example.com"));
         let server2 = test_server("8.8.4.4:53", Some("example.com"));
         let server3 = test_server("1.1.1.1:53", Some("mail.example.com"));
 
         matcher.add_pattern(DomainName::new("example.com").unwrap(), vec![server1]).unwrap();
-        matcher.add_pattern(DomainName::new_pattern("*.example.com").unwrap(), vec![server2]).unwrap();
+        matcher
+            .add_pattern(DomainName::new_pattern("*.example.com").unwrap(), vec![server2])
+            .unwrap();
         matcher.add_pattern(DomainName::new("mail.example.com").unwrap(), vec![server3]).unwrap();
 
         let query = DomainName::new("mail.example.com").unwrap();
@@ -776,7 +748,7 @@ mod tests {
 
         // Should find all three patterns
         assert_eq!(matches.len(), 3);
-        
+
         // First match should be most specific (exact match)
         assert_eq!(matches[0].domain.as_str(), "mail.example.com");
         assert!(!matches[0].is_wildcard_match);
@@ -787,10 +759,7 @@ mod tests {
         let mut matcher = DomainMatcher::new();
         let server = test_server("8.8.8.8:53", Some("example.com"));
 
-        matcher.add_pattern(
-            DomainName::new("example.com").unwrap(),
-            vec![server],
-        ).unwrap();
+        matcher.add_pattern(DomainName::new("example.com").unwrap(), vec![server]).unwrap();
 
         assert_eq!(matcher.pattern_count(), 1);
 

@@ -272,10 +272,7 @@ impl InterfaceManager {
     /// let manager = InterfaceManager::new(platform);
     /// ```
     pub fn new(platform: Arc<dyn NetworkPlatform>) -> Self {
-        Self {
-            platform,
-            cache: Arc::new(RwLock::new(Vec::new())),
-        }
+        Self { platform, cache: Arc::new(RwLock::new(Vec::new())) }
     }
 
     /// Enumerates all network interfaces with addresses
@@ -337,21 +334,14 @@ impl InterfaceManager {
     #[instrument(skip(self), fields(platform = "generic"))]
     pub async fn enumerate_interfaces(&self) -> Result<Vec<NetworkInterface>> {
         debug!("Enumerating network interfaces");
-        
-        // Delegate to platform-specific implementation
-        let interfaces = self
-            .platform
-            .enumerate_interfaces()
-            .await
-            .map_err(|e| {
-                warn!("Failed to enumerate interfaces: {}", e);
-                e
-            })?;
 
-        info!(
-            "Enumerated {} network interfaces",
-            interfaces.len()
-        );
+        // Delegate to platform-specific implementation
+        let interfaces = self.platform.enumerate_interfaces().await.map_err(|e| {
+            warn!("Failed to enumerate interfaces: {}", e);
+            e
+        })?;
+
+        info!("Enumerated {} network interfaces", interfaces.len());
 
         // Log each interface for debugging
         for iface in &interfaces {
@@ -414,7 +404,7 @@ impl InterfaceManager {
         debug!("Refreshing interface cache");
 
         let interfaces = self.enumerate_interfaces().await?;
-        
+
         let mut cache = self.cache.write().await;
         *cache = interfaces;
 
@@ -474,7 +464,7 @@ impl InterfaceManager {
     ///
     /// ```rust,ignore
     /// let mut events = manager.watch_interface_changes().await?;
-    /// 
+    ///
     /// while let Some(event) = events.next().await {
     ///     match event {
     ///         InterfaceEvent::AddressAdded { interface, address } => {
@@ -644,18 +634,11 @@ impl InterfaceManager {
     /// }
     /// ```
     #[instrument(skip(self, config), fields(interface = %interface.name))]
-    pub async fn validate_interface(
-        &self,
-        interface: &NetworkInterface,
-        config: &Config,
-    ) -> bool {
+    pub async fn validate_interface(&self, interface: &NetworkInterface, config: &Config) -> bool {
         // Check explicit inclusions first (--interface)
         if !config.network.interfaces.is_empty() {
-            let explicitly_included = config
-                .network
-                .interfaces
-                .iter()
-                .any(|name| name == &interface.name);
+            let explicitly_included =
+                config.network.interfaces.iter().any(|name| name == &interface.name);
 
             if !explicitly_included {
                 debug!(
@@ -667,11 +650,8 @@ impl InterfaceManager {
         }
 
         // Check explicit exclusions (--except-interface)
-        let explicitly_excluded = config
-            .network
-            .except_interfaces
-            .iter()
-            .any(|name| name == &interface.name);
+        let explicitly_excluded =
+            config.network.except_interfaces.iter().any(|name| name == &interface.name);
 
         if explicitly_excluded {
             debug!(
@@ -748,7 +728,7 @@ impl InterfaceManager {
     ///
     /// ```rust,ignore
     /// let (by_name, by_index) = manager.build_lookup_maps().await;
-    /// 
+    ///
     /// // Fast lookup in packet processing loop
     /// if let Some(iface) = by_index.get(&pktinfo.ipi6_ifindex) {
     ///     process_packet_on_interface(packet, iface);
@@ -757,21 +737,14 @@ impl InterfaceManager {
     #[instrument(skip(self))]
     pub async fn build_lookup_maps(
         &self,
-    ) -> (
-        HashMap<String, NetworkInterface>,
-        HashMap<u32, NetworkInterface>,
-    ) {
+    ) -> (HashMap<String, NetworkInterface>, HashMap<u32, NetworkInterface>) {
         let cache = self.cache.read().await;
-        
-        let by_name: HashMap<String, NetworkInterface> = cache
-            .iter()
-            .map(|iface| (iface.name.clone(), iface.clone()))
-            .collect();
 
-        let by_index: HashMap<u32, NetworkInterface> = cache
-            .iter()
-            .map(|iface| (iface.index, iface.clone()))
-            .collect();
+        let by_name: HashMap<String, NetworkInterface> =
+            cache.iter().map(|iface| (iface.name.clone(), iface.clone())).collect();
+
+        let by_index: HashMap<u32, NetworkInterface> =
+            cache.iter().map(|iface| (iface.index, iface.clone())).collect();
 
         debug!(
             "Built lookup maps: {} interfaces by name, {} by index",

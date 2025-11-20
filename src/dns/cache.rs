@@ -155,10 +155,7 @@ pub struct CacheKey {
 impl CacheKey {
     /// Creates a new cache key from domain name and record type.
     pub fn new(domain: DomainName, record_type: RecordType) -> Self {
-        Self {
-            domain,
-            record_type,
-        }
+        Self { domain, record_type }
     }
 }
 
@@ -259,23 +256,12 @@ impl CacheEntry {
         let rdata = match (record_type, ip_addr) {
             (RecordType::A, Some(IpAddr::V4(addr))) => RData::A(addr),
             (RecordType::AAAA, Some(IpAddr::V6(addr))) => RData::AAAA(addr),
-            _ => RData::Unknown {
-                rtype: u16::from(record_type),
-                rdata: bytes::Bytes::new(),
-            },
+            _ => RData::Unknown { rtype: u16::from(record_type), rdata: bytes::Bytes::new() },
         };
 
         let record = ResourceRecord::new(domain_name.clone(), record_type, 1, ttl, rdata);
 
-        Self {
-            domain_name,
-            record_type,
-            ip_addr,
-            record,
-            expiry,
-            flags,
-            insert_time: now,
-        }
+        Self { domain_name, record_type, ip_addr, record, expiry, flags, insert_time: now }
     }
 
     /// Returns the domain name for this entry.
@@ -437,11 +423,8 @@ impl DnsCache {
     /// let cache = DnsCache::new(&config);
     /// ```
     pub fn new(config: &DnsConfig) -> Self {
-        let capacity = if config.cache_size == 0 {
-            crate::constants::CACHESIZ
-        } else {
-            config.cache_size
-        };
+        let capacity =
+            if config.cache_size == 0 { crate::constants::CACHESIZ } else { config.cache_size };
         Self::with_capacity(capacity)
     }
 
@@ -466,10 +449,7 @@ impl DnsCache {
             entries: AHashMap::with_capacity(capacity),
             lru: LruCache::new(lru_capacity),
             capacity,
-            stats: CacheStats {
-                capacity,
-                ..Default::default()
-            },
+            stats: CacheStats { capacity, ..Default::default() },
         }
     }
 
@@ -495,7 +475,11 @@ impl DnsCache {
     /// }
     /// ```
     #[instrument(skip(self), fields(domain = %domain, record_type = ?record_type))]
-    pub fn find_by_name(&mut self, domain: &DomainName, record_type: RecordType) -> Option<Arc<CacheEntry>> {
+    pub fn find_by_name(
+        &mut self,
+        domain: &DomainName,
+        record_type: RecordType,
+    ) -> Option<Arc<CacheEntry>> {
         self.stats.lookups += 1;
 
         let key = CacheKey::new(domain.clone(), record_type);
@@ -560,7 +544,7 @@ impl DnsCache {
 
                     // Promote in LRU
                     self.lru.get(key);
-                    
+
                     trace!("Reverse lookup cache hit");
                     self.stats.hits += 1;
                     return Some(Arc::clone(entry));
@@ -664,7 +648,9 @@ impl DnsCache {
         let now = Timestamp::now();
 
         // Find first expired entry
-        let expired_key = self.entries.iter()
+        let expired_key = self
+            .entries
+            .iter()
             .find(|(_, entry)| entry.expiry() <= now)
             .map(|(key, _)| key.clone());
 
@@ -703,7 +689,8 @@ impl DnsCache {
         let mut removed = 0;
 
         // Collect expired keys
-        let expired_keys: Vec<CacheKey> = self.entries
+        let expired_keys: Vec<CacheKey> = self
+            .entries
             .iter()
             .filter(|(_, entry)| entry.expiry() <= now)
             .map(|(key, _)| key.clone())
@@ -809,13 +796,7 @@ impl DnsCache {
                 let flags = CacheFlags::HOSTS | CacheFlags::FORWARD;
 
                 // Hosts entries never expire (use max TTL)
-                let entry = CacheEntry::new(
-                    domain,
-                    record_type,
-                    Some(addr),
-                    u32::MAX,
-                    flags,
-                );
+                let entry = CacheEntry::new(domain, record_type, Some(addr), u32::MAX, flags);
 
                 self.insert(entry)?;
                 count += 1;
@@ -943,7 +924,7 @@ impl DnsCache {
     ///
     /// ```rust,ignore
     /// let stats = cache.get_stats();
-    /// println!("Hit rate: {:.2}%", 
+    /// println!("Hit rate: {:.2}%",
     ///     (stats.hits as f64 / stats.lookups as f64) * 100.0);
     /// ```
     pub fn get_stats(&self) -> CacheStats {
@@ -957,17 +938,14 @@ mod tests {
     use std::net::Ipv4Addr;
 
     fn create_test_config(cache_size: usize) -> DnsConfig {
-        DnsConfig {
-            cache_size,
-            ..Default::default()
-        }
+        DnsConfig { cache_size, ..Default::default() }
     }
 
     #[test]
     fn test_cache_creation() {
         let config = create_test_config(100);
         let cache = DnsCache::new(&config);
-        
+
         assert_eq!(cache.capacity(), 100);
         assert_eq!(cache.len(), 0);
         assert!(cache.is_empty());
@@ -981,13 +959,8 @@ mod tests {
         let domain = DomainName::new("example.com").unwrap();
         let addr = IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34));
 
-        let entry = CacheEntry::new(
-            domain.clone(),
-            RecordType::A,
-            Some(addr),
-            300,
-            CacheFlags::FORWARD,
-        );
+        let entry =
+            CacheEntry::new(domain.clone(), RecordType::A, Some(addr), 300, CacheFlags::FORWARD);
 
         cache.insert(entry).unwrap();
         assert_eq!(cache.len(), 1);
@@ -1029,13 +1002,8 @@ mod tests {
         for i in 1..=3 {
             let domain = DomainName::new(&format!("test{}.com", i)).unwrap();
             let addr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, i as u8));
-            let entry = CacheEntry::new(
-                domain,
-                RecordType::A,
-                Some(addr),
-                300,
-                CacheFlags::FORWARD,
-            );
+            let entry =
+                CacheEntry::new(domain, RecordType::A, Some(addr), 300, CacheFlags::FORWARD);
             cache.insert(entry).unwrap();
         }
 
@@ -1044,13 +1012,7 @@ mod tests {
         // Insert 4th entry, should evict LRU
         let domain = DomainName::new("test4.com").unwrap();
         let addr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 4));
-        let entry = CacheEntry::new(
-            domain,
-            RecordType::A,
-            Some(addr),
-            300,
-            CacheFlags::FORWARD,
-        );
+        let entry = CacheEntry::new(domain, RecordType::A, Some(addr), 300, CacheFlags::FORWARD);
         cache.insert(entry).unwrap();
 
         assert_eq!(cache.len(), 3);
@@ -1093,13 +1055,8 @@ mod tests {
 
         // Insert and hit
         let addr = IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34));
-        let entry = CacheEntry::new(
-            domain.clone(),
-            RecordType::A,
-            Some(addr),
-            300,
-            CacheFlags::FORWARD,
-        );
+        let entry =
+            CacheEntry::new(domain.clone(), RecordType::A, Some(addr), 300, CacheFlags::FORWARD);
         cache.insert(entry).unwrap();
 
         cache.find_by_name(&domain, RecordType::A);
@@ -1118,13 +1075,7 @@ mod tests {
 
         let domain = DomainName::new("example.com").unwrap();
         let addr = IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34));
-        let entry = CacheEntry::new(
-            domain,
-            RecordType::A,
-            Some(addr),
-            300,
-            CacheFlags::FORWARD,
-        );
+        let entry = CacheEntry::new(domain, RecordType::A, Some(addr), 300, CacheFlags::FORWARD);
 
         cache.insert(entry).unwrap();
         assert_eq!(cache.len(), 1);

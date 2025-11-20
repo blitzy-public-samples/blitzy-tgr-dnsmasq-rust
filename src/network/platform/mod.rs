@@ -400,7 +400,7 @@ pub use common::{InterfaceEvent, InterfaceFlags, NetworkInterface, NetworkPlatfo
 #[cfg(target_os = "linux")]
 pub async fn create_platform_handler() -> Result<Box<dyn NetworkPlatform>> {
     use linux::LinuxNetworkPlatform;
-    
+
     let platform = LinuxNetworkPlatform::new().await?;
     Ok(Box::new(platform) as Box<dyn NetworkPlatform>)
 }
@@ -424,7 +424,7 @@ pub async fn create_platform_handler() -> Result<Box<dyn NetworkPlatform>> {
 #[cfg(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))]
 pub async fn create_platform_handler() -> Result<Box<dyn NetworkPlatform>> {
     use bsd::BsdNetworkPlatform;
-    
+
     let platform = BsdNetworkPlatform::new();
     Ok(Box::new(platform) as Box<dyn NetworkPlatform>)
 }
@@ -451,7 +451,7 @@ pub async fn create_platform_handler() -> Result<Box<dyn NetworkPlatform>> {
 #[cfg(target_os = "macos")]
 pub async fn create_platform_handler() -> Result<Box<dyn NetworkPlatform>> {
     use macos::MacOSNetworkPlatform;
-    
+
     let platform = MacOSNetworkPlatform::new();
     Ok(Box::new(platform) as Box<dyn NetworkPlatform>)
 }
@@ -497,10 +497,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_platform_handler() {
         let result = create_platform_handler().await;
-        assert!(
-            result.is_ok(),
-            "Platform handler creation should succeed on supported platforms"
-        );
+        assert!(result.is_ok(), "Platform handler creation should succeed on supported platforms");
     }
 
     /// Test that NetworkInterface convenience methods work correctly
@@ -562,10 +559,7 @@ mod tests {
         use std::net::{IpAddr, Ipv4Addr};
 
         let addr: IpAddr = Ipv4Addr::new(192, 168, 1, 10).into();
-        let event = InterfaceEvent::AddressAdded {
-            interface: "eth0".to_string(),
-            address: addr,
-        };
+        let event = InterfaceEvent::AddressAdded { interface: "eth0".to_string(), address: addr };
 
         match event {
             InterfaceEvent::AddressAdded { interface, address } => {

@@ -265,11 +265,7 @@ impl InotifyWatcher {
 
         debug!("Inotify watcher initialized successfully");
 
-        Ok(Self {
-            watcher,
-            event_rx: rx,
-            watched_paths: HashMap::new(),
-        })
+        Ok(Self { watcher, event_rx: rx, watched_paths: HashMap::new() })
     }
 
     /// Watch a specific file for changes, following symlinks to actual target.
@@ -298,7 +294,7 @@ impl InotifyWatcher {
     ///     // Watch parent directory
     ///     if ((d = strrchr(path, '/'))) {
     ///         *d = 0;
-    ///         res->wd = inotify_add_watch(daemon->inotifyfd, path, 
+    ///         res->wd = inotify_add_watch(daemon->inotifyfd, path,
     ///                                      IN_CLOSE_WRITE | IN_MOVED_TO);
     ///         res->file = d+1;
     ///         *d = '/';
@@ -330,37 +326,26 @@ impl InotifyWatcher {
 
         // Follow symlinks to actual target file
         let target_path = self.follow_symlink(path).await?;
-        debug!(
-            "Resolved {} to {}",
-            path.display(),
-            target_path.display()
-        );
+        debug!("Resolved {} to {}", path.display(), target_path.display());
 
         // Watch parent directory to catch atomic file updates
-        let dir_path = target_path.parent().ok_or_else(|| {
-            PlatformError::InotifyError {
-                path: path.display().to_string(),
-                reason: "File has no parent directory".to_string(),
-            }
+        let dir_path = target_path.parent().ok_or_else(|| PlatformError::InotifyError {
+            path: path.display().to_string(),
+            reason: "File has no parent directory".to_string(),
         })?;
 
         // Add inotify watch for directory
-        self.watcher
-            .watch(dir_path, RecursiveMode::NonRecursive)
-            .map_err(|e| PlatformError::InotifyError {
+        self.watcher.watch(dir_path, RecursiveMode::NonRecursive).map_err(|e| {
+            PlatformError::InotifyError {
                 path: dir_path.display().to_string(),
                 reason: format!("Failed to add inotify watch: {}", e),
-            })?;
+            }
+        })?;
 
         // Track this path as resolv.conf type (default for file watches)
-        self.watched_paths
-            .insert(target_path.clone(), WatchType::ResolvConf);
+        self.watched_paths.insert(target_path.clone(), WatchType::ResolvConf);
 
-        info!(
-            "Successfully watching {} (directory: {})",
-            path.display(),
-            dir_path.display()
-        );
+        info!("Successfully watching {} (directory: {})", path.display(), dir_path.display());
 
         Ok(())
     }
@@ -420,11 +405,7 @@ impl InotifyWatcher {
         path: &Path,
         watch_type: WatchType,
     ) -> Result<(), PlatformError> {
-        info!(
-            "Adding watch for directory: {} (type: {:?})",
-            path.display(),
-            watch_type
-        );
+        info!("Adding watch for directory: {} (type: {:?})", path.display(), watch_type);
 
         // Verify directory exists
         if !path.exists() {
@@ -442,12 +423,12 @@ impl InotifyWatcher {
         }
 
         // Add inotify watch for directory (non-recursive)
-        self.watcher
-            .watch(path, RecursiveMode::NonRecursive)
-            .map_err(|e| PlatformError::InotifyError {
+        self.watcher.watch(path, RecursiveMode::NonRecursive).map_err(|e| {
+            PlatformError::InotifyError {
                 path: path.display().to_string(),
                 reason: format!("Failed to add inotify watch: {}", e),
-            })?;
+            }
+        })?;
 
         // Track directory with its watch type
         self.watched_paths.insert(path.to_path_buf(), watch_type);
@@ -534,10 +515,7 @@ impl InotifyWatcher {
             if depth >= MAX_SYMLINK_DEPTH {
                 return Err(PlatformError::InotifyError {
                     path: path.display().to_string(),
-                    reason: format!(
-                        "Too many symlinks (depth > {})",
-                        MAX_SYMLINK_DEPTH
-                    ),
+                    reason: format!("Too many symlinks (depth > {})", MAX_SYMLINK_DEPTH),
                 });
             }
 
@@ -741,18 +719,12 @@ impl InotifyWatcher {
             }
 
             // Determine if this is a modification or creation event
-            let should_reload = matches!(
-                event.kind,
-                EventKind::Modify(_) | EventKind::Create(_)
-            );
+            let should_reload = matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_));
 
             if should_reload {
                 // Check if path or its parent directory is watched
                 let watched = self.watched_paths.contains_key(&path)
-                    || path
-                        .parent()
-                        .map(|p| self.watched_paths.contains_key(p))
-                        .unwrap_or(false);
+                    || path.parent().map(|p| self.watched_paths.contains_key(p)).unwrap_or(false);
 
                 if watched {
                     info!("Configuration file modified: {}", path.display());
@@ -829,9 +801,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         let mut watcher = InotifyWatcher::new().unwrap();
-        let result = watcher
-            .watch_directory(temp_dir.path(), WatchType::DhcpHostsDir)
-            .await;
+        let result = watcher.watch_directory(temp_dir.path(), WatchType::DhcpHostsDir).await;
         assert!(result.is_ok());
     }
 
@@ -857,7 +827,7 @@ mod tests {
 
         let watcher = InotifyWatcher::new().unwrap();
         let resolved = watcher.follow_symlink(&non_existent).await;
-        
+
         // Should return the path as-is (might be created later)
         assert!(resolved.is_ok());
         assert_eq!(resolved.unwrap(), non_existent);
@@ -932,11 +902,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         // Modify file
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(&file_path)
-            .unwrap();
+        let mut file = fs::OpenOptions::new().write(true).truncate(true).open(&file_path).unwrap();
         file.write_all(b"modified content").unwrap();
         file.flush().unwrap();
         drop(file);

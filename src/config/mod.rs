@@ -433,9 +433,7 @@ where
             builder = builder.from_file(config_path).await?;
         } else if cli_args.conf_file.is_some() {
             // User explicitly specified a config file that doesn't exist - error
-            return Err(ConfigError::FileNotFound {
-                path: config_path.display().to_string(),
-            });
+            return Err(ConfigError::FileNotFound { path: config_path.display().to_string() });
         }
         // If default config path doesn't exist and wasn't explicitly specified, just skip it
     }
@@ -505,46 +503,27 @@ mod tests {
         let result = load_config(args.into_iter()).await;
 
         // Should succeed with default configuration
-        assert!(
-            result.is_ok(),
-            "load_config should succeed with --no-conf: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "load_config should succeed with --no-conf: {:?}", result.err());
 
         let config = result.unwrap();
 
         // Verify default values are applied
-        assert!(
-            config.network.port > 0,
-            "Default DNS port should be set"
-        );
-        assert!(
-            config.dns.cache_size > 0,
-            "Default cache size should be set"
-        );
+        assert!(config.network.port > 0, "Default DNS port should be set");
+        assert!(config.dns.cache_size > 0, "Default cache size should be set");
     }
 
     #[tokio::test]
     async fn test_load_config_with_nonexistent_file() {
         // Test that explicitly specifying a non-existent config file fails
-        let args = vec![
-            "dnsmasq",
-            "--conf-file=/tmp/nonexistent_dnsmasq_test.conf",
-        ];
+        let args = vec!["dnsmasq", "--conf-file=/tmp/nonexistent_dnsmasq_test.conf"];
 
         let result = load_config(args.into_iter()).await;
 
         // Should fail with FileNotFound error
-        assert!(
-            result.is_err(),
-            "load_config should fail with non-existent config file"
-        );
+        assert!(result.is_err(), "load_config should fail with non-existent config file");
 
         if let Err(ConfigError::FileNotFound { path }) = result {
-            assert!(
-                path.contains("nonexistent"),
-                "Error should reference the non-existent file"
-            );
+            assert!(path.contains("nonexistent"), "Error should reference the non-existent file");
         } else {
             panic!("Expected FileNotFound error");
         }
@@ -561,10 +540,7 @@ mod tests {
         let config = result.unwrap();
 
         // CLI-specified port should override default
-        assert_eq!(
-            config.network.port, 5353,
-            "CLI port argument should override default"
-        );
+        assert_eq!(config.network.port, 5353, "CLI port argument should override default");
     }
 
     #[test]
@@ -574,11 +550,11 @@ mod tests {
         // This ensures the public API surface is correctly exposed
 
         use crate::config::{
-            parse_args, parse_file, reload_config, validate_config, CliArgs, Config,
-            ConfigBuilder, ConfigParser, ConfigReloader, ConfigValidator, DhcpConfig, DnsConfig,
-            LoggingConfig, NetworkConfig, SecurityConfig, ValidationResult,
+            parse_args, parse_file, reload_config, validate_config, CliArgs, Config, ConfigBuilder,
+            ConfigParser, ConfigReloader, ConfigValidator, DhcpConfig, DnsConfig, LoggingConfig,
+            NetworkConfig, SecurityConfig, ValidationResult,
         };
-        
+
         #[cfg(feature = "tftp")]
         use crate::config::TftpConfig;
 

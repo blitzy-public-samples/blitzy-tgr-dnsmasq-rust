@@ -1393,7 +1393,10 @@ impl ConfigBuilder {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn from_file<P: AsRef<std::path::Path>>(mut self, path: P) -> Result<Self, crate::error::ConfigError> {
+    pub async fn from_file<P: AsRef<std::path::Path>>(
+        mut self,
+        path: P,
+    ) -> Result<Self, crate::error::ConfigError> {
         use crate::config::parser::parse_file;
         let file_config = parse_file(path).await?;
         // Replace the config with file-based config (will be overridden by from_args if called after)
@@ -1425,7 +1428,10 @@ impl ConfigBuilder {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn from_args(mut self, args: &crate::config::cli::CliArgs) -> Result<Self, crate::error::ConfigError> {
+    pub fn from_args(
+        mut self,
+        args: &crate::config::cli::CliArgs,
+    ) -> Result<Self, crate::error::ConfigError> {
         // Apply CLI overrides to config
         if let Some(port) = args.port {
             self.config.network.port = port;

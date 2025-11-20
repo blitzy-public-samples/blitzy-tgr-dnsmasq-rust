@@ -194,9 +194,7 @@ impl DomainName {
         }
 
         // Create the domain name with the pattern string
-        let name = DomainName {
-            name: pattern.trim_end_matches('.').to_string(),
-        };
+        let name = DomainName { name: pattern.trim_end_matches('.').to_string() };
 
         // Validate each label, allowing '*' as a complete label
         let labels: Vec<&str> = name.labels().collect();
@@ -768,10 +766,10 @@ mod tests {
         // Test various invalid characters (underscores are now allowed for service names)
         let result = DomainName::from_str("invalid name.com"); // space not allowed
         assert!(result.is_err());
-        
+
         let result = DomainName::from_str("invalid@name.com"); // @ not allowed
         assert!(result.is_err());
-        
+
         let result = DomainName::from_str("invalid!name.com"); // ! not allowed
         assert!(result.is_err());
     }
