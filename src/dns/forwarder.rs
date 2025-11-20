@@ -153,107 +153,7 @@ use tracing::{debug, error, info, instrument, span, trace, warn};
 // ============================================================================
 
 // SimpleDnsQuery removed: using DnsQuery from protocol module instead
-
-/// Extension trait for DnsMessage to add forwarder-specific methods.
-///
-/// Provides convenience methods for common operations during query forwarding
-/// that may not be part of the core protocol implementation.
-trait DnsMessageExt {
-    /// Check if the TC (truncated) bit is set in the message flags.
-    fn is_truncated(&self) -> bool;
-    
-    /// Get the minimum TTL from all answer records.
-    /// Returns None if there are no answers or TTL is 0.
-    fn get_min_ttl(&self) -> Option<u32>;
-    
-    /// Set the QR (query/response) bit.
-    fn set_qr(&mut self, is_response: bool);
-    
-    /// Set the AA (authoritative answer) bit.
-    fn set_aa(&mut self, is_authoritative: bool);
-    
-    /// Set the RCODE (response code).
-    fn set_rcode(&mut self, rcode: u8);
-    
-    /// Get the message ID.
-    fn id(&self) -> u16;
-    
-    /// Set the message ID.
-    fn set_id(&mut self, id: u16);
-    
-    /// Get reference to questions.
-    fn questions(&self) -> &[Question];
-    
-    /// Convert message to wire format bytes.
-    fn to_bytes(&self) -> Result<Vec<u8>>;
-}
-
-/// DNS question structure for internal use.
-#[derive(Debug, Clone)]
-pub struct Question {
-    /// Question name (domain)
-    pub qname: DomainName,
-    /// Question type
-    pub qtype: RecordType,
-    /// Question class
-    pub qclass: u16,
-}
-
-impl DnsMessageExt for ProtocolMessage {
-    fn is_truncated(&self) -> bool {
-        // Check TC bit in flags (bit 9 in flags field)
-        // This would access the actual message flags field
-        // For now, return false as placeholder - actual implementation
-        // would check self.header.flags & 0x0200 != 0
-        false
-    }
-    
-    fn get_min_ttl(&self) -> Option<u32> {
-        // Get minimum TTL from answer section
-        // Actual implementation would iterate through answers
-        // and find the minimum TTL value
-        Some(300) // Default 5-minute TTL for now
-    }
-    
-    fn set_qr(&mut self, _is_response: bool) {
-        // Set QR bit in flags
-        // Actual implementation would modify self.header.flags
-    }
-    
-    fn set_aa(&mut self, _is_authoritative: bool) {
-        // Set AA bit in flags
-        // Actual implementation would modify self.header.flags
-    }
-    
-    fn set_rcode(&mut self, _rcode: u8) {
-        // Set RCODE in flags
-        // Actual implementation would modify self.header.flags
-    }
-    
-    fn id(&self) -> u16 {
-        // Get message ID from header
-        // Actual implementation: self.header.id
-        0
-    }
-    
-    fn set_id(&mut self, _id: u16) {
-        // Set message ID in header
-        // Actual implementation: self.header.id = id
-    }
-    
-    fn questions(&self) -> &[Question] {
-        // Return reference to questions
-        // For now return empty slice - actual implementation
-        // would return &self.questions
-        &[]
-    }
-    
-    fn to_bytes(&self) -> Result<Vec<u8>> {
-        // Serialize message to wire format
-        // Actual implementation would use protocol serialization
-        Ok(vec![])
-    }
-}
+// DnsMessageExt trait removed: using native DnsMessage methods instead
 
 
 
@@ -755,7 +655,12 @@ impl DnsForwarder {
         received_at: Timestamp,
     ) -> Result<CacheEntry> {
         // Get minimum TTL from all answer records
-        let ttl = response.get_min_ttl().unwrap_or(300);
+        // If no answers or all have TTL 0, use default 5-minute TTL
+        let ttl = response.answers.iter()
+            .map(|rr| rr.ttl())
+            .filter(|&ttl| ttl > 0)
+            .min()
+            .unwrap_or(300);
         
         // Calculate expiration timestamp
         let expires_at = received_at + ttl as u64;
@@ -1065,7 +970,7 @@ impl DnsForwarder {
         };
 
         // Verify response has QR bit set (indicating it's a response, not a query)
-        if !response_message.flags.qr {
+        if !response_message.flags().qr() {
             warn!(query_id = query_id, "Upstream sent query instead of response");
             return Err(DnsError::ParseError("Invalid response: QR bit not set".to_string()));
         }
@@ -1074,14 +979,14 @@ impl DnsForwarder {
             query_id = query_id,
             original_id = outstanding.original_id,
             client = %outstanding.client_addr,
-            rcode = response_message.get_rcode(),
+            rcode = response_message.flags().rcode(),
             answer_count = response_message.answers.len(),
-            authoritative = response_message.flags.aa,
+            authoritative = response_message.flags().aa(),
             "Processing upstream response"
         );
 
         // Validate response code (RCODE)
-        let rcode = response_message.get_rcode();
+        let rcode = response_message.flags().rcode();
         if rcode != 0 {
             // Non-zero RCODE indicates DNS error (NXDOMAIN, SERVFAIL, etc.)
             warn!(
@@ -1093,7 +998,7 @@ impl DnsForwarder {
         }
 
         // Check for truncation - retry over TCP
-        if response_message.is_truncated() {
+        if response_message.flags().tc() {
             warn!(query_id = query_id, "Response truncated, retrying over TCP");
             
             if let Some(upstream_addr) = outstanding.upstream_server {
@@ -1115,8 +1020,13 @@ impl DnsForwarder {
         }
 
         // Cache the response (if cacheable)
-        if let Some(ttl) = response_message.get_min_ttl() {
-            if ttl > 0 {
+        // Compute minimum TTL from all answer records
+        let min_ttl = response_message.answers.iter()
+            .map(|rr| rr.ttl())
+            .filter(|&ttl| ttl > 0)
+            .min();
+        
+        if let Some(ttl) = min_ttl {
                 // Get current timestamp for TTL tracking
                 let received_at = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
