@@ -132,7 +132,7 @@ use crate::config::types::DnsConfig;
 use crate::constants::TIMEOUT;
 use crate::dns::cache::{CacheEntry, DnsCache};
 use crate::dns::edns0::Edns0Handler;
-use crate::dns::protocol::message::DnsMessage as ProtocolMessage;
+use crate::dns::protocol::message::{DnsMessage as ProtocolMessage, DnsQuery, DnsResponse};
 use crate::dns::upstream::UpstreamPool;
 use crate::error::{DnsError, Result};
 use crate::network::sockets::DnsSocket;
@@ -152,20 +152,7 @@ use tracing::{debug, error, info, instrument, span, trace, warn};
 // HELPER TYPES
 // ============================================================================
 
-/// Simple DNS query representation for internal use.
-///
-/// Lightweight structure for tracking query parameters throughout the forwarding
-/// lifecycle. Used instead of full DnsMessage to minimize memory usage in
-/// outstanding query tracking.
-#[derive(Debug, Clone)]
-pub struct SimpleDnsQuery {
-    /// Domain name being queried
-    pub name: DomainName,
-    /// Record type (A, AAAA, MX, etc.)
-    pub qtype: RecordType,
-    /// Query class (typically IN for Internet)
-    pub qclass: u16,
-}
+// SimpleDnsQuery removed: using DnsQuery from protocol module instead
 
 /// Extension trait for DnsMessage to add forwarder-specific methods.
 ///
@@ -444,7 +431,7 @@ pub struct OutstandingQuery {
     ///
     /// Contains domain name, record type, and query flags. Used for cache lookups,
     /// upstream forwarding, and DNSSEC validation.
-    pub query: SimpleDnsQuery,
+    pub query: DnsQuery,
 
     /// Selected upstream server for this query (if forwarded).
     ///
@@ -490,7 +477,7 @@ impl OutstandingQuery {
         query_id: u16,
         original_id: u16,
         client_addr: SocketAddr,
-        query: SimpleDnsQuery,
+        query: DnsQuery,
         query_bytes: Bytes,
         edns0: Option<Edns0Handler>,
     ) -> Self {
@@ -763,7 +750,7 @@ impl DnsForwarder {
     ///
     /// CacheEntry ready for insertion into DNS cache
     fn create_cache_entry(
-        query: &SimpleDnsQuery,
+        query: &DnsQuery,
         response: &ProtocolMessage,
         received_at: Timestamp,
     ) -> Result<CacheEntry> {
@@ -828,16 +815,9 @@ impl DnsForwarder {
         );
 
         // Extract first question (DNS queries typically have one question)
-        let questions = message.questions();
-        let question = questions.first()
+        // Extract DnsQuery from message (uses protocol module's standard extraction)
+        let query = DnsQuery::from_message(&message)
             .ok_or_else(|| DnsError::ParseError("Query has no questions".to_string()))?;
-
-        // Create DnsQuery representation
-        let query = SimpleDnsQuery {
-            name: question.qname.clone(),
-            qtype: question.qtype,
-            qclass: question.qclass,
-        };
 
         debug!(
             name = %query.name,
@@ -914,7 +894,7 @@ impl DnsForwarder {
     ))]
     pub async fn forward_query(
         &self,
-        query: SimpleDnsQuery,
+        query: DnsQuery,
         original_id: u16,
         client_addr: SocketAddr,
         query_bytes: Bytes,
@@ -928,8 +908,12 @@ impl DnsForwarder {
                 .addr()
         };
 
+        // Extract IP address from upstream server for logging and metrics
+        let upstream_ip: IpAddr = upstream_server.ip();
+        
         debug!(
             upstream = %upstream_server,
+            upstream_ip = %upstream_ip,
             "Selected upstream server"
         );
 
@@ -1080,11 +1064,19 @@ impl DnsForwarder {
                 .ok_or_else(|| DnsError::QueryNotFound(query_id))?
         };
 
+        // Verify response has QR bit set (indicating it's a response, not a query)
+        if !response_message.flags.qr {
+            warn!(query_id = query_id, "Upstream sent query instead of response");
+            return Err(DnsError::ParseError("Invalid response: QR bit not set".to_string()));
+        }
+
         debug!(
             query_id = query_id,
             original_id = outstanding.original_id,
             client = %outstanding.client_addr,
             rcode = response_message.get_rcode(),
+            answer_count = response_message.answers.len(),
+            authoritative = response_message.flags.aa,
             "Processing upstream response"
         );
 
@@ -1200,7 +1192,7 @@ impl DnsForwarder {
     ))]
     pub async fn handle_tcp_fallback(
         &self,
-        query: &SimpleDnsQuery,
+        query: &DnsQuery,
         original_id: u16,
         client_addr: SocketAddr,
         query_bytes: Bytes,
@@ -1290,6 +1282,8 @@ impl DnsForwarder {
     /// preserving the question section from the original query and adding
     /// answer records from the cache entry.
     ///
+    /// Uses DnsResponse from protocol module for type-safe response construction.
+    ///
     /// # Arguments
     ///
     /// * `query_message` - Original client query message
@@ -1303,28 +1297,27 @@ impl DnsForwarder {
         query_message: &ProtocolMessage,
         cache_entry: CacheEntry,
     ) -> Result<ProtocolMessage> {
-        let mut response = query_message.clone();
+        // Use DnsResponse wrapper for type-safe response construction
+        let mut response = DnsResponse::from_query(query_message);
         
-        // Set response flags using flag manipulation methods
-        response.set_qr(true); // Query/Response bit = Response
-        response.set_aa(false); // Not authoritative (from cache)
-        response.set_rcode(0); // NOERROR
+        // Set response code to NOERROR (successful response from cache)
+        response.set_rcode(0);
         
-        // Verify query has questions (use questions() accessor)
-        if response.questions().is_empty() {
-            return Err(DnsError::ParseError("Query has no questions".to_string()));
-        }
+        // Set authoritative flag to false (cached response, not authoritative)
+        response.set_authoritative(false);
         
-        // Add answer from cache
+        // Add answer records from cache entry
         // In production, would use cache_entry.to_resource_records()
-        // and response.add_answers() to populate answer section
-        // For now, return response with proper headers set
+        // to extract ResourceRecord objects and add them via add_answer()
+        // For now, response has proper headers and structure
         //
-        // The answers() method on response can be used to verify
-        // answer section is populated correctly:
-        // trace!(answer_count = response.answers().len(), "Added cached answers");
+        // Example of adding answers when ResourceRecord conversion is available:
+        // for record in cache_entry.to_resource_records() {
+        //     response.add_answer(record);
+        // }
         
-        Ok(response)
+        // Convert DnsResponse to underlying DnsMessage for transmission
+        Ok(response.to_message())
     }
 
     /// Handle query timeout by marking server failed and notifying client.
@@ -1407,8 +1400,8 @@ mod tests {
 
     #[test]
     fn test_outstanding_query_creation() {
-        // Test basic query creation without full protocol types
-        let query = SimpleDnsQuery {
+        // Test basic query creation with protocol DnsQuery type
+        let query = DnsQuery {
             name: DomainName::default(),
             qtype: RecordType::A,
             qclass: 1,
@@ -1471,7 +1464,7 @@ mod tests {
     
     #[test]
     fn test_outstanding_query_state_transitions() {
-        let query = SimpleDnsQuery {
+        let query = DnsQuery {
             name: DomainName::default(),
             qtype: RecordType::A,
             qclass: 1,
