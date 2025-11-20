@@ -80,7 +80,7 @@ pub mod arp;
 pub mod conntrack;
 
 // Re-export commonly used types (but not functions that have wrapper implementations below)
-pub use interfaces::NetworkInterface;
+pub use interfaces::{InterfaceManager, NetworkInterface};
 pub use sockets::{DhcpSocket, DnsSocket};
 
 /// Create a DNS socket bound to the specified address
@@ -154,7 +154,19 @@ pub async fn create_dhcp_socket(addr: &str) -> Result<UdpSocket> {
 /// # }
 /// ```
 pub async fn enumerate_interfaces() -> Result<Vec<NetworkInterface>> {
-    interfaces::enumerate_interfaces().await
+    use std::sync::Arc;
+    
+    // Create platform-specific handler (returns Box<dyn NetworkPlatform>)
+    let platform = platform::create_platform_handler().await?;
+    
+    // Convert Box to Arc for InterfaceManager
+    let platform_arc: Arc<dyn platform::NetworkPlatform> = Arc::from(platform);
+    
+    // Create interface manager
+    let manager = interfaces::InterfaceManager::new(platform_arc);
+    
+    // Enumerate interfaces
+    manager.enumerate_interfaces().await
 }
 
 #[cfg(test)]

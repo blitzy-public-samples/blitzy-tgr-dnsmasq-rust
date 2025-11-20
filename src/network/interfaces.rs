@@ -169,12 +169,11 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tokio_stream::{Stream, StreamExt};
+use tokio_stream::Stream;
 use tracing::{debug, info, instrument, warn};
 
 use crate::config::types::Config;
-use crate::error::{NetworkError, Result};
-use crate::types::IpAddr;
+use crate::error::Result;
 
 // Re-export platform types that are already defined in platform/common.rs
 // This avoids duplication while providing a convenient import path

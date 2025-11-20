@@ -108,33 +108,33 @@
 //! ```
 
 // Feature gate for Linux only - matches C #ifdef HAVE_INOTIFY
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "inotify"))]
 use anyhow::Result;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "inotify"))]
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "inotify"))]
 use std::collections::HashMap;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "inotify"))]
 use std::path::{Path, PathBuf};
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "inotify"))]
 use tokio::sync::mpsc;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "inotify"))]
 use tracing::{debug, error, info, instrument, warn};
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "inotify"))]
 use crate::error::PlatformError;
 
 /// Maximum symlink depth to follow before giving up (matches C MAXSYMLINKS).
 ///
 /// This prevents infinite loops from circular symlinks and matches POSIX.1-2008
 /// requirements. Typically set to 20 on Linux systems.
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "inotify"))]
 const MAX_SYMLINK_DEPTH: u32 = 20;
 
 /// Type of watch being performed for event dispatch routing.
 ///
 /// Maps to C's resolvc/dyndir distinction for determining reload action.
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "inotify"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WatchType {
     /// Upstream DNS resolver configuration file (e.g., /etc/resolv.conf).
@@ -181,7 +181,7 @@ pub enum WatchType {
 /// The watcher itself is not Send/Sync because it contains the underlying
 /// notify watcher which manages OS resources. However, the event receiving
 /// end of the mpsc channel is Send and can be moved to a tokio task.
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "inotify"))]
 pub struct InotifyWatcher {
     /// The underlying notify watcher providing inotify backend.
     ///
@@ -204,7 +204,7 @@ pub struct InotifyWatcher {
     watched_paths: HashMap<PathBuf, WatchType>,
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "inotify"))]
 impl InotifyWatcher {
     /// Create a new inotify watcher with async event channel.
     ///
