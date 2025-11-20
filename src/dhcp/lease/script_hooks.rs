@@ -192,8 +192,7 @@ use tokio::time::timeout as tokio_timeout;
 use tracing::{debug, error, info, warn};
 
 // Optional Lua integration for reduced script overhead
-#[cfg(feature = "lua-scripts")]
-use mlua::{Lua, Table};
+// (Lua types imported locally within functions that use them)
 
 /// Default script execution timeout in seconds
 const DEFAULT_SCRIPT_TIMEOUT_SECS: u64 = 60;
@@ -772,7 +771,7 @@ async fn execute_lua_script(
 
     // Invoke Lua function: lease_event(action, identifier, ip, hostname, env_table)
     lease_fn
-        .call((action_str, identifier, ip_str, hostname_str, env_table))
+        .call::<()>((action_str, identifier, ip_str, hostname_str, env_table))
         .map_err(|e| {
             error!(
                 script = %script_path.display(),
