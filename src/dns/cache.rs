@@ -212,12 +212,14 @@ pub struct CacheEntry {
     /// IP address for A/AAAA records, None for other types
     ip_addr: Option<IpAddr>,
     /// Complete DNS resource record
+    #[allow(dead_code)]
     record: ResourceRecord,
     /// Time when this entry expires (TTL enforcement)
     expiry: Timestamp,
     /// Cache source and type flags
     flags: CacheFlags,
     /// Time when entry was inserted (for LRU)
+    #[allow(dead_code)]
     insert_time: Timestamp,
 }
 
