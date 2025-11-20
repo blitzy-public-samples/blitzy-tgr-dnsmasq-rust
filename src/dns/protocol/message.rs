@@ -351,7 +351,7 @@ impl Question {
     pub fn from_bytes(input: &[u8], packet: &[u8], offset: usize) -> Result<(Self, usize)> {
         // Decompress domain name - returns (absolute_offset_after_name, domain_name_string)
         let (name_end_offset, name_string) = decompress_name(packet, offset)
-            .map_err(|e| DnsmasqError::Dns(e))?;
+            .map_err(DnsmasqError::Dns)?;
         
         // Calculate bytes consumed by the name (relative to input)
         let name_bytes_consumed = name_end_offset - offset;
@@ -380,7 +380,7 @@ impl Question {
     pub fn to_bytes(&self, buf: &mut BytesMut, compression: &mut CompressionMap) -> Result<()> {
         // Compress and write QNAME
         compress_name(self.qname.as_str(), buf, Some(compression))
-            .map_err(|e| DnsmasqError::Dns(e))?;
+            .map_err(DnsmasqError::Dns)?;
 
         // Write QTYPE and QCLASS
         let qtype_val: u16 = self.qtype.into();
@@ -488,9 +488,9 @@ impl DnsMessage {
 
             let input_before = &packet[offset..];
             let (remaining, rr) = ResourceRecord::from_wire(input_before, packet)
-                .map_err(|e| DnsmasqError::Dns(DnsError::ParseFailed {
+                .map_err(|_| DnsmasqError::Dns(DnsError::ParseFailed {
                     server: "local".to_string(),
-                    reason: format!("Failed to parse authority RR: {:?}", e),
+                    reason: "Failed to parse authority RR".to_string(),
                 }))?;
             let consumed = input_before.len() - remaining.len();
             authority.push(rr);
@@ -509,9 +509,9 @@ impl DnsMessage {
 
             let input_before = &packet[offset..];
             let (remaining, rr) = ResourceRecord::from_wire(input_before, packet)
-                .map_err(|e| DnsmasqError::Dns(DnsError::ParseFailed {
+                .map_err(|_| DnsmasqError::Dns(DnsError::ParseFailed {
                     server: "local".to_string(),
-                    reason: format!("Failed to parse additional RR: {:?}", e),
+                    reason: "Failed to parse additional RR".to_string(),
                 }))?;
             let consumed = input_before.len() - remaining.len();
             additional.push(rr);
@@ -538,7 +538,7 @@ impl DnsMessage {
     ///
     /// Returns packet bytes or DnsError::SerializeFailed.
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
-        let mut buf = BytesMut::with_capacity(PACKETSZ as usize);
+        let mut buf = BytesMut::with_capacity(PACKETSZ);
         let mut compression = CompressionMap::new();
 
         // Update header counts
@@ -590,7 +590,7 @@ impl DnsMessage {
     ) -> Result<()> {
         // Serialize and write the name with compression
         compress_name(rr.name().as_str(), buf, Some(compression))
-            .map_err(|e| DnsmasqError::Dns(e))?;
+            .map_err(DnsmasqError::Dns)?;
 
         // Write TYPE (2 bytes)
         let rtype_val: u16 = u16::from(rr.rtype());
