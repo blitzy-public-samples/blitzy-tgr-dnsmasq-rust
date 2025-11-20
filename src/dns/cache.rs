@@ -122,14 +122,13 @@ use crate::types::{CacheFlags, RecordType, Timestamp};
 use ahash::AHashMap;
 use lru::LruCache;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::net::IpAddr;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::sync::RwLock;
 use tracing::{debug, info, instrument, trace, warn};
 
 /// Cache key combining domain name and record type for HashMap lookups.
@@ -204,7 +203,7 @@ impl CacheKey {
 ///     // Remove from cache
 /// }
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct CacheEntry {
     /// Domain name this entry refers to
     domain_name: DomainName,
@@ -259,7 +258,7 @@ impl CacheEntry {
             (RecordType::A, Some(IpAddr::V4(addr))) => RData::A(addr),
             (RecordType::AAAA, Some(IpAddr::V6(addr))) => RData::AAAA(addr),
             _ => RData::Unknown {
-                rtype: record_type as u16,
+                rtype: u16::from(record_type),
                 rdata: bytes::Bytes::new(),
             },
         };
@@ -294,8 +293,9 @@ impl CacheEntry {
 
     /// Returns the TTL in seconds remaining until expiry.
     pub fn ttl(&self) -> u32 {
-        let remaining = self.expiry.duration_since(Timestamp::now());
-        remaining.as_secs() as u32
+        let now = Timestamp::now();
+        let remaining = self.expiry.duration_since(&now);
+        remaining.unwrap_or(Duration::ZERO).as_secs() as u32
     }
 
     /// Returns the absolute expiry time.
@@ -435,7 +435,11 @@ impl DnsCache {
     /// let cache = DnsCache::new(&config);
     /// ```
     pub fn new(config: &DnsConfig) -> Self {
-        let capacity = config.cache_size.unwrap_or(crate::constants::CACHESIZ);
+        let capacity = if config.cache_size == 0 {
+            crate::constants::CACHESIZ
+        } else {
+            config.cache_size
+        };
         Self::with_capacity(capacity)
     }
 
@@ -787,7 +791,7 @@ impl DnsCache {
 
             // Add entry for each hostname
             for hostname in hostnames {
-                let domain = match DomainName::from_str(hostname) {
+                let domain = match DomainName::new(hostname) {
                     Ok(d) => d,
                     Err(_) => {
                         debug!(hostname, "Invalid hostname in hosts file");
@@ -948,11 +952,11 @@ impl DnsCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::net::Ipv4Addr;
 
     fn create_test_config(cache_size: usize) -> DnsConfig {
         DnsConfig {
-            cache_size: Some(cache_size),
+            cache_size,
             ..Default::default()
         }
     }
@@ -972,7 +976,7 @@ mod tests {
         let config = create_test_config(10);
         let mut cache = DnsCache::new(&config);
 
-        let domain = DomainName::from_str("example.com").unwrap();
+        let domain = DomainName::new("example.com").unwrap();
         let addr = IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34));
 
         let entry = CacheEntry::new(
@@ -996,7 +1000,7 @@ mod tests {
         let config = create_test_config(10);
         let mut cache = DnsCache::new(&config);
 
-        let domain = DomainName::from_str("example.com").unwrap();
+        let domain = DomainName::new("example.com").unwrap();
         let addr = IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34));
 
         let entry = CacheEntry::new(
@@ -1021,7 +1025,7 @@ mod tests {
 
         // Insert 3 entries
         for i in 1..=3 {
-            let domain = DomainName::from_str(&format!("test{}.com", i)).unwrap();
+            let domain = DomainName::new(&format!("test{}.com", i)).unwrap();
             let addr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, i as u8));
             let entry = CacheEntry::new(
                 domain,
@@ -1036,7 +1040,7 @@ mod tests {
         assert_eq!(cache.len(), 3);
 
         // Insert 4th entry, should evict LRU
-        let domain = DomainName::from_str("test4.com").unwrap();
+        let domain = DomainName::new("test4.com").unwrap();
         let addr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 4));
         let entry = CacheEntry::new(
             domain,
@@ -1056,7 +1060,7 @@ mod tests {
         let config = create_test_config(10);
         let mut cache = DnsCache::new(&config);
 
-        let hostname = DomainName::from_str("client.lan").unwrap();
+        let hostname = DomainName::new("client.lan").unwrap();
         let addr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100));
 
         cache.add_dhcp_entry(hostname.clone(), addr, 3600).unwrap();
@@ -1075,7 +1079,7 @@ mod tests {
         let config = create_test_config(10);
         let mut cache = DnsCache::new(&config);
 
-        let domain = DomainName::from_str("example.com").unwrap();
+        let domain = DomainName::new("example.com").unwrap();
 
         // Miss
         cache.find_by_name(&domain, RecordType::A);
@@ -1110,7 +1114,7 @@ mod tests {
         let config = create_test_config(10);
         let mut cache = DnsCache::new(&config);
 
-        let domain = DomainName::from_str("example.com").unwrap();
+        let domain = DomainName::new("example.com").unwrap();
         let addr = IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34));
         let entry = CacheEntry::new(
             domain,

@@ -1176,6 +1176,16 @@ impl Timestamp {
     }
 }
 
+impl std::ops::Add<Duration> for Timestamp {
+    type Output = Self;
+
+    fn add(self, duration: Duration) -> Self::Output {
+        Self {
+            instant: self.instant + duration,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

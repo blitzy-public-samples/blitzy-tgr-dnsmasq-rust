@@ -57,6 +57,10 @@ bitflags = { version = "2.6", features = ["serde"] }
 hex = "0.4"
 regex = "1.11"
 
+# Cache implementation - fast hashing and LRU eviction
+ahash = "0.8"
+lru = "0.12"
+
 # Command-line interface - replaces getopt_long()
 clap = { version = "4.5", features = ["derive", "env", "wrap_help"] }
 clap_complete = "4.5"
