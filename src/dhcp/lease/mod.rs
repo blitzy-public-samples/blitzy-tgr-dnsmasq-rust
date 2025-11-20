@@ -51,8 +51,9 @@
 
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv6Addr};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
+use tokio::sync::RwLock;
 
 use async_trait::async_trait;
 use bitflags::bitflags;
@@ -144,37 +145,37 @@ impl LeaseAction {
 pub struct Lease {
     /// IP address (IPv4 or IPv6)
     pub ip: IpAddr,
-    
+
     /// Hardware (MAC) address for DHCPv4, optional for DHCPv6
     pub mac: Option<MacAddress>,
-    
+
     /// Client-supplied hostname, sanitized for DNS compliance
     pub hostname: Option<String>,
-    
+
     /// Client identifier (option 61 in DHCPv4, DUID in DHCPv6)
     pub client_id: Option<Vec<u8>>,
-    
+
     /// Lease expiration time (absolute SystemTime)
     pub expires: SystemTime,
-    
+
     /// DHCPv6 Identity Association Identifier (IAID)
     pub iaid: Option<u32>,
-    
+
     /// Lease state flags
     pub flags: LeaseFlags,
-    
+
     /// Network interface where lease was allocated
     pub interface: String,
-    
+
     /// Fully qualified domain name (if domain configured)
     pub fqdn: Option<String>,
-    
+
     /// Vendor class identifier (option 60 in DHCPv4)
     pub vendorclass: Option<Vec<u8>>,
-    
+
     /// Relay agent information (option 82 in DHCPv4)
     pub agent_id: Option<Vec<u8>>,
-    
+
     /// DHCPv6 SLAAC-generated addresses for this client
     pub slaac_addresses: Option<Vec<Ipv6Addr>>,
 }
@@ -217,9 +218,9 @@ impl Lease {
     ) -> Self {
         // Sanitize hostname if present
         let hostname = hostname.map(|h| strip_hostname(h.as_bytes(), 63));
-        
+
         let expires = SystemTime::now() + duration;
-        
+
         Self {
             ip,
             mac,
@@ -235,7 +236,7 @@ impl Lease {
             slaac_addresses: None,
         }
     }
-    
+
     /// Checks if the lease has expired.
     ///
     /// # Returns
@@ -252,7 +253,7 @@ impl Lease {
     pub fn is_expired(&self) -> bool {
         SystemTime::now() > self.expires
     }
-    
+
     /// Returns remaining lease duration.
     ///
     /// # Returns
@@ -261,7 +262,7 @@ impl Lease {
     pub fn remaining_duration(&self) -> Option<Duration> {
         self.expires.duration_since(SystemTime::now()).ok()
     }
-    
+
     /// Sets the fully qualified domain name.
     ///
     /// # Arguments
@@ -291,7 +292,7 @@ pub trait LeaseRepository: Send + Sync {
     ///
     /// Some(reference to Lease) if found, None otherwise
     async fn find_by_ip(&self, ip: &IpAddr) -> Option<Lease>;
-    
+
     /// Finds a lease by MAC address.
     ///
     /// # Arguments
@@ -302,7 +303,7 @@ pub trait LeaseRepository: Send + Sync {
     ///
     /// Some(reference to Lease) if found, None otherwise
     async fn find_by_mac(&self, mac: &MacAddress) -> Option<Lease>;
-    
+
     /// Inserts or updates a lease in storage.
     ///
     /// # Arguments
@@ -313,7 +314,7 @@ pub trait LeaseRepository: Send + Sync {
     ///
     /// Ok(()) on success, Err on storage failure
     async fn insert(&mut self, lease: Lease) -> Result<(), DhcpError>;
-    
+
     /// Removes a lease from storage.
     ///
     /// # Arguments
@@ -324,14 +325,14 @@ pub trait LeaseRepository: Send + Sync {
     ///
     /// Ok(removed lease) if found, Err if not found
     async fn remove(&mut self, ip: &IpAddr) -> Result<Lease, DhcpError>;
-    
+
     /// Lists all leases in storage.
     ///
     /// # Returns
     ///
     /// Vector of all leases
     async fn list_all(&self) -> Vec<Lease>;
-    
+
     /// Removes all expired leases from storage.
     ///
     /// # Returns
@@ -354,12 +355,9 @@ pub struct MemoryLeaseRepository {
 impl MemoryLeaseRepository {
     /// Creates a new empty in-memory lease repository.
     pub fn new() -> Self {
-        Self {
-            leases: HashMap::new(),
-            mac_index: HashMap::new(),
-        }
+        Self { leases: HashMap::new(), mac_index: HashMap::new() }
     }
-    
+
     /// Creates a repository with pre-allocated capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
@@ -380,69 +378,67 @@ impl LeaseRepository for MemoryLeaseRepository {
     async fn find_by_ip(&self, ip: &IpAddr) -> Option<Lease> {
         self.leases.get(ip).cloned()
     }
-    
+
     async fn find_by_mac(&self, mac: &MacAddress) -> Option<Lease> {
-        self.mac_index.get(mac)
-            .and_then(|ip| self.leases.get(ip))
-            .cloned()
+        self.mac_index.get(mac).and_then(|ip| self.leases.get(ip)).cloned()
     }
-    
+
     async fn insert(&mut self, lease: Lease) -> Result<(), DhcpError> {
         let ip = lease.ip;
-        
+
         // Update MAC index if MAC address present
         if let Some(mac) = lease.mac {
             self.mac_index.insert(mac, ip);
         }
-        
+
         // Insert or update lease
         self.leases.insert(ip, lease);
-        
+
         debug!(ip = %ip, "Lease stored in repository");
         Ok(())
     }
-    
+
     async fn remove(&mut self, ip: &IpAddr) -> Result<Lease, DhcpError> {
-        let lease = self.leases.remove(ip)
-            .ok_or(DhcpError::LeaseNotFound { ip: ip.to_string() })?;
-        
+        let lease =
+            self.leases.remove(ip).ok_or(DhcpError::LeaseNotFound { ip: ip.to_string() })?;
+
         // Remove from MAC index if present
         if let Some(mac) = lease.mac {
             self.mac_index.remove(&mac);
         }
-        
+
         debug!(ip = %ip, "Lease removed from repository");
         Ok(lease)
     }
-    
+
     async fn list_all(&self) -> Vec<Lease> {
         self.leases.values().cloned().collect()
     }
-    
+
     async fn prune_expired(&mut self) -> usize {
         let now = SystemTime::now();
         let mut expired_ips = Vec::new();
-        
+
         // Collect expired lease IPs
         for (ip, lease) in self.leases.iter() {
             if lease.expires <= now && !lease.flags.contains(LeaseFlags::STATIC) {
                 expired_ips.push(*ip);
             }
         }
-        
+
         let count = expired_ips.len();
-        
+
         // Remove expired leases
         for ip in expired_ips {
             if let Ok(lease) = self.remove(&ip).await {
                 debug!(ip = %ip, hostname = ?lease.hostname, "Pruned expired lease");
             }
         }
-        
+
         if count > 0 {
             info!(count, "Pruned expired leases");
         }
-        
+
         count
     }
 }
@@ -455,14 +451,15 @@ impl LeaseRepository for MemoryLeaseRepository {
 pub struct LeaseManager {
     /// Lease storage backend
     repository: Arc<RwLock<Box<dyn LeaseRepository>>>,
-    
+
     /// DNS cache for hostname registration
     dns_cache: Arc<RwLock<DnsCache>>,
-    
+
     /// DHCP configuration (lease times, script path, domain)
     config: Arc<Config>,
-    
+
     /// Maximum number of leases allowed
+    #[allow(dead_code)]
     max_leases: usize,
 }
 
@@ -484,23 +481,13 @@ impl LeaseManager {
     ///     1000,
     /// );
     /// ```
-    pub fn new(
-        config: Arc<Config>,
-        dns_cache: Arc<RwLock<DnsCache>>,
-        max_leases: usize,
-    ) -> Self {
-        let repository: Box<dyn LeaseRepository> = Box::new(
-            MemoryLeaseRepository::with_capacity(max_leases)
-        );
-        
-        Self {
-            repository: Arc::new(RwLock::new(repository)),
-            dns_cache,
-            config,
-            max_leases,
-        }
+    pub fn new(config: Arc<Config>, dns_cache: Arc<RwLock<DnsCache>>, max_leases: usize) -> Self {
+        let repository: Box<dyn LeaseRepository> =
+            Box::new(MemoryLeaseRepository::with_capacity(max_leases));
+
+        Self { repository: Arc::new(RwLock::new(repository)), dns_cache, config, max_leases }
     }
-    
+
     /// Allocates a new lease or updates an existing one.
     ///
     /// Coordinates lease storage, DNS registration, and script execution.
@@ -532,27 +519,27 @@ impl LeaseManager {
         duration: Duration,
     ) -> Result<Lease, DhcpError> {
         let interface = interface.into();
-        
+
         // Check if lease already exists
         let existing = {
-            let repo = self.repository.read().unwrap();
+            let repo = self.repository.read().await;
             repo.find_by_ip(&ip).await
         };
-        
+
         let is_new = existing.is_none();
-        
+
         // Create new lease
         let lease = Lease::new(ip, mac, hostname, client_id, &interface, duration);
-        
+
         // Note: FQDN generation requires domain configuration per DHCP range
         // This will be implemented when DhcpRange struct includes domain field
-        
+
         // Store lease
         {
-            let mut repo = self.repository.write().unwrap();
+            let mut repo = self.repository.write().await;
             repo.insert(lease.clone()).await?;
         }
-        
+
         // Register hostname in DNS cache if hostname is present
         if let Some(ref hostname_str) = lease.hostname {
             if let Err(e) = register_lease_hostname(
@@ -560,25 +547,29 @@ impl LeaseManager {
                 lease.ip,
                 hostname_str,
                 lease.fqdn.as_deref(),
-                lease.expires
-            ).await {
+                lease.expires,
+            )
+            .await
+            {
                 warn!(ip = %ip, error = %e, "Failed to register lease hostname in DNS");
             }
         }
-        
+
         // Execute lease script if configured
         if let Some(ref script_path) = self.config.scripts.script_path {
-            use crate::dhcp::lease::script_hooks::{ScriptAction, ScriptConfig as ScriptHookConfig};
+            use crate::dhcp::lease::script_hooks::{
+                ScriptAction, ScriptConfig as ScriptHookConfig,
+            };
             let action = if is_new { ScriptAction::Add } else { ScriptAction::Old };
-            
+
             // Construct script_hooks::ScriptConfig from config data
             let script_config = ScriptHookConfig::new(script_path.clone());
-            
+
             if let Err(e) = execute_lease_script(&script_config, action, &lease, None).await {
                 warn!(ip = %ip, action = ?action, error = %e, "Failed to execute lease script");
             }
         }
-        
+
         info!(
             ip = %ip,
             mac = ?lease.mac,
@@ -587,10 +578,10 @@ impl LeaseManager {
             duration_secs = duration.as_secs(),
             "Lease allocated"
         );
-        
+
         Ok(lease)
     }
-    
+
     /// Releases a lease by IP address.
     ///
     /// Removes lease from storage, unregisters from DNS, and executes script.
@@ -610,35 +601,41 @@ impl LeaseManager {
     pub async fn release_lease(&self, ip: &IpAddr) -> Result<Lease, DhcpError> {
         // Remove from repository
         let lease = {
-            let mut repo = self.repository.write().unwrap();
+            let mut repo = self.repository.write().await;
             repo.remove(ip).await?
         };
-        
+
         // Unregister from DNS cache if hostname is present
         if let Some(ref hostname) = lease.hostname {
             let fqdn = lease.fqdn.as_deref();
-            if let Err(e) = unregister_lease_hostname(&self.dns_cache, lease.ip, hostname, fqdn).await {
+            if let Err(e) =
+                unregister_lease_hostname(&self.dns_cache, lease.ip, hostname, fqdn).await
+            {
                 warn!(ip = %ip, error = %e, "Failed to unregister lease hostname from DNS");
             }
         }
-        
+
         // Execute lease script if configured
         if let Some(ref script_path) = self.config.scripts.script_path {
-            use crate::dhcp::lease::script_hooks::{ScriptAction, ScriptConfig as ScriptHookConfig};
-            
+            use crate::dhcp::lease::script_hooks::{
+                ScriptAction, ScriptConfig as ScriptHookConfig,
+            };
+
             // Construct script_hooks::ScriptConfig from config data
             let script_config = ScriptHookConfig::new(script_path.clone());
-            
-            if let Err(e) = execute_lease_script(&script_config, ScriptAction::Del, &lease, None).await {
+
+            if let Err(e) =
+                execute_lease_script(&script_config, ScriptAction::Del, &lease, None).await
+            {
                 warn!(ip = %ip, error = %e, "Failed to execute lease script for deletion");
             }
         }
-        
+
         info!(ip = %ip, mac = ?lease.mac, hostname = ?lease.hostname, "Lease released");
-        
+
         Ok(lease)
     }
-    
+
     /// Renews an existing lease with new expiration time.
     ///
     /// # Arguments
@@ -655,25 +652,24 @@ impl LeaseManager {
     /// Returns DhcpError::LeaseNotFound if lease doesn't exist
     pub async fn renew_lease(&self, ip: &IpAddr, duration: Duration) -> Result<Lease, DhcpError> {
         let mut lease = {
-            let repo = self.repository.read().unwrap();
-            repo.find_by_ip(ip).await
-                .ok_or(DhcpError::LeaseNotFound { ip: ip.to_string() })?
+            let repo = self.repository.read().await;
+            repo.find_by_ip(ip).await.ok_or(DhcpError::LeaseNotFound { ip: ip.to_string() })?
         };
-        
+
         // Update expiration time
         lease.expires = SystemTime::now() + duration;
-        
+
         // Store updated lease
         {
-            let mut repo = self.repository.write().unwrap();
+            let mut repo = self.repository.write().await;
             repo.insert(lease.clone()).await?;
         }
-        
+
         debug!(ip = %ip, duration_secs = duration.as_secs(), "Lease renewed");
-        
+
         Ok(lease)
     }
-    
+
     /// Removes all expired leases.
     ///
     /// Scans lease database and removes expired entries, unregistering from DNS
@@ -685,29 +681,30 @@ impl LeaseManager {
     pub async fn prune_expired(&self) -> usize {
         // Get list of expired leases before removing
         let expired_leases = {
-            let repo = self.repository.read().unwrap();
+            let repo = self.repository.read().await;
             let all_leases = repo.list_all().await;
-            all_leases.into_iter()
+            all_leases
+                .into_iter()
                 .filter(|l| l.is_expired() && !l.flags.contains(LeaseFlags::STATIC))
                 .collect::<Vec<_>>()
         };
-        
+
         let count = expired_leases.len();
-        
+
         // Remove each expired lease with full cleanup
         for lease in expired_leases {
             if let Err(e) = self.release_lease(&lease.ip).await {
                 error!(ip = %lease.ip, error = %e, "Failed to release expired lease");
             }
         }
-        
+
         if count > 0 {
             info!(count, "Pruned expired leases");
         }
-        
+
         count
     }
-    
+
     /// Finds a lease by IP address.
     ///
     /// # Arguments
@@ -718,10 +715,10 @@ impl LeaseManager {
     ///
     /// Some(Lease) if found, None otherwise
     pub async fn find_by_ip(&self, ip: &IpAddr) -> Option<Lease> {
-        let repo = self.repository.read().unwrap();
+        let repo = self.repository.read().await;
         repo.find_by_ip(ip).await
     }
-    
+
     /// Finds a lease by MAC address.
     ///
     /// # Arguments
@@ -732,10 +729,10 @@ impl LeaseManager {
     ///
     /// Some(Lease) if found, None otherwise
     pub async fn find_by_mac(&self, mac: &MacAddress) -> Option<Lease> {
-        let repo = self.repository.read().unwrap();
+        let repo = self.repository.read().await;
         repo.find_by_mac(mac).await
     }
-    
+
     /// Finds a lease by client identifier.
     ///
     /// Scans all leases for matching client_id. Less efficient than IP/MAC lookup
@@ -749,29 +746,28 @@ impl LeaseManager {
     ///
     /// Some(Lease) if found, None otherwise
     pub async fn find_by_client_id(&self, client_id: &[u8]) -> Option<Lease> {
-        let repo = self.repository.read().unwrap();
+        let repo = self.repository.read().await;
         let all_leases = repo.list_all().await;
-        
-        all_leases.into_iter()
-            .find(|lease| {
-                if let Some(ref id) = lease.client_id {
-                    id.as_slice() == client_id
-                } else {
-                    false
-                }
-            })
+
+        all_leases.into_iter().find(|lease| {
+            if let Some(ref id) = lease.client_id {
+                id.as_slice() == client_id
+            } else {
+                false
+            }
+        })
     }
-    
+
     /// Returns all active leases.
     ///
     /// # Returns
     ///
     /// Vector of all leases in storage
     pub async fn get_all_leases(&self) -> Vec<Lease> {
-        let repo = self.repository.read().unwrap();
+        let repo = self.repository.read().await;
         repo.list_all().await
     }
-    
+
     /// Loads leases from persistent storage at daemon startup.
     ///
     /// Reads lease file, validates entries, and populates repository.
@@ -788,19 +784,19 @@ impl LeaseManager {
         if let Some(ref lease_file) = self.config.dhcp.lease_file {
             let leases = read_leases(lease_file, SystemTime::now()).await?;
             let count = leases.len();
-            
-            let mut repo = self.repository.write().unwrap();
+
+            let mut repo = self.repository.write().await;
             for lease in leases {
                 repo.insert(lease).await?;
             }
-            
+
             info!(count, file = %lease_file.display(), "Loaded leases from file");
             Ok(count)
         } else {
             Ok(0)
         }
     }
-    
+
     /// Persists all leases to storage.
     ///
     /// Writes lease database to disk for recovery after daemon restart.
@@ -817,10 +813,10 @@ impl LeaseManager {
         if let Some(ref lease_file) = self.config.dhcp.lease_file {
             let leases = self.get_all_leases().await;
             let count = leases.len();
-            
+
             // TODO: Pass actual server DUID for DHCPv6 if available from config
             write_leases(lease_file, &leases, None).await?;
-            
+
             debug!(count, file = %lease_file.display(), "Saved leases to file");
             Ok(count)
         } else {
@@ -833,7 +829,7 @@ impl LeaseManager {
 mod tests {
     use super::*;
     use std::time::Duration;
-    
+
     #[tokio::test]
     async fn test_lease_creation() {
         let ip = IpAddr::from([192, 168, 1, 100]);
@@ -846,38 +842,31 @@ mod tests {
             "eth0",
             Duration::from_secs(3600),
         );
-        
+
         assert_eq!(lease.ip, ip);
         assert_eq!(lease.mac, Some(mac));
         assert_eq!(lease.hostname, Some("test-client".to_string()));
         assert!(!lease.is_expired());
     }
-    
+
     #[tokio::test]
     async fn test_lease_expiration() {
         let ip = IpAddr::from([192, 168, 1, 100]);
-        let mut lease = Lease::new(
-            ip,
-            None,
-            None,
-            None,
-            "eth0",
-            Duration::from_secs(0),
-        );
-        
+        let mut lease = Lease::new(ip, None, None, None, "eth0", Duration::from_secs(0));
+
         // Lease with 0 duration should be expired
         tokio::time::sleep(Duration::from_millis(10)).await;
         assert!(lease.is_expired());
-        
+
         // Extend lease
         lease.expires = SystemTime::now() + Duration::from_secs(3600);
         assert!(!lease.is_expired());
     }
-    
+
     #[tokio::test]
     async fn test_memory_repository() {
         let mut repo = MemoryLeaseRepository::new();
-        
+
         let ip = IpAddr::from([192, 168, 1, 100]);
         let mac = MacAddress::parse("aa:bb:cc:dd:ee:ff").unwrap();
         let lease = Lease::new(
@@ -888,55 +877,55 @@ mod tests {
             "eth0",
             Duration::from_secs(3600),
         );
-        
+
         // Insert lease
         repo.insert(lease.clone()).await.unwrap();
-        
+
         // Find by IP
         let found = repo.find_by_ip(&ip).await;
         assert!(found.is_some());
         assert_eq!(found.unwrap().ip, ip);
-        
+
         // Find by MAC
         let found = repo.find_by_mac(&mac).await;
         assert!(found.is_some());
         assert_eq!(found.unwrap().mac, Some(mac));
-        
+
         // Remove lease
         let removed = repo.remove(&ip).await;
         assert!(removed.is_ok());
-        
+
         // Verify removed
         let found = repo.find_by_ip(&ip).await;
         assert!(found.is_none());
     }
-    
+
     #[tokio::test]
     async fn test_prune_expired() {
         let mut repo = MemoryLeaseRepository::new();
-        
+
         // Add expired lease
         let ip1 = IpAddr::from([192, 168, 1, 100]);
         let mut lease1 = Lease::new(ip1, None, None, None, "eth0", Duration::from_secs(0));
         lease1.expires = SystemTime::now() - Duration::from_secs(10);
         repo.insert(lease1).await.unwrap();
-        
+
         // Add active lease
         let ip2 = IpAddr::from([192, 168, 1, 101]);
         let lease2 = Lease::new(ip2, None, None, None, "eth0", Duration::from_secs(3600));
         repo.insert(lease2).await.unwrap();
-        
+
         // Add static lease (should not be pruned even if expired)
         let ip3 = IpAddr::from([192, 168, 1, 102]);
         let mut lease3 = Lease::new(ip3, None, None, None, "eth0", Duration::from_secs(0));
         lease3.expires = SystemTime::now() - Duration::from_secs(10);
         lease3.flags = LeaseFlags::STATIC;
         repo.insert(lease3).await.unwrap();
-        
+
         // Prune expired
         let count = repo.prune_expired().await;
         assert_eq!(count, 1); // Only non-static expired lease pruned
-        
+
         // Verify results
         assert!(repo.find_by_ip(&ip1).await.is_none()); // Pruned
         assert!(repo.find_by_ip(&ip2).await.is_some()); // Still active

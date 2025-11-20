@@ -61,11 +61,11 @@
 use crate::dhcp::lease::Lease;
 use crate::error::DhcpError;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::process::Command;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// Script execution action type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -220,10 +220,7 @@ pub async fn execute_lease_script(
 
     // Add standard DHCP environment variables
     if let Ok(expires_secs) = lease.expires.duration_since(UNIX_EPOCH) {
-        env_vars.insert(
-            "DNSMASQ_LEASE_EXPIRES".to_string(),
-            expires_secs.as_secs().to_string(),
-        );
+        env_vars.insert("DNSMASQ_LEASE_EXPIRES".to_string(), expires_secs.as_secs().to_string());
 
         if let Ok(now_secs) = SystemTime::now().duration_since(UNIX_EPOCH) {
             let lease_length = expires_secs.as_secs().saturating_sub(now_secs.as_secs());
@@ -241,11 +238,8 @@ pub async fn execute_lease_script(
     }
 
     if let Some(ref client_id) = lease.client_id {
-        let client_id_hex = client_id
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<Vec<_>>()
-            .join(":");
+        let client_id_hex =
+            client_id.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
         env_vars.insert("DNSMASQ_CLIENT_ID".to_string(), client_id_hex);
     }
 
@@ -260,20 +254,13 @@ pub async fn execute_lease_script(
     }
 
     if let Some(ref vendor_class) = lease.vendorclass {
-        let vendor_hex = vendor_class
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<Vec<_>>()
-            .join(":");
+        let vendor_hex =
+            vendor_class.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
         env_vars.insert("DNSMASQ_VENDOR_CLASS".to_string(), vendor_hex);
     }
 
     if let Some(ref agent_id) = lease.agent_id {
-        let agent_hex = agent_id
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<Vec<_>>()
-            .join(":");
+        let agent_hex = agent_id.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
         env_vars.insert("DNSMASQ_RELAY_ADDRESS".to_string(), agent_hex);
     }
 
@@ -284,14 +271,7 @@ pub async fn execute_lease_script(
         }
     }
 
-    debug!(
-        "Executing lease script: {} {} {} {} {}",
-        script_path.display(),
-        arg1,
-        arg2,
-        arg3,
-        arg4
-    );
+    debug!("Executing lease script: {} {} {} {} {}", script_path.display(), arg1, arg2, arg3, arg4);
 
     // Execute the script with timeout
     let mut command = Command::new(script_path);
@@ -311,11 +291,7 @@ pub async fn execute_lease_script(
     let output = match tokio::time::timeout(timeout, command.output()).await {
         Ok(Ok(output)) => output,
         Ok(Err(e)) => {
-            error!(
-                "Failed to execute lease script {}: {}",
-                script_path.display(),
-                e
-            );
+            error!("Failed to execute lease script {}: {}", script_path.display(), e);
             return Err(DhcpError::ScriptFailed {
                 script: script_path.display().to_string(),
                 reason: format!("Failed to spawn script process: {}", e),
@@ -355,11 +331,7 @@ pub async fn execute_lease_script(
         debug!("Script output: {}", stdout.trim());
     }
 
-    info!(
-        "Successfully executed lease script for {} {}",
-        action.as_str(),
-        lease.ip
-    );
+    info!("Successfully executed lease script for {} {}", action.as_str(), lease.ip);
 
     Ok(())
 }
@@ -419,10 +391,7 @@ pub async fn execute_init_scripts(
         }
     }
 
-    info!(
-        "Init scripts completed: {} succeeded, {} failed",
-        success_count, error_count
-    );
+    info!("Init scripts completed: {} succeeded, {} failed", success_count, error_count);
 
     Ok(())
 }
@@ -453,8 +422,7 @@ pub fn execute_lease_script_async(
     old_hostname: Option<String>,
 ) {
     tokio::spawn(async move {
-        if let Err(e) =
-            execute_lease_script(&config, action, &lease, old_hostname.as_deref()).await
+        if let Err(e) = execute_lease_script(&config, action, &lease, old_hostname.as_deref()).await
         {
             error!(
                 "Async lease script execution failed for {} {}: {}",
@@ -482,9 +450,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let script_path = temp_dir.path().join("test_script.sh");
         let script_content = b"#!/bin/sh\necho \"Success\"\nexit 0\n";
-        tokio::fs::write(&script_path, script_content)
-            .await
-            .unwrap();
+        tokio::fs::write(&script_path, script_content).await.unwrap();
 
         // Make it executable (Unix only)
         #[cfg(unix)]
@@ -522,9 +488,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let script_path = temp_dir.path().join("test_script.sh");
         let script_content = b"#!/bin/sh\nsleep 1000\n";
-        tokio::fs::write(&script_path, script_content)
-            .await
-            .unwrap();
+        tokio::fs::write(&script_path, script_content).await.unwrap();
 
         #[cfg(unix)]
         {

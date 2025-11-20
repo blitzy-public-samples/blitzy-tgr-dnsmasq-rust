@@ -119,20 +119,18 @@
 //! }
 //! ```
 
-use crate::dns::cache::{CacheEntry, DnsCache};
+use crate::dns::cache::DnsCache;
 use crate::dns::protocol::message::DnsMessage;
 use crate::dns::protocol::name::DomainName;
 use crate::dns::protocol::record::{RData, ResourceRecord};
 use crate::error::{DnsError, DnsmasqError, Result};
-use crate::types::{CacheFlags, IpAddr, RecordType, Timestamp};
+use crate::types::{CacheFlags, IpAddr, RecordType};
 
 // TODO: Add ipnetwork crate for subnet filtering
 // use ipnetwork::{IpNetwork, Ipv4Network, Ipv6Network};
-use std::collections::HashMap;
-use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
-use tokio_stream::Stream;
 use tokio::sync::RwLock;
+use tokio_stream::Stream;
 use tracing::{debug, info, instrument, trace, warn};
 
 /// SOA (Start of Authority) record parameters for authoritative zones.
@@ -198,8 +196,8 @@ impl Default for SoaParams {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs() as u32,
-            refresh: 1200,  // 20 minutes
-            retry: 180,     // 3 minutes
+            refresh: 1200,   // 20 minutes
+            retry: 180,      // 3 minutes
             expire: 1209600, // 14 days
             minimum: 600,    // 10 minutes
         }
@@ -270,7 +268,6 @@ pub struct AuthoritativeZone {
     /// List of nameservers authoritative for this zone. Should include at least
     /// the primary nameserver (typically the hostname of this dnsmasq instance).
     pub ns_records: Vec<DomainName>,
-
     // TODO: Add ipnetwork crate for subnet filtering
     // /// Allowed client subnets (auth-peer directive).
     // ///
@@ -345,17 +342,17 @@ impl AuthoritativeZone {
     #[cfg(test)]
     pub fn new_for_test(domain: &str) -> Result<Self> {
         Ok(Self {
-            domain: DomainName::new(domain)
-                .map_err(|e| DnsError::InvalidName {
-                    name: domain.to_string(),
-                    reason: format!("{:?}", e),
-                })?,
+            domain: DomainName::new(domain).map_err(|e| DnsError::InvalidName {
+                name: domain.to_string(),
+                reason: format!("{:?}", e),
+            })?,
             soa_params: SoaParams::default(),
-            ns_records: vec![DomainName::new("ns.localhost")
-                .map_err(|e| DnsError::InvalidName {
+            ns_records: vec![DomainName::new("ns.localhost").map_err(|e| {
+                DnsError::InvalidName {
                     name: "ns.localhost".to_string(),
                     reason: format!("{:?}", e),
-                })?],
+                }
+            })?],
         })
     }
 }
@@ -436,17 +433,9 @@ impl AuthService {
     /// let cache = Arc::new(RwLock::new(DnsCache::new(150)));
     /// let service = AuthService::new(zones, cache, 600);
     /// ```
-    pub fn new(
-        zones: Vec<AuthoritativeZone>,
-        cache: Arc<RwLock<DnsCache>>,
-        auth_ttl: u32,
-    ) -> Self {
+    pub fn new(zones: Vec<AuthoritativeZone>, cache: Arc<RwLock<DnsCache>>, auth_ttl: u32) -> Self {
         info!(zone_count = zones.len(), auth_ttl, "Initialized authoritative DNS service");
-        Self {
-            zones,
-            cache,
-            auth_ttl,
-        }
+        Self { zones, cache, auth_ttl }
     }
 
     /// Answers an authoritative DNS query if it matches a configured zone.
@@ -590,9 +579,7 @@ impl AuthService {
                     RecordType::NS,
                     1, // IN class
                     self.auth_ttl,
-                    RData::Ns {
-                        nsdname: ns_name.clone(),
-                    },
+                    RData::Ns { nsdname: ns_name.clone() },
                 );
                 response.add_answer(ns_record);
             }
@@ -603,13 +590,15 @@ impl AuthService {
         // For A/AAAA queries, check cache for DHCP leases and hosts entries
         if query_type == RecordType::A || query_type == RecordType::AAAA {
             let mut cache = self.cache.write().await;
-            
+
             // Search cache for matching entries
             // Note: DnsCache doesn't expose a public iterator, so we'll need to
             // search by constructing a cache key
             if let Some(entry) = cache.find_by_name(query_name, query_type) {
                 // Check if this is a DHCP or hosts entry (has appropriate flags)
-                if entry.flags().contains(CacheFlags::HOSTS) || entry.flags().contains(CacheFlags::DHCP) {
+                if entry.flags().contains(CacheFlags::HOSTS)
+                    || entry.flags().contains(CacheFlags::DHCP)
+                {
                     // CacheEntry contains a single record, add it to response
                     if entry.record_type() == query_type {
                         // TODO: Get the actual record from the entry
@@ -624,7 +613,7 @@ impl AuthService {
 
         // If no records found, return NXDOMAIN
         response.set_rcode(3); // NXDOMAIN
-        
+
         // Add SOA record to authority section for negative response
         let soa_record = self.generate_soa_record(zone)?;
         response.add_authority(soa_record);
@@ -671,18 +660,14 @@ impl AuthService {
     #[instrument(skip(self), fields(zone = %zone.domain))]
     pub fn generate_soa_record(&self, zone: &AuthoritativeZone) -> Result<ResourceRecord> {
         // Primary nameserver is first NS record or zone apex
-        let mname = zone.ns_records.first()
-            .cloned()
-            .unwrap_or_else(|| zone.domain.clone());
+        let mname = zone.ns_records.first().cloned().unwrap_or_else(|| zone.domain.clone());
 
         // Responsible person email: hostmaster@zone.domain
         // In DNS format, @ is replaced with . so becomes: hostmaster.zone.domain
         let rname_str = format!("hostmaster.{}", zone.domain.as_str());
-        let rname = rname_str.parse::<DomainName>()
-            .map_err(|e| DnsError::InvalidName {
-                name: rname_str,
-                reason: format!("{:?}", e),
-            })?;
+        let rname = rname_str
+            .parse::<DomainName>()
+            .map_err(|e| DnsError::InvalidName { name: rname_str, reason: format!("{:?}", e) })?;
 
         let soa_rdata = RData::Soa {
             mname,
@@ -762,7 +747,7 @@ impl AuthService {
 
         // For now, return a simple implementation that yields messages
         // A full implementation would use async_stream::stream! macro
-        
+
         // Collect all records to transfer
         let mut records = Vec::new();
 
@@ -776,9 +761,7 @@ impl AuthService {
                 RecordType::NS,
                 1, // IN class
                 self.auth_ttl,
-                RData::Ns {
-                    nsdname: ns_name.clone(),
-                },
+                RData::Ns { nsdname: ns_name.clone() },
             );
             records.push(ns_record);
         }
@@ -845,9 +828,7 @@ impl AuthService {
                 RecordType::NS,
                 1, // IN class
                 self.auth_ttl,
-                RData::Ns {
-                    nsdname: ns_name.clone(),
-                },
+                RData::Ns { nsdname: ns_name.clone() },
             );
             response.add_answer(ns_record);
         }
@@ -902,9 +883,9 @@ impl AuthService {
         // TODO: Implement subnet filtering when ipnetwork crate is added
         // For now, allow all clients
         trace!("Subnet filtering not implemented, allowing all clients");
-        return true;
-        
-        // TODO: Check exclude filters first (these take priority)
+        true
+
+        // TODO: When implemented, check exclude filters first (these take priority)
         // for exclude_net in &zone.exclude_filters {
         //     if exclude_net.contains(client_addr) {
         //         debug!(
@@ -934,12 +915,12 @@ impl AuthService {
         //     }
         // }
 
-        // No matching subnet filter, reject
-        debug!(
-            client = %client_addr,
-            "Client not in any allowed subnet, rejecting"
-        );
-        false
+        // TODO: When implemented, reject if no matching subnet filter found
+        // debug!(
+        //     client = %client_addr,
+        //     "Client not in any allowed subnet, rejecting"
+        // );
+        // false
     }
 
     /// Finds the most specific authoritative zone matching a query name.
@@ -970,11 +951,8 @@ impl AuthService {
     #[instrument(skip(self), fields(query = %query_name))]
     pub fn find_zone(&self, query_name: &DomainName) -> Option<&AuthoritativeZone> {
         // Find all matching zones
-        let matching_zones: Vec<&AuthoritativeZone> = self
-            .zones
-            .iter()
-            .filter(|zone| zone.is_match(query_name))
-            .collect();
+        let matching_zones: Vec<&AuthoritativeZone> =
+            self.zones.iter().filter(|zone| zone.is_match(query_name)).collect();
 
         if matching_zones.is_empty() {
             trace!("No matching zones found");
@@ -982,9 +960,7 @@ impl AuthService {
         }
 
         // Select the most specific (longest domain name) match
-        let best_match = matching_zones
-            .into_iter()
-            .max_by_key(|zone| zone.domain.len());
+        let best_match = matching_zones.into_iter().max_by_key(|zone| zone.domain.len());
 
         if let Some(zone) = best_match {
             debug!(zone = %zone.domain, "Found matching zone");
@@ -1008,17 +984,17 @@ impl AuthService {
     /// Vector of resource records belonging to the zone.
     pub async fn get_zone_records_from_cache(
         &self,
-        cache: &DnsCache,
+        _cache: &DnsCache,
         zone: &AuthoritativeZone,
     ) -> Vec<ResourceRecord> {
-        let mut records = Vec::new();
+        let records = Vec::new();
 
         // Iterate through cache entries
         // Note: This is a simplified implementation since DnsCache doesn't expose
         // a public iterator. In the full implementation, we would need to either:
         // 1. Add an iterator method to DnsCache, or
         // 2. Use cache.entries field directly if we make it pub(crate)
-        
+
         // For now, return empty vector as we don't have access to internal entries
         // The authoritative service would primarily serve SOA and NS records,
         // with A/AAAA records coming from on-demand cache lookups
@@ -1086,9 +1062,7 @@ impl AuthService {
                 RecordType::NS,
                 1, // IN class
                 self.auth_ttl,
-                RData::Ns {
-                    nsdname: ns_name.clone(),
-                },
+                RData::Ns { nsdname: ns_name.clone() },
             );
             records.push(ns_record);
         }
@@ -1115,10 +1089,7 @@ mod tests {
 
     /// Helper function to create a test DNS configuration
     fn test_config() -> DnsConfig {
-        DnsConfig {
-            cache_size: 150,
-            ..Default::default()
-        }
+        DnsConfig { cache_size: 150, ..Default::default() }
     }
 
     #[test]

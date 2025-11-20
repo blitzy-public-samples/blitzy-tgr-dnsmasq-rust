@@ -16,7 +16,7 @@
 //! DNS Resource Record filtering module implementing safe RR removal with compression pointer integrity.
 //!
 //! This module provides the [`RrFilter`] struct and [`FilterMode`] enum for selectively removing DNS
-//! Resource Records from response packets while maintaining packet validity. It replaces the C 
+//! Resource Records from response packets while maintaining packet validity. It replaces the C
 //! implementation from `rrfilter.c` with memory-safe Rust using explicit bounds checking, safe slice
 //! operations, and nom parser combinators.
 //!
@@ -26,7 +26,7 @@
 //! handle DNS name compression pointers (RFC 1035 Section 4.1.4):
 //!
 //! ## Pass 1: Identification
-//! 
+//!
 //! Iterate through answer, authority, and additional sections identifying records to remove based
 //! on the filter mode. Track byte ranges of removed records for subsequent validation.
 //!
@@ -95,20 +95,11 @@
 //! - `rrfilter_desc()` → Inline record field identification using ResourceRecord structure
 
 use crate::config::types::DnsConfig;
-use crate::dns::protocol::compression::validate_compression;
-use crate::dns::protocol::constants::{
-    C_IN, T_A, T_AAAA, T_CNAME, T_MX, T_NSEC, T_NSEC3, T_OPT, T_RRSIG,
-};
 use crate::dns::protocol::message::DnsMessage;
-use crate::dns::protocol::name::DomainName;
-use crate::dns::protocol::record::{ResourceRecord, RData};
+use crate::dns::protocol::record::ResourceRecord;
 use crate::error::{DnsError, DnsmasqError, Result};
 use crate::types::RecordType;
 use bytes::{BufMut, Bytes, BytesMut};
-use nom::bytes::complete::take;
-use nom::number::complete::be_u16;
-use nom::IResult;
-use std::net::{Ipv4Addr, Ipv6Addr};
 use std::ops::Range;
 use tracing::{debug, error, instrument, trace, warn};
 
@@ -305,7 +296,7 @@ impl RrFilter {
             error!("Failed to serialize message for filtering: {:?}", e);
             e
         })?;
-        
+
         let packet = Bytes::from(packet_bytes);
 
         // Pass 1: Identify records to remove
@@ -391,18 +382,20 @@ impl RrFilter {
 
         trace!(
             "Checking compression for {} questions, {} answers, {} authority, {} additional",
-            qdcount, ancount, nscount, arcount
+            qdcount,
+            ancount,
+            nscount,
+            arcount
         );
 
         let mut offset = 12; // Start after header
 
         // Check questions
         for i in 0..qdcount {
-            offset = Self::check_name_compression(packet, offset, removed_ranges)
-                .map_err(|e| {
-                    error!("Compression check failed in question {}: {:?}", i, e);
-                    e
-                })?;
+            offset = Self::check_name_compression(packet, offset, removed_ranges).map_err(|e| {
+                error!("Compression check failed in question {}: {:?}", i, e);
+                e
+            })?;
             // Skip QTYPE and QCLASS (4 bytes)
             offset = offset.checked_add(4).ok_or_else(|| DnsError::ParseFailed {
                 server: "packet".to_string(),
@@ -414,11 +407,10 @@ impl RrFilter {
         let total_rrs = ancount + nscount + arcount;
         for i in 0..total_rrs {
             // Check NAME field
-            offset = Self::check_name_compression(packet, offset, removed_ranges)
-                .map_err(|e| {
-                    error!("Compression check failed in RR {} NAME: {:?}", i, e);
-                    e
-                })?;
+            offset = Self::check_name_compression(packet, offset, removed_ranges).map_err(|e| {
+                error!("Compression check failed in RR {} NAME: {:?}", i, e);
+                e
+            })?;
 
             // Skip TYPE, CLASS, TTL (8 bytes)
             offset = offset.checked_add(8).ok_or_else(|| DnsError::ParseFailed {
@@ -496,10 +488,7 @@ impl RrFilter {
     /// // message now has records removed and header updated
     /// ```
     #[instrument(skip(message, removed_ranges), fields(ranges = removed_ranges.len()))]
-    pub fn rewrite_packet(
-        message: &mut DnsMessage,
-        removed_ranges: &[Range<usize>],
-    ) -> Result<()> {
+    pub fn rewrite_packet(message: &mut DnsMessage, removed_ranges: &[Range<usize>]) -> Result<()> {
         if removed_ranges.is_empty() {
             return Ok(());
         }
@@ -511,18 +500,11 @@ impl RrFilter {
         // Copy header (first 12 bytes)
         new_packet.put_slice(&original_bytes[..12]);
 
-        // Track section boundaries and count decrements
+        // Track removed record counts by section
         let mut current_offset = 12;
-        let mut new_offset = 12;
         let mut removed_in_answer = 0;
         let mut removed_in_authority = 0;
         let mut removed_in_additional = 0;
-
-        // Determine section boundaries
-        let header = &message.header;
-        let answer_start = 12;
-        let mut authority_start = answer_start;
-        let mut additional_start = authority_start;
 
         // Calculate section boundaries by iterating through records
         // This is a simplified approach; in practice, we'd track during Pass 1
@@ -542,8 +524,9 @@ impl RrFilter {
         let mut next_remove_idx = 0;
         while current_offset < original_bytes.len() {
             // Check if current offset is in a removed range
-            if next_remove_idx < removed_ranges.len() &&
-               current_offset >= removed_ranges[next_remove_idx].start {
+            if next_remove_idx < removed_ranges.len()
+                && current_offset >= removed_ranges[next_remove_idx].start
+            {
                 // Skip this removed range
                 current_offset = removed_ranges[next_remove_idx].end;
                 next_remove_idx += 1;
@@ -561,7 +544,6 @@ impl RrFilter {
             let copy_end = next_boundary.min(original_bytes.len());
             new_packet.put_slice(&original_bytes[current_offset..copy_end]);
 
-            new_offset += copy_end - current_offset;
             current_offset = copy_end;
         }
 
@@ -577,17 +559,13 @@ impl RrFilter {
         new_packet[6..8].copy_from_slice(&nscount.to_be_bytes());
         new_packet[8..10].copy_from_slice(&arcount.to_be_bytes());
 
-        debug!(
-            "Header counts updated: AN={}, NS={}, AR={}",
-            ancount, nscount, arcount
-        );
+        debug!("Header counts updated: AN={}, NS={}, AR={}", ancount, nscount, arcount);
 
         // Parse compacted packet back into message
-        *message = DnsMessage::from_bytes(&new_packet.freeze())
-            .map_err(|e| {
-                error!("Failed to parse rewritten packet: {:?}", e);
-                e
-            })?;
+        *message = DnsMessage::from_bytes(&new_packet.freeze()).map_err(|e| {
+            error!("Failed to parse rewritten packet: {:?}", e);
+            e
+        })?;
 
         Ok(())
     }
@@ -621,7 +599,7 @@ impl RrFilter {
         filter_mode: FilterMode,
         config: Option<&DnsConfig>,
     ) -> Result<Vec<Range<usize>>> {
-        let mut removed_ranges = Vec::new();
+        let removed_ranges = Vec::new();
 
         // For policy-based filtering, validate config is provided
         // Note: Current DnsConfig doesn't have filter_rr field, so this is preparatory
@@ -633,7 +611,7 @@ impl RrFilter {
         // Serialize to get byte positions
         // Note: This is a simplified implementation. Full implementation would
         // track byte offsets during initial parsing in DnsMessage::from_bytes
-        let packet_bytes = message.to_bytes()?;
+        let _packet_bytes = message.to_bytes()?;
 
         // Check answer section
         for (idx, rr) in message.answers.iter().enumerate() {
@@ -687,7 +665,11 @@ impl RrFilter {
                 // Remove DNSSEC validation records
                 matches!(
                     rr.rtype(),
-                    RecordType::RRSIG | RecordType::NSEC | RecordType::NSEC3 | RecordType::DNSKEY | RecordType::DS
+                    RecordType::RRSIG
+                        | RecordType::NSEC
+                        | RecordType::NSEC3
+                        | RecordType::DNSKEY
+                        | RecordType::DS
                 )
             }
             FilterMode::AddressRecords => {
@@ -699,9 +681,9 @@ impl RrFilter {
                 // ARCHITECTURAL NOTE: Requires DnsConfig.filter_rr: Vec<RecordType> field
                 // Field specified in schema but not yet present in actual DnsConfig implementation
                 // Gracefully degrades to no filtering when field unavailable
-                if let Some(cfg) = config {
+                if let Some(_cfg) = config {
                     // When filter_rr field is added to DnsConfig, logic will be:
-                    // cfg.filter_rr.contains(&rr.rtype)
+                    // _cfg.filter_rr.contains(&rr.rtype)
                     // For now, return false to avoid removing records without explicit configuration
                     false
                 } else {
@@ -829,7 +811,7 @@ mod tests {
             FilterMode::AddressRecords,
             FilterMode::PolicyBased,
         ];
-        
+
         assert_eq!(modes.len(), 4);
     }
 
@@ -853,10 +835,7 @@ mod tests {
             RecordType::RRSIG,
             C_IN,
             3600,
-            RData::Unknown {
-                rtype: T_RRSIG,
-                rdata: Bytes::new(),
-            },
+            RData::Unknown { rtype: T_RRSIG, rdata: Bytes::new() },
         );
 
         assert!(RrFilter::should_remove_record(&rrsig_record, FilterMode::Dnssec, None));
@@ -866,10 +845,7 @@ mod tests {
             RecordType::NSEC,
             C_IN,
             3600,
-            RData::Unknown {
-                rtype: T_NSEC,
-                rdata: Bytes::new(),
-            },
+            RData::Unknown { rtype: T_NSEC, rdata: Bytes::new() },
         );
 
         assert!(RrFilter::should_remove_record(&nsec_record, FilterMode::Dnssec, None));
@@ -905,10 +881,7 @@ mod tests {
             RecordType::MX,
             C_IN,
             3600,
-            RData::Mx {
-                preference: 10,
-                exchange: DomainName::new("mail.example.com").unwrap(),
-            },
+            RData::Mx { preference: 10, exchange: DomainName::new("mail.example.com").unwrap() },
         );
 
         assert!(!RrFilter::should_remove_record(&mx_record, FilterMode::Edns0, None));

@@ -43,8 +43,9 @@ use crate::dns::protocol::name::DomainName;
 use crate::error::DhcpError;
 use crate::types::RecordType;
 use std::net::IpAddr;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::SystemTime;
+use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
 /// Register a DHCP lease hostname in the DNS cache
@@ -111,20 +112,11 @@ pub async fn register_lease_hostname(
     };
 
     // Acquire write lock on DNS cache
-    let mut cache = dns_cache.write().map_err(|e| {
-        error!("Failed to acquire DNS cache write lock: {}", e);
-        DhcpError::LeaseDatabaseFailed {
-            operation: "dns_integration".to_string(),
-            reason: format!("DNS cache lock poisoned: {}", e),
-        }
-    })?;
+    let mut cache = dns_cache.write().await;
 
     // Register the short hostname
     if !hostname.is_empty() {
-        debug!(
-            "Registering DHCP hostname {} -> {} (TTL: {}s)",
-            hostname, ip, ttl
-        );
+        debug!("Registering DHCP hostname {} -> {} (TTL: {}s)", hostname, ip, ttl);
 
         // Convert hostname to DomainName
         let domain_name = DomainName::new(hostname).map_err(|e| {
@@ -148,10 +140,7 @@ pub async fn register_lease_hostname(
     // Register the FQDN if provided
     if let Some(fqdn_str) = fqdn {
         if !fqdn_str.is_empty() && fqdn_str != hostname {
-            debug!(
-                "Registering DHCP FQDN {} -> {} (TTL: {}s)",
-                fqdn_str, ip, ttl
-            );
+            debug!("Registering DHCP FQDN {} -> {} (TTL: {}s)", fqdn_str, ip, ttl);
 
             // Convert FQDN to DomainName
             let fqdn_domain = DomainName::new(fqdn_str).map_err(|e| {
@@ -224,13 +213,7 @@ pub async fn unregister_lease_hostname(
     fqdn: Option<&str>,
 ) -> Result<(), DhcpError> {
     // Acquire write lock on DNS cache
-    let mut cache = dns_cache.write().map_err(|e| {
-        error!("Failed to acquire DNS cache write lock: {}", e);
-        DhcpError::LeaseDatabaseFailed {
-            operation: "dns_integration".to_string(),
-            reason: format!("DNS cache lock poisoned: {}", e),
-        }
-    })?;
+    let mut cache = dns_cache.write().await;
 
     // Remove the short hostname
     if !hostname.is_empty() {
@@ -284,10 +267,7 @@ pub async fn unregister_lease_hostname(
         }
     }
 
-    info!(
-        "Successfully unregistered DNS entry for {} ({})",
-        hostname, ip
-    );
+    info!("Successfully unregistered DNS entry for {} ({})", hostname, ip);
 
     Ok(())
 }
@@ -351,10 +331,7 @@ pub async fn sync_dns_cache(
         )
         .await
         {
-            error!(
-                "Failed to register DNS entry for lease {} -> {}: {}",
-                hostname, lease.ip, e
-            );
+            error!("Failed to register DNS entry for lease {} -> {}: {}", hostname, lease.ip, e);
             // Continue with other leases
         } else {
             registered_count += 1;
@@ -382,10 +359,7 @@ pub async fn sync_dns_cache(
         }
     }
 
-    info!(
-        "DNS cache synchronization complete: registered {} hostnames",
-        registered_count
-    );
+    info!("DNS cache synchronization complete: registered {} hostnames", registered_count);
 
     Ok(())
 }
@@ -407,9 +381,7 @@ mod tests {
         let expires = SystemTime::now() + Duration::from_secs(3600);
 
         // Register
-        register_lease_hostname(&cache, ip, hostname, None, expires)
-            .await
-            .unwrap();
+        register_lease_hostname(&cache, ip, hostname, None, expires).await.unwrap();
 
         // Verify it was added
         {
@@ -423,9 +395,7 @@ mod tests {
         }
 
         // Unregister
-        unregister_lease_hostname(&cache, ip, hostname, None)
-            .await
-            .unwrap();
+        unregister_lease_hostname(&cache, ip, hostname, None).await.unwrap();
 
         // Verify it was removed
         {
@@ -448,9 +418,7 @@ mod tests {
         let expires = SystemTime::now() + Duration::from_secs(3600);
 
         // Register both hostname and FQDN
-        register_lease_hostname(&cache, ip, hostname, Some(fqdn), expires)
-            .await
-            .unwrap();
+        register_lease_hostname(&cache, ip, hostname, Some(fqdn), expires).await.unwrap();
 
         // Verify both were added
         {
@@ -459,10 +427,10 @@ mod tests {
                 IpAddr::V4(_) => RecordType::A,
                 IpAddr::V6(_) => RecordType::AAAA,
             };
-            
+
             let hostname_domain = DomainName::new(hostname).unwrap();
             assert!(cache_lock.find_by_name(&hostname_domain, record_type).is_some());
-            
+
             let fqdn_domain = DomainName::new(fqdn).unwrap();
             assert!(cache_lock.find_by_name(&fqdn_domain, record_type).is_some());
         }
