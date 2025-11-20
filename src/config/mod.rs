@@ -270,17 +270,19 @@ pub mod reload;
 // Core configuration types from types.rs
 pub use types::{
     Config, ConfigBuilder, DhcpConfig, DnsConfig, LoggingConfig, NetworkConfig, SecurityConfig,
-    TftpConfig,
 };
+
+#[cfg(feature = "tftp")]
+pub use types::TftpConfig;
 
 // Parsing functionality from parser.rs
 pub use parser::{parse_file, ConfigParser};
 
 // Command-line argument parsing from cli.rs
-pub use cli::{parse_args, CliArgs};
+pub use cli::{parse_args, parse_args_from, CliArgs};
 
 // Validation functionality from validator.rs
-pub use validator::{validate_config, ConfigValidator};
+pub use validator::{validate_config, ConfigValidator, ValidationResult};
 
 // Reload functionality from reload.rs
 pub use reload::{reload_config, ConfigReloader};
@@ -290,9 +292,6 @@ pub use reload::{reload_config, ConfigReloader};
 // ============================================================================
 
 use crate::error::ConfigError;
-use std::sync::Arc;
-use tokio::fs;
-use tokio::sync::RwLock;
 
 // ============================================================================
 // PUBLIC CONSTANTS
@@ -416,7 +415,7 @@ where
 {
     // Parse command-line arguments first (to check for --no-conf and --conf-file)
     let args_vec: Vec<String> = args.into_iter().map(|s| s.into()).collect();
-    let cli_args = parse_args(args_vec.iter().map(|s| s.as_str()))?;
+    let cli_args = parse_args_from(args_vec)?;
 
     // Start with builder using compile-time defaults
     let mut builder = ConfigBuilder::new();
@@ -470,6 +469,7 @@ mod tests {
         let _: DnsConfig;
         let _: DhcpConfig;
         let _: NetworkConfig;
+        #[cfg(feature = "tftp")]
         let _: TftpConfig;
         let _: LoggingConfig;
         let _: SecurityConfig;
@@ -478,11 +478,11 @@ mod tests {
         let _: ConfigBuilder;
 
         // Parsing functions should be accessible
-        let _: fn(Vec<&str>) -> Result<CliArgs, ConfigError> = parse_args;
+        let _: fn() -> CliArgs = parse_args;
 
         // Validation should be accessible
-        let _: fn(&Config) -> Result<(), ConfigError> = validate_config;
-        let _: ConfigValidator;
+        let _: fn(&Config) -> ValidationResult = validate_config;
+        let _: ConfigValidator<'_>;
 
         // Reload should be accessible
         let _: ConfigReloader;
@@ -576,8 +576,11 @@ mod tests {
         use crate::config::{
             parse_args, parse_file, reload_config, validate_config, CliArgs, Config,
             ConfigBuilder, ConfigParser, ConfigReloader, ConfigValidator, DhcpConfig, DnsConfig,
-            LoggingConfig, NetworkConfig, SecurityConfig, TftpConfig,
+            LoggingConfig, NetworkConfig, SecurityConfig, ValidationResult,
         };
+        
+        #[cfg(feature = "tftp")]
+        use crate::config::TftpConfig;
 
         // If this compiles, all re-exports are working correctly
     }

@@ -153,6 +153,7 @@
 //! ```
 
 use crate::constants::{CACHESIZ, CHGRP, CHUSER, DEFLEASE, LEASEFILE};
+use crate::error::ConfigError;
 use crate::types::{DomainName, MacAddress, ServerDetails};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
@@ -265,33 +266,43 @@ impl Config {
     /// config.dns.cache_size = 0; // Invalid!
     /// assert!(config.validate().is_err());
     /// ```
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), ConfigError> {
         // Validate DNS configuration
         if self.dns.cache_size == 0 {
-            return Err("DNS cache size must be greater than 0".to_string());
+            return Err(ConfigError::ValidationFailed {
+                reason: "DNS cache size must be greater than 0".to_string(),
+            });
         }
 
         // Validate network configuration
         // Note: port is u16, so it's already constrained to 0-65535
         if self.network.port == 0 {
-            return Err(format!("Invalid DNS port: {} (must be > 0)", self.network.port));
+            return Err(ConfigError::ValidationFailed {
+                reason: format!("Invalid DNS port: {} (must be > 0)", self.network.port),
+            });
         }
 
         // Validate DHCP lease time
         if self.dhcp.lease_time.as_secs() == 0 {
-            return Err("DHCP lease time must be greater than 0".to_string());
+            return Err(ConfigError::ValidationFailed {
+                reason: "DHCP lease time must be greater than 0".to_string(),
+            });
         }
 
         // Validate DHCP ranges
         for (i, range) in self.dhcp.v4_ranges.iter().enumerate() {
             if range.start.is_ipv6() || range.end.is_ipv6() {
-                return Err(format!("DHCPv4 range {} contains IPv6 addresses", i));
+                return Err(ConfigError::ValidationFailed {
+                    reason: format!("DHCPv4 range {} contains IPv6 addresses", i),
+                });
             }
         }
 
         for (i, range) in self.dhcp.v6_ranges.iter().enumerate() {
             if range.start.is_ipv4() || range.end.is_ipv4() {
-                return Err(format!("DHCPv6 range {} contains IPv4 addresses", i));
+                return Err(ConfigError::ValidationFailed {
+                    reason: format!("DHCPv6 range {} contains IPv4 addresses", i),
+                });
             }
         }
 
@@ -1361,12 +1372,116 @@ impl ConfigBuilder {
         self
     }
 
-    /// Builds the final configuration with validation.
+    /// Loads configuration from a file, merging it with the current builder state.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the dnsmasq configuration file
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the file cannot be read or parsed.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use dnsmasq::config::types::ConfigBuilder;
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = ConfigBuilder::new()
+    ///     .from_file("/etc/dnsmasq.conf").await?
+    ///     .build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn from_file<P: AsRef<std::path::Path>>(mut self, path: P) -> Result<Self, crate::error::ConfigError> {
+        use crate::config::parser::parse_file;
+        let file_config = parse_file(path).await?;
+        // Replace the config with file-based config (will be overridden by from_args if called after)
+        self.config = file_config;
+        Ok(self)
+    }
+
+    /// Applies command-line arguments to the configuration, overriding file-based settings.
+    ///
+    /// Command-line arguments have the highest precedence in the configuration hierarchy.
+    ///
+    /// # Arguments
+    ///
+    /// * `args` - Parsed command-line arguments
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the arguments contain invalid values.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use dnsmasq::config::{types::ConfigBuilder, cli::CliArgs};
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let cli_args = CliArgs::parse();
+    /// let config = ConfigBuilder::new()
+    ///     .from_args(&cli_args)?
+    ///     .build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn from_args(mut self, args: &crate::config::cli::CliArgs) -> Result<Self, crate::error::ConfigError> {
+        // Apply CLI overrides to config
+        if let Some(port) = args.port {
+            self.config.network.port = port;
+        }
+        if let Some(cache_size) = args.cache_size {
+            self.config.dns.cache_size = cache_size;
+        }
+        if args.no_daemon {
+            self.config.platform.daemon_mode = false;
+        }
+        if let Some(ref user) = args.user {
+            self.config.security.user = Some(user.clone());
+        }
+        if let Some(ref group) = args.group {
+            self.config.security.group = Some(group.clone());
+        }
+        if args.log_queries {
+            self.config.logging.log_queries = true;
+        }
+        if args.log_dhcp {
+            self.config.logging.log_dhcp = true;
+        }
+        // Add more CLI argument mappings as needed
+        Ok(self)
+    }
+
+    /// Validates the current configuration state.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if validation fails (invalid port, conflicting options, etc.).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use dnsmasq::config::types::ConfigBuilder;
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = ConfigBuilder::new()
+    ///     .dns_port(5353)
+    ///     .validate()?
+    ///     .build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn validate(self) -> Result<Self, crate::error::ConfigError> {
+        use crate::config::validator::validate_config;
+        validate_config(&self.config)?;
+        Ok(self)
+    }
+
+    /// Builds the final configuration.
     ///
     /// # Errors
     ///
     /// Returns error if validation fails (invalid port, zero cache size, etc.).
-    pub fn build(self) -> Result<Config, String> {
+    pub fn build(self) -> Result<Config, crate::error::ConfigError> {
         self.config.validate()?;
         Ok(self.config)
     }
