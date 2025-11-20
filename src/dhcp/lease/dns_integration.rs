@@ -54,8 +54,10 @@
 //! which integrates DHCP leases with DNS cache via cache_add_dhcp_entry()
 //! and cache_unhash_dhcp() for bulk updates.
 
-use crate::config::Config;
-use crate::dhcp::lease::Lease;
+// Note: Config import removed as dhcp_fqdn field is not yet implemented
+// TODO: Add Config parameter to functions once config::Config::dhcp_fqdn is available
+// use crate::config::Config;
+use crate::dhcp::lease::{Lease, LeaseFlags};
 use crate::dns::cache::DnsCache;
 use crate::dns::protocol::name::DomainName;
 use crate::error::DhcpError;
@@ -368,19 +370,14 @@ pub async fn update_all_lease_dns(
     let mut registered_count = 0;
     let mut skipped_count = 0;
 
-    // Prepare DNS cache for bulk updates
-    // Note: The C implementation calls cache_unhash_dhcp() here to optimize
-    // hash table updates. In Rust, HashMap handles this implicitly, but we
-    // acquire the write lock once for efficiency.
-    {
-        let mut cache = dns_cache.write().await;
-        
-        // Prepare cache for bulk DHCP updates
-        // This is equivalent to cache_unhash_dhcp() in the C implementation
-        cache.unhash_dhcp();
-        
-        debug!("DNS cache prepared for bulk DHCP updates");
-    }
+    // Note: The C implementation calls cache_unhash_dhcp() here to prepare the
+    // DNS cache for bulk updates by temporarily unhashing the DHCP entries.
+    // In the Rust implementation, the DnsCache uses a HashMap which handles
+    // rehashing automatically and efficiently, so explicit unhashing and
+    // rehashing operations are not needed. The HashMap will handle any
+    // structural changes during the bulk insert operations seamlessly.
+    
+    debug!("Starting DNS cache bulk update for {} leases", leases.len());
 
     // Iterate through all leases and register active ones
     for lease in leases {
@@ -403,9 +400,10 @@ pub async fn update_all_lease_dns(
             continue;
         }
 
-        // Determine IP address family and get the primary IP
+        // Determine IP address family by checking lease flags
         // C implementation checks lease->flags & (LEASE_TA | LEASE_NA) for IPv6
-        let is_ipv6 = matches!(lease.ip, IpAddr::V6(_));
+        // where LEASE_TA = DHCPv6 temporary address, LEASE_NA = DHCPv6 non-temporary address
+        let is_ipv6 = lease.flags.contains(LeaseFlags::TA) || lease.flags.contains(LeaseFlags::NA);
 
         // Register the primary lease IP address
         if let Err(e) = register_lease_hostname(
@@ -457,9 +455,11 @@ pub async fn update_all_lease_dns(
         }
     }
 
-    // Cache rehashing happens implicitly when write lock is released
-    // This is equivalent to the implicit rehashing after cache_unhash_dhcp()
-    // in the C implementation
+    // Note: The C implementation implicitly rehashes the DNS cache after all
+    // DHCP entries are added. In Rust, the HashMap-based cache structure
+    // automatically maintains optimal performance through its built-in
+    // resizing and rehashing mechanisms, so no explicit rehash operation
+    // is needed.
 
     info!(
         "DNS cache synchronization complete: registered {} hostnames, skipped {}",
