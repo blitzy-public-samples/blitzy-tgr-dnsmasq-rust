@@ -135,10 +135,7 @@ pub async fn register_lease_hostname(
     // Register the FQDN if provided (always registered first in C implementation)
     if let Some(fqdn_str) = fqdn {
         if !fqdn_str.is_empty() {
-            debug!(
-                "Registering DHCP FQDN {} -> {} (TTL: {}s)",
-                fqdn_str, ip, ttl
-            );
+            debug!("Registering DHCP FQDN {} -> {} (TTL: {}s)", fqdn_str, ip, ttl);
 
             // Convert FQDN to DomainName
             let fqdn_domain = DomainName::new(fqdn_str).map_err(|e| {
@@ -165,10 +162,7 @@ pub async fn register_lease_hostname(
     // We always register both for maximum compatibility, as the dhcp_fqdn config
     // option is not yet implemented in the Rust configuration.
     if !hostname.is_empty() {
-        debug!(
-            "Registering DHCP hostname {} -> {} (TTL: {}s)",
-            hostname, ip, ttl
-        );
+        debug!("Registering DHCP hostname {} -> {} (TTL: {}s)", hostname, ip, ttl);
 
         // Convert hostname to DomainName
         let domain_name = DomainName::new(hostname).map_err(|e| {
@@ -189,10 +183,7 @@ pub async fn register_lease_hostname(
         })?;
     }
 
-    info!(
-        "Successfully registered DNS entry for {} -> {}",
-        hostname, ip
-    );
+    info!("Successfully registered DNS entry for {} -> {}", hostname, ip);
 
     Ok(())
 }
@@ -292,10 +283,7 @@ pub async fn unregister_lease_hostname(
         }
     }
 
-    info!(
-        "Successfully unregistered DNS entry for {} ({})",
-        hostname, ip
-    );
+    info!("Successfully unregistered DNS entry for {} ({})", hostname, ip);
 
     Ok(())
 }
@@ -355,11 +343,7 @@ pub async fn update_all_lease_dns(
     dns_cache: Arc<RwLock<DnsCache>>,
     force: bool,
 ) -> Result<(), DhcpError> {
-    debug!(
-        "Updating DNS cache with {} leases (force={})",
-        leases.len(),
-        force
-    );
+    debug!("Updating DNS cache with {} leases (force={})", leases.len(), force);
 
     // Note: In C implementation, this checks (dns_dirty || force)
     // For now, we always proceed since dns_dirty tracking is not yet implemented
@@ -375,7 +359,7 @@ pub async fn update_all_lease_dns(
     // rehashing automatically and efficiently, so explicit unhashing and
     // rehashing operations are not needed. The HashMap will handle any
     // structural changes during the bulk insert operations seamlessly.
-    
+
     debug!("Starting DNS cache bulk update for {} leases", leases.len());
 
     // Iterate through all leases and register active ones
@@ -414,10 +398,7 @@ pub async fn update_all_lease_dns(
         )
         .await
         {
-            error!(
-                "Failed to register DNS entry for lease {} -> {}: {}",
-                hostname, lease.ip, e
-            );
+            error!("Failed to register DNS entry for lease {} -> {}: {}", hostname, lease.ip, e);
             // Continue with other leases despite error
         } else {
             registered_count += 1;
@@ -432,7 +413,7 @@ pub async fn update_all_lease_dns(
                     // C implementation checks slaac->backoff == 0
                     // We assume all addresses in slaac_addresses are valid
                     let slaac_ip = IpAddr::V6(*slaac_addr);
-                    
+
                     if let Err(e) = register_lease_hostname(
                         &dns_cache,
                         slaac_ip,
@@ -486,9 +467,7 @@ mod tests {
         let expires = SystemTime::now() + Duration::from_secs(3600);
 
         // Register
-        register_lease_hostname(&cache, ip, hostname, None, expires)
-            .await
-            .unwrap();
+        register_lease_hostname(&cache, ip, hostname, None, expires).await.unwrap();
 
         // Verify it was added
         {
@@ -499,9 +478,7 @@ mod tests {
         }
 
         // Unregister
-        unregister_lease_hostname(&cache, ip, hostname, None)
-            .await
-            .unwrap();
+        unregister_lease_hostname(&cache, ip, hostname, None).await.unwrap();
 
         // Verify it was removed
         {
@@ -521,9 +498,7 @@ mod tests {
         let expires = SystemTime::now() + Duration::from_secs(3600);
 
         // Register both hostname and FQDN
-        register_lease_hostname(&cache, ip, hostname, Some(fqdn), expires)
-            .await
-            .unwrap();
+        register_lease_hostname(&cache, ip, hostname, Some(fqdn), expires).await.unwrap();
 
         // Verify both were added
         {
@@ -531,9 +506,7 @@ mod tests {
             let record_type = RecordType::A;
 
             let hostname_domain = DomainName::new(hostname).unwrap();
-            assert!(cache_lock
-                .find_by_name(&hostname_domain, record_type)
-                .is_some());
+            assert!(cache_lock.find_by_name(&hostname_domain, record_type).is_some());
 
             let fqdn_domain = DomainName::new(fqdn).unwrap();
             assert!(cache_lock.find_by_name(&fqdn_domain, record_type).is_some());
@@ -600,9 +573,7 @@ mod tests {
         ];
 
         // Update all leases
-        update_all_lease_dns(&leases, cache.clone(), true)
-            .await
-            .unwrap();
+        update_all_lease_dns(&leases, cache.clone(), true).await.unwrap();
 
         // Verify active leases were registered
         {
@@ -617,9 +588,7 @@ mod tests {
 
             // Expired lease should not be registered
             let expired_domain = DomainName::new("expired").unwrap();
-            assert!(cache_lock
-                .find_by_name(&expired_domain, record_type)
-                .is_none());
+            assert!(cache_lock.find_by_name(&expired_domain, record_type).is_none());
         }
     }
 }

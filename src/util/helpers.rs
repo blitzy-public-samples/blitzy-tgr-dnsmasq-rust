@@ -151,6 +151,7 @@ use std::time::{Duration, SystemTime};
 ///
 /// Prevents unbounded memory growth if script execution falls behind event generation.
 /// Matches C implementation's implicit queue limit.
+#[allow(dead_code)]
 const MAX_QUEUE_SIZE: usize = 1000;
 
 /// Script execution timeout in seconds.
@@ -161,16 +162,24 @@ const SCRIPT_TIMEOUT_SECS: u64 = 60;
 /// Event type constants matching C helper.c EVENT_* defines.
 ///
 /// These constants are used in the wire protocol for event serialization.
-const EVENT_LEASE: u32 = 1;      // DHCP lease event
-const EVENT_ARP: u32 = 2;        // ARP table change
-const EVENT_TFTP: u32 = 4;       // TFTP file transfer
+#[allow(dead_code)]
+const EVENT_LEASE: u32 = 1; // DHCP lease event
+#[allow(dead_code)]
+const EVENT_ARP: u32 = 2; // ARP table change
+#[allow(dead_code)]
+const EVENT_TFTP: u32 = 4; // TFTP file transfer
+#[allow(dead_code)]
 const EVENT_RELAY_SNOOP: u32 = 8; // DHCPv6 relay snooping
 
 /// Action type constants matching C helper.c ACTION_* defines.
-const ACTION_ADD: u32 = 1;           // Add event (new lease, ARP entry)
-const ACTION_DEL: u32 = 2;           // Delete event (expired lease, ARP removal)
-const ACTION_OLD: u32 = 4;           // Renew event (lease renewal)
-const ACTION_OLD_HOSTNAME: u32 = 8;  // Hostname change event
+#[allow(dead_code)]
+const ACTION_ADD: u32 = 1; // Add event (new lease, ARP entry)
+#[allow(dead_code)]
+const ACTION_DEL: u32 = 2; // Delete event (expired lease, ARP removal)
+#[allow(dead_code)]
+const ACTION_OLD: u32 = 4; // Renew event (lease renewal)
+#[allow(dead_code)]
+const ACTION_OLD_HOSTNAME: u32 = 8; // Hostname change event
 
 // ============================================================================
 // SCRIPT EVENT TYPES
@@ -219,61 +228,61 @@ pub enum ScriptEvent {
 pub struct DhcpLeaseEvent {
     /// Lease action type (add/renew/delete/hostname-change).
     pub action: LeaseAction,
-    
+
     /// Hardware (MAC) address of client.
     pub mac: MacAddress,
-    
+
     /// Assigned IP address (IPv4 or IPv6).
     pub addr: IpAddr,
-    
+
     /// Client hostname (from DHCP option 12 or DNS registration).
     pub hostname: Option<String>,
-    
+
     /// Network interface receiving the request.
     pub interface: String,
-    
+
     /// Lease expiration time (seconds since epoch).
     pub lease_expires: u64,
-    
+
     /// Client domain name.
     pub domain: Option<String>,
-    
+
     /// DHCP client identifier (hex-encoded).
     pub client_id: Option<Vec<u8>>,
-    
+
     /// Vendor class identifier.
     pub vendor_class: Option<String>,
-    
+
     /// Hostname supplied by client in option 12.
     pub supplied_hostname: Option<String>,
-    
+
     /// CableHome CPE WAN Management Protocol - OUI.
     pub cpewan_oui: Option<String>,
-    
+
     /// CableHome - Serial number.
     pub cpewan_serial: Option<String>,
-    
+
     /// CableHome - Device class.
     pub cpewan_class: Option<String>,
-    
+
     /// Relay agent circuit ID (hex-encoded).
     pub circuit_id: Option<Vec<u8>>,
-    
+
     /// Relay agent subscriber ID (hex-encoded).
     pub subscriber_id: Option<Vec<u8>>,
-    
+
     /// Relay agent remote ID (hex-encoded).
     pub remote_id: Option<Vec<u8>>,
-    
+
     /// Matching tags for this lease.
     pub tags: Vec<String>,
-    
+
     /// DHCPv6 IAID (Identity Association Identifier).
     pub iaid: Option<u32>,
-    
+
     /// DHCPv6 server DUID (hex-encoded).
     pub server_duid: Option<Vec<u8>>,
-    
+
     /// User class option data.
     pub user_class: Option<String>,
 }
@@ -285,13 +294,13 @@ pub struct DhcpLeaseEvent {
 pub struct TftpEvent {
     /// File path requested by client (relative to TFTP root).
     pub file_path: String,
-    
+
     /// Client IP address.
     pub client_addr: IpAddr,
-    
+
     /// File size in bytes transferred.
     pub file_size: u64,
-    
+
     /// Network interface serving the request.
     pub interface: String,
 }
@@ -303,10 +312,10 @@ pub struct TftpEvent {
 pub struct ArpEvent {
     /// Whether this is an addition (true) or deletion (false).
     pub is_add: bool,
-    
+
     /// Hardware (MAC) address.
     pub mac: MacAddress,
-    
+
     /// IP address associated with MAC.
     pub addr: IpAddr,
 }
@@ -318,13 +327,13 @@ pub struct ArpEvent {
 pub struct RelaySnoopEvent {
     /// Client link-local address.
     pub client_addr: IpAddr,
-    
+
     /// Relay agent address.
     pub relay_addr: IpAddr,
-    
+
     /// Client DUID (hex-encoded).
     pub duid: Vec<u8>,
-    
+
     /// Interface where packet was received.
     pub interface: String,
 }
@@ -356,31 +365,31 @@ pub struct RelaySnoopEvent {
 pub struct ScriptData {
     /// Event flags (EVENT_LEASE | EVENT_ARP | EVENT_TFTP | EVENT_RELAY_SNOOP).
     pub flags: u32,
-    
+
     /// Action type (ACTION_ADD | ACTION_DEL | ACTION_OLD | ACTION_OLD_HOSTNAME).
     pub action: u32,
-    
+
     /// Lease expiration time (seconds since epoch).
     pub expires: u64,
-    
+
     /// IP address (IPv4 or IPv6).
     pub addr: IpAddr,
-    
+
     /// Hardware address bytes (up to 16 bytes for DHCPv4/v6).
     pub hwaddr: Vec<u8>,
-    
+
     /// Hostname (null-terminated C string, max MAXDNAME bytes).
     pub hostname: String,
-    
+
     /// Domain name.
     pub domain: Option<String>,
-    
+
     /// Interface name.
     pub interface: String,
-    
+
     /// TFTP file size (for EVENT_TFTP).
     pub file_size: Option<u64>,
-    
+
     /// File path (for EVENT_TFTP).
     pub file_path: Option<String>,
 }
@@ -396,16 +405,16 @@ impl ScriptData {
     /// Byte vector containing the serialized data.
     pub fn serialize(&self) -> Vec<u8> {
         let mut buf = BytesMut::with_capacity(512);
-        
+
         // Flags (4 bytes, little-endian)
         buf.extend_from_slice(&self.flags.to_le_bytes());
-        
+
         // Action (4 bytes, little-endian)
         buf.extend_from_slice(&self.action.to_le_bytes());
-        
+
         // Expires (8 bytes, little-endian)
         buf.extend_from_slice(&self.expires.to_le_bytes());
-        
+
         // IP address (16 bytes for IPv6, IPv4 mapped)
         match self.addr {
             IpAddr::V4(ipv4) => {
@@ -418,21 +427,21 @@ impl ScriptData {
                 buf.extend_from_slice(&ipv6.octets());
             }
         }
-        
+
         // Hardware address (16 bytes max, zero-padded)
         let hwaddr_len = self.hwaddr.len().min(16);
         buf.extend_from_slice(&self.hwaddr[..hwaddr_len]);
         buf.extend_from_slice(&vec![0u8; 16 - hwaddr_len]);
-        
+
         // Hostname (MAXDNAME bytes, null-terminated)
         let hostname_bytes = self.hostname.as_bytes();
         let hostname_len = hostname_bytes.len().min(MAXDNAME - 1);
         buf.extend_from_slice(&hostname_bytes[..hostname_len]);
         buf.extend_from_slice(&vec![0u8; MAXDNAME - hostname_len]);
-        
+
         buf.to_vec()
     }
-    
+
     /// Deserializes event data from wire format bytes.
     ///
     /// Unpacks a byte buffer into the struct fields.
@@ -450,25 +459,23 @@ impl ScriptData {
     /// Returns `PlatformError::PipeError` if data is invalid or truncated.
     pub fn deserialize(bytes: &[u8]) -> Result<Self, PlatformError> {
         if bytes.len() < 4 + 4 + 8 + 16 + 16 + MAXDNAME {
-            return Err(PlatformError::PipeError(
-                "Script data buffer too small".to_string()
-            ));
+            return Err(PlatformError::PipeError("Script data buffer too small".to_string()));
         }
-        
+
         let mut offset = 0;
-        
+
         // Parse flags
         let flags = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
         offset += 4;
-        
+
         // Parse action
         let action = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
         offset += 4;
-        
+
         // Parse expires
         let expires = u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap());
         offset += 8;
-        
+
         // Parse IP address (16 bytes)
         let addr_bytes: [u8; 16] = bytes[offset..offset + 16].try_into().unwrap();
         let addr = if addr_bytes[0..10] == [0u8; 10] && addr_bytes[10..12] == [0xff, 0xff] {
@@ -483,23 +490,20 @@ impl ScriptData {
             IpAddr::V6(std::net::Ipv6Addr::from(addr_bytes))
         };
         offset += 16;
-        
+
         // Parse hardware address (16 bytes)
         // Read all 16 bytes, then trim trailing zeros (not leading zeros!)
         // MAC addresses can start with 0x00, so we can't use take_while
         let hwaddr_slice = &bytes[offset..offset + 16];
-        let hwaddr_end = hwaddr_slice.iter()
-            .rposition(|&b| b != 0)
-            .map(|pos| pos + 1)
-            .unwrap_or(0);
+        let hwaddr_end = hwaddr_slice.iter().rposition(|&b| b != 0).map(|pos| pos + 1).unwrap_or(0);
         let hwaddr = hwaddr_slice[..hwaddr_end].to_vec();
         offset += 16;
-        
+
         // Parse hostname (MAXDNAME bytes, null-terminated)
         let hostname_bytes = &bytes[offset..offset + MAXDNAME];
         let hostname_end = hostname_bytes.iter().position(|&b| b == 0).unwrap_or(MAXDNAME);
         let hostname = String::from_utf8_lossy(&hostname_bytes[..hostname_end]).to_string();
-        
+
         Ok(ScriptData {
             flags,
             action,
@@ -541,13 +545,13 @@ impl ScriptData {
 pub struct HelperProcess {
     /// Configuration reference.
     config: Arc<Config>,
-    
+
     /// Event sender (cloned for each send_event call).
     sender: Option<UnboundedSender<ScriptEvent>>,
-    
+
     /// Background task join handle (for shutdown).
     task_handle: Option<tokio::task::JoinHandle<()>>,
-    
+
     /// Lua interpreter state (optional, feature-gated).
     #[cfg(feature = "lua-scripts")]
     lua: Option<Arc<Mutex<Lua>>>,
@@ -569,7 +573,7 @@ impl HelperProcess {
     pub fn new(config: Arc<Config>) -> Self {
         #[cfg(feature = "lua-scripts")]
         let lua = None; // Initialize Lua lazily in spawn() if lua_script_path is set
-        
+
         Self {
             config,
             sender: None,
@@ -578,7 +582,7 @@ impl HelperProcess {
             lua,
         }
     }
-    
+
     /// Spawns the background helper task.
     ///
     /// Starts an async task that listens for events on a channel and executes
@@ -597,7 +601,7 @@ impl HelperProcess {
     pub async fn spawn(&mut self) -> Result<(), PlatformError> {
         let (tx, rx) = mpsc::unbounded_channel();
         self.sender = Some(tx);
-        
+
         // Initialize Lua interpreter if configured
         #[cfg(feature = "lua-scripts")]
         {
@@ -619,23 +623,29 @@ impl HelperProcess {
                 }
             }
         }
-        
+
         let config = self.config.clone();
-        
+
         #[cfg(feature = "lua-scripts")]
         let lua = self.lua.clone();
-        
+
         // Spawn background task
         let handle = tokio::spawn(async move {
-            Self::event_loop(rx, config, #[cfg(feature = "lua-scripts")] lua).await;
+            Self::event_loop(
+                rx,
+                config,
+                #[cfg(feature = "lua-scripts")]
+                lua,
+            )
+            .await;
         });
-        
+
         self.task_handle = Some(handle);
         info!("Helper process task spawned");
-        
+
         Ok(())
     }
-    
+
     /// Sends an event to the helper process for script execution.
     ///
     /// Queues the event for asynchronous processing. Returns immediately without blocking.
@@ -656,15 +666,13 @@ impl HelperProcess {
     /// - Channel closed (helper task terminated)
     pub fn send_event(&self, event: ScriptEvent) -> Result<(), PlatformError> {
         match &self.sender {
-            Some(tx) => tx.send(event).map_err(|e| {
-                PlatformError::PipeError(format!("Failed to queue event: {}", e))
-            }),
-            None => Err(PlatformError::PipeError(
-                "Helper process not started".to_string()
-            )),
+            Some(tx) => tx
+                .send(event)
+                .map_err(|e| PlatformError::PipeError(format!("Failed to queue event: {}", e))),
+            None => Err(PlatformError::PipeError("Helper process not started".to_string())),
         }
     }
-    
+
     /// Initiates clean shutdown of helper process.
     ///
     /// Closes the event channel and waits for background task to finish processing
@@ -676,7 +684,7 @@ impl HelperProcess {
     pub async fn shutdown(&mut self) -> Result<(), PlatformError> {
         // Drop sender to signal shutdown
         self.sender = None;
-        
+
         // Wait for background task to finish
         if let Some(handle) = self.task_handle.take() {
             match tokio::time::timeout(Duration::from_secs(30), handle).await {
@@ -697,7 +705,7 @@ impl HelperProcess {
             Ok(())
         }
     }
-    
+
     /// Main event loop for background helper task.
     ///
     /// Receives events from channel and dispatches to script execution.
@@ -714,7 +722,7 @@ impl HelperProcess {
         #[cfg(feature = "lua-scripts")] lua: Option<Arc<Mutex<Lua>>>,
     ) {
         debug!("Helper event loop started");
-        
+
         while let Some(event) = rx.recv().await {
             // Execute script for this event
             #[cfg(feature = "lua-scripts")]
@@ -723,18 +731,18 @@ impl HelperProcess {
             } else {
                 Self::execute_shell_event(&event, &config).await
             };
-            
+
             #[cfg(not(feature = "lua-scripts"))]
             let result = Self::execute_shell_event(&event, &config).await;
-            
+
             if let Err(e) = result {
                 error!("Script execution failed: {}", e);
             }
         }
-        
+
         debug!("Helper event loop terminated");
     }
-    
+
     /// Executes a shell script for an event.
     ///
     /// Runs the configured script with environment variables and positional arguments
@@ -760,29 +768,29 @@ impl HelperProcess {
                 return Ok(());
             }
         };
-        
+
         // Build environment variables
         let env_vars = Self::build_environment(event);
-        
+
         // Build command-line arguments
         let args = Self::build_arguments(event);
-        
+
         debug!(
             script = %script_path.display(),
             args = ?args,
             env_count = env_vars.len(),
             "Executing script"
         );
-        
+
         // Spawn script process
         let mut command = Command::new(script_path);
         command.args(&args);
-        
+
         // Add environment variables
         for (key, value) in env_vars {
             command.env(key, value);
         }
-        
+
         // Drop privileges if configured
         if let Some(ref user) = config.security.user {
             // Note: tokio::process::Command doesn't directly support setuid.
@@ -791,20 +799,13 @@ impl HelperProcess {
             debug!("Script should run as user: {}", user);
             // TODO: Implement privilege dropping via pre_exec once nix supports it
         }
-        
+
         // Execute with timeout
-        match tokio::time::timeout(
-            Duration::from_secs(SCRIPT_TIMEOUT_SECS),
-            command.output(),
-        )
-        .await
+        match tokio::time::timeout(Duration::from_secs(SCRIPT_TIMEOUT_SECS), command.output()).await
         {
             Ok(Ok(output)) => {
                 if output.status.success() {
-                    debug!(
-                        exit_code = output.status.code(),
-                        "Script completed successfully"
-                    );
+                    debug!(exit_code = output.status.code(), "Script completed successfully");
                 } else {
                     warn!(
                         exit_code = output.status.code(),
@@ -830,7 +831,7 @@ impl HelperProcess {
             }
         }
     }
-    
+
     /// Initializes Lua interpreter from script file.
     ///
     /// Loads and compiles the Lua script, preparing it for event execution.
@@ -845,26 +846,23 @@ impl HelperProcess {
     #[cfg(feature = "lua-scripts")]
     fn init_lua_interpreter(script_path: &Path) -> Result<Lua, PlatformError> {
         let lua = Lua::new();
-        
+
         // Load script file
-        let script_content = std::fs::read_to_string(script_path).map_err(|e| {
-            PlatformError::LuaScriptError {
+        let script_content =
+            std::fs::read_to_string(script_path).map_err(|e| PlatformError::LuaScriptError {
                 script: script_path.display().to_string(),
                 reason: format!("Failed to read Lua script: {}", e),
-            }
-        })?;
-        
+            })?;
+
         // Compile script
-        lua.load(&script_content).exec().map_err(|e| {
-            PlatformError::LuaScriptError {
-                script: script_path.display().to_string(),
-                reason: format!("Failed to load Lua script: {}", e),
-            }
+        lua.load(&script_content).exec().map_err(|e| PlatformError::LuaScriptError {
+            script: script_path.display().to_string(),
+            reason: format!("Failed to load Lua script: {}", e),
         })?;
-        
+
         Ok(lua)
     }
-    
+
     /// Executes Lua script for an event.
     ///
     /// Calls the Lua script's event handler function with event data as a table.
@@ -888,17 +886,15 @@ impl HelperProcess {
             Some(l) => l,
             None => return Self::execute_shell_event(event, config).await,
         };
-        
+
         let lua_guard = lua.lock().unwrap();
-        
+
         // Create event table
-        let event_table = lua_guard.create_table().map_err(|e| {
-            PlatformError::LuaScriptError {
-                script: "lua script".to_string(),
-                reason: format!("Failed to create table: {}", e),
-            }
+        let event_table = lua_guard.create_table().map_err(|e| PlatformError::LuaScriptError {
+            script: "lua script".to_string(),
+            reason: format!("Failed to create table: {}", e),
         })?;
-        
+
         // Populate table based on event type
         Self::populate_lua_table(&lua_guard, &event_table, event).map_err(|e| {
             PlatformError::LuaScriptError {
@@ -906,29 +902,23 @@ impl HelperProcess {
                 reason: format!("Failed to populate table: {}", e),
             }
         })?;
-        
+
         // Call event handler function
-        let handler: mlua::Function = lua_guard
-            .globals()
-            .get("lease_event")
-            .map_err(|e| {
-                PlatformError::LuaScriptError {
-                    script: "lua script".to_string(),
-                    reason: format!("Event handler not found: {}", e),
-                }
-            })?;
-        
-        handler.call::<()>(event_table).map_err(|e| {
-            PlatformError::LuaScriptError {
+        let handler: mlua::Function =
+            lua_guard.globals().get("lease_event").map_err(|e| PlatformError::LuaScriptError {
                 script: "lua script".to_string(),
-                reason: format!("Handler call failed: {}", e),
-            }
+                reason: format!("Event handler not found: {}", e),
+            })?;
+
+        handler.call::<()>(event_table).map_err(|e| PlatformError::LuaScriptError {
+            script: "lua script".to_string(),
+            reason: format!("Handler call failed: {}", e),
         })?;
-        
+
         debug!("Lua script executed successfully");
         Ok(())
     }
-    
+
     /// Populates Lua table with event data.
     #[cfg(feature = "lua-scripts")]
     fn populate_lua_table(
@@ -967,7 +957,7 @@ impl HelperProcess {
         }
         Ok(())
     }
-    
+
     /// Builds environment variables for script execution.
     ///
     /// Creates DNSMASQ_* environment variables matching C implementation.
@@ -981,7 +971,7 @@ impl HelperProcess {
     /// HashMap of environment variable names to values.
     fn build_environment(event: &ScriptEvent) -> HashMap<String, String> {
         let mut env = HashMap::new();
-        
+
         match event {
             ScriptEvent::DhcpLease(lease) => {
                 // Common variables
@@ -989,23 +979,17 @@ impl HelperProcess {
                     env.insert("DNSMASQ_DOMAIN".to_string(), domain.clone());
                 }
                 env.insert("DNSMASQ_INTERFACE".to_string(), lease.interface.clone());
-                env.insert(
-                    "DNSMASQ_LEASE_EXPIRES".to_string(),
-                    lease.lease_expires.to_string(),
-                );
-                
+                env.insert("DNSMASQ_LEASE_EXPIRES".to_string(), lease.lease_expires.to_string());
+
                 // Calculate time remaining
                 if let Ok(now) = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
                     let remaining = lease.lease_expires.saturating_sub(now.as_secs());
                     env.insert("DNSMASQ_TIME_REMAINING".to_string(), remaining.to_string());
                 }
-                
+
                 // DHCPv4 specific
                 if let Some(ref supplied_hostname) = lease.supplied_hostname {
-                    env.insert(
-                        "DNSMASQ_SUPPLIED_HOSTNAME".to_string(),
-                        supplied_hostname.clone(),
-                    );
+                    env.insert("DNSMASQ_SUPPLIED_HOSTNAME".to_string(), supplied_hostname.clone());
                 }
                 if let Some(ref client_id) = lease.client_id {
                     env.insert("DNSMASQ_CLIENT_ID".to_string(), hex::encode(client_id));
@@ -1019,7 +1003,7 @@ impl HelperProcess {
                 if let Some(ref user_class) = lease.user_class {
                     env.insert("DNSMASQ_USER_CLASS".to_string(), user_class.clone());
                 }
-                
+
                 // DHCPv6 specific
                 if let Some(iaid) = lease.iaid {
                     env.insert("DNSMASQ_IAID".to_string(), iaid.to_string());
@@ -1028,7 +1012,7 @@ impl HelperProcess {
                     env.insert("DNSMASQ_SERVER_DUID".to_string(), hex::encode(server_duid));
                 }
                 env.insert("DNSMASQ_MAC".to_string(), lease.mac.to_string());
-                
+
                 // CableHome variables
                 if let Some(ref oui) = lease.cpewan_oui {
                     env.insert("DNSMASQ_CPEWAN_OUI".to_string(), oui.clone());
@@ -1039,16 +1023,13 @@ impl HelperProcess {
                 if let Some(ref class) = lease.cpewan_class {
                     env.insert("DNSMASQ_CPEWAN_CLASS".to_string(), class.clone());
                 }
-                
+
                 // Relay agent information
                 if let Some(ref circuit_id) = lease.circuit_id {
                     env.insert("DNSMASQ_CIRCUIT_ID".to_string(), hex::encode(circuit_id));
                 }
                 if let Some(ref subscriber_id) = lease.subscriber_id {
-                    env.insert(
-                        "DNSMASQ_SUBSCRIBER_ID".to_string(),
-                        hex::encode(subscriber_id),
-                    );
+                    env.insert("DNSMASQ_SUBSCRIBER_ID".to_string(), hex::encode(subscriber_id));
                 }
                 if let Some(ref remote_id) = lease.remote_id {
                     env.insert("DNSMASQ_REMOTE_ID".to_string(), hex::encode(remote_id));
@@ -1062,16 +1043,13 @@ impl HelperProcess {
             }
             ScriptEvent::RelaySnoop(relay) => {
                 env.insert("DNSMASQ_INTERFACE".to_string(), relay.interface.clone());
-                env.insert(
-                    "DNSMASQ_RELAY_ADDRESS".to_string(),
-                    relay.relay_addr.to_string(),
-                );
+                env.insert("DNSMASQ_RELAY_ADDRESS".to_string(), relay.relay_addr.to_string());
             }
         }
-        
+
         env
     }
-    
+
     /// Builds command-line arguments for script invocation.
     ///
     /// # Arguments
@@ -1101,11 +1079,7 @@ impl HelperProcess {
             }
             ScriptEvent::Arp(arp) => {
                 vec![
-                    if arp.is_add {
-                        "arp-add".to_string()
-                    } else {
-                        "arp-del".to_string()
-                    },
+                    if arp.is_add { "arp-add".to_string() } else { "arp-del".to_string() },
                     arp.mac.to_string(),
                     arp.addr.to_string(),
                     String::new(),
@@ -1121,7 +1095,7 @@ impl HelperProcess {
             }
         }
     }
-    
+
     /// Converts LeaseAction to string for script arguments.
     fn action_to_string(action: &LeaseAction) -> String {
         match action {
@@ -1131,7 +1105,7 @@ impl HelperProcess {
             LeaseAction::OldHostname => "old".to_string(), // Same as Old for backward compat
         }
     }
-    
+
     /// Gets event type name for logging.
     fn event_action_name(event: &ScriptEvent) -> &'static str {
         match event {
@@ -1218,7 +1192,7 @@ pub fn queue_script(
         subscriber_id: None,
         remote_id: None,
     }));
-    
+
     helper.send_event(event)
 }
 
@@ -1261,13 +1235,9 @@ pub fn queue_tftp(
     file_size: u64,
     interface: String,
 ) -> Result<(), PlatformError> {
-    let event = ScriptEvent::Tftp(Box::new(TftpEvent {
-        file_path,
-        client_addr,
-        file_size,
-        interface,
-    }));
-    
+    let event =
+        ScriptEvent::Tftp(Box::new(TftpEvent { file_path, client_addr, file_size, interface }));
+
     helper.send_event(event)
 }
 
@@ -1309,7 +1279,7 @@ pub fn queue_arp(
     is_add: bool,
 ) -> Result<(), PlatformError> {
     let event = ScriptEvent::Arp(Box::new(ArpEvent { mac, addr, is_add }));
-    
+
     helper.send_event(event)
 }
 
@@ -1358,7 +1328,7 @@ pub fn queue_relay_snoop(
         relay_addr,
         interface,
     }));
-    
+
     helper.send_event(event)
 }
 
@@ -1369,7 +1339,7 @@ pub fn queue_relay_snoop(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_script_data_serialization() {
         let data = ScriptData {
@@ -1384,37 +1354,28 @@ mod tests {
             file_size: None,
             file_path: None,
         };
-        
+
         let serialized = data.serialize();
         assert!(serialized.len() > 0);
-        
+
         let deserialized = ScriptData::deserialize(&serialized).unwrap();
         assert_eq!(deserialized.action, ACTION_ADD);
         assert_eq!(deserialized.hwaddr, data.hwaddr);
         assert_eq!(deserialized.addr, data.addr);
     }
-    
+
     #[test]
     fn test_action_to_string() {
-        assert_eq!(
-            HelperProcess::action_to_string(&LeaseAction::Add),
-            "add"
-        );
-        assert_eq!(
-            HelperProcess::action_to_string(&LeaseAction::Old),
-            "old"
-        );
-        assert_eq!(
-            HelperProcess::action_to_string(&LeaseAction::Del),
-            "del"
-        );
+        assert_eq!(HelperProcess::action_to_string(&LeaseAction::Add), "add");
+        assert_eq!(HelperProcess::action_to_string(&LeaseAction::Old), "old");
+        assert_eq!(HelperProcess::action_to_string(&LeaseAction::Del), "del");
     }
-    
+
     #[test]
     fn test_build_arguments() {
         let mac = MacAddress::from_bytes([0x00, 0x11, 0x22, 0x33, 0x44, 0x55]);
         let addr: IpAddr = "192.168.1.100".parse().unwrap();
-        
+
         let event = ScriptEvent::DhcpLease(Box::new(DhcpLeaseEvent {
             action: LeaseAction::Add,
             mac,
@@ -1437,19 +1398,19 @@ mod tests {
             subscriber_id: None,
             remote_id: None,
         }));
-        
+
         let args = HelperProcess::build_arguments(&event);
         assert_eq!(args.len(), 4);
         assert_eq!(args[0], "add");
         assert_eq!(args[2], "192.168.1.100");
         assert_eq!(args[3], "test-host");
     }
-    
+
     #[test]
     fn test_build_environment() {
         let mac = MacAddress::from_bytes([0x00, 0x11, 0x22, 0x33, 0x44, 0x55]);
         let addr: IpAddr = "192.168.1.100".parse().unwrap();
-        
+
         let event = ScriptEvent::DhcpLease(Box::new(DhcpLeaseEvent {
             action: LeaseAction::Add,
             mac,
@@ -1472,22 +1433,15 @@ mod tests {
             subscriber_id: None,
             remote_id: None,
         }));
-        
+
         let env = HelperProcess::build_environment(&event);
-        
+
         assert_eq!(env.get("DNSMASQ_DOMAIN"), Some(&"example.com".to_string()));
         assert_eq!(env.get("DNSMASQ_INTERFACE"), Some(&"eth0".to_string()));
         assert_eq!(env.get("DNSMASQ_LEASE_EXPIRES"), Some(&"7200".to_string()));
-        assert_eq!(
-            env.get("DNSMASQ_SUPPLIED_HOSTNAME"),
-            Some(&"client-hostname".to_string())
-        );
+        assert_eq!(env.get("DNSMASQ_SUPPLIED_HOSTNAME"), Some(&"client-hostname".to_string()));
         assert_eq!(env.get("DNSMASQ_CLIENT_ID"), Some(&"010203".to_string()));
-        assert_eq!(
-            env.get("DNSMASQ_VENDOR_CLASS"),
-            Some(&"test-vendor".to_string())
-        );
+        assert_eq!(env.get("DNSMASQ_VENDOR_CLASS"), Some(&"test-vendor".to_string()));
         assert_eq!(env.get("DNSMASQ_TAGS"), Some(&"tag1 tag2".to_string()));
     }
 }
-

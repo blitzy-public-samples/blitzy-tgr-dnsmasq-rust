@@ -138,11 +138,11 @@ use libc::PR_SET_KEEPCAPS;
     target_os = "openbsd",
     target_os = "macos"
 ))]
-use nix::unistd::{Gid, Uid};
-
 use std::collections::HashSet;
 use tracing::{debug, error, info, warn};
-use users::{get_group_by_name, get_user_by_name};
+
+#[cfg(unix)]
+use nix::unistd::{User, Group};
 
 // ============================================================================
 // PRIVILEGE MANAGER TRAIT
@@ -307,23 +307,32 @@ impl PrivilegeManager for LinuxPrivilegeManager {
             })?;
 
         // Look up user information
-        let user = get_user_by_name(username).ok_or_else(|| PlatformError::UserNotFound {
-            user: username.clone(),
-            reason: format!("User '{}' not found in /etc/passwd", username),
-        })?;
+        let user = User::from_name(username)
+            .map_err(|e| PlatformError::UserNotFound {
+                user: username.clone(),
+                reason: format!("Failed to lookup user '{}': {}", username, e),
+            })?
+            .ok_or_else(|| PlatformError::UserNotFound {
+                user: username.clone(),
+                reason: format!("User '{}' not found in /etc/passwd", username),
+            })?;
 
-        let uid = Uid::from_raw(user.uid());
+        let uid = user.uid;
         let gid = if let Some(ref groupname) = security_config.group {
             // Look up group if specified
-            let group =
-                get_group_by_name(groupname).ok_or_else(|| PlatformError::UserNotFound {
+            let group = Group::from_name(groupname)
+                .map_err(|e| PlatformError::UserNotFound {
+                    user: groupname.clone(),
+                    reason: format!("Failed to lookup group '{}': {}", groupname, e),
+                })?
+                .ok_or_else(|| PlatformError::UserNotFound {
                     user: groupname.clone(),
                     reason: format!("Group '{}' not found in /etc/group", groupname),
                 })?;
-            Gid::from_raw(group.gid())
+            group.gid
         } else {
             // Use primary group from passwd entry
-            Gid::from_raw(user.primary_group_id())
+            user.gid
         };
 
         info!(
@@ -485,21 +494,30 @@ impl PrivilegeManager for BsdPrivilegeManager {
             })?;
 
         // Look up user information
-        let user = get_user_by_name(username).ok_or_else(|| PlatformError::UserNotFound {
-            user: username.clone(),
-            reason: format!("User '{}' not found in /etc/passwd", username),
-        })?;
+        let user = User::from_name(username)
+            .map_err(|e| PlatformError::UserNotFound {
+                user: username.clone(),
+                reason: format!("Failed to lookup user '{}': {}", username, e),
+            })?
+            .ok_or_else(|| PlatformError::UserNotFound {
+                user: username.clone(),
+                reason: format!("User '{}' not found in /etc/passwd", username),
+            })?;
 
-        let uid = Uid::from_raw(user.uid());
+        let uid = user.uid;
         let gid = if let Some(ref groupname) = security_config.group {
-            let group =
-                get_group_by_name(groupname).ok_or_else(|| PlatformError::UserNotFound {
+            let group = Group::from_name(groupname)
+                .map_err(|e| PlatformError::UserNotFound {
+                    user: groupname.clone(),
+                    reason: format!("Failed to lookup group '{}': {}", groupname, e),
+                })?
+                .ok_or_else(|| PlatformError::UserNotFound {
                     user: groupname.clone(),
                     reason: format!("Group '{}' not found in /etc/group", groupname),
                 })?;
-            Gid::from_raw(group.gid())
+            group.gid
         } else {
-            Gid::from_raw(user.primary_group_id())
+            user.gid
         };
 
         info!(
@@ -688,21 +706,30 @@ impl PrivilegeManager for OpenBsdPrivilegeManager {
             })?;
 
         // Look up user information
-        let user = get_user_by_name(username).ok_or_else(|| PlatformError::UserNotFound {
-            user: username.clone(),
-            reason: format!("User '{}' not found in /etc/passwd", username),
-        })?;
+        let user = User::from_name(username)
+            .map_err(|e| PlatformError::UserNotFound {
+                user: username.clone(),
+                reason: format!("Failed to lookup user '{}': {}", username, e),
+            })?
+            .ok_or_else(|| PlatformError::UserNotFound {
+                user: username.clone(),
+                reason: format!("User '{}' not found in /etc/passwd", username),
+            })?;
 
-        let uid = Uid::from_raw(user.uid());
+        let uid = user.uid;
         let gid = if let Some(ref groupname) = security_config.group {
-            let group =
-                get_group_by_name(groupname).ok_or_else(|| PlatformError::UserNotFound {
+            let group = Group::from_name(groupname)
+                .map_err(|e| PlatformError::UserNotFound {
+                    user: groupname.clone(),
+                    reason: format!("Failed to lookup group '{}': {}", groupname, e),
+                })?
+                .ok_or_else(|| PlatformError::UserNotFound {
                     user: groupname.clone(),
                     reason: format!("Group '{}' not found in /etc/group", groupname),
                 })?;
-            Gid::from_raw(group.gid())
+            group.gid
         } else {
-            Gid::from_raw(user.primary_group_id())
+            user.gid
         };
 
         info!(

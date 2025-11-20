@@ -78,9 +78,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
 
-# User and group lookup for privilege dropping
-users = "0.11"
-
 # Platform-specific dependencies for Linux
 [target.'cfg(target_os = "linux")'.dependencies]
 nix = { version = "0.29", features = ["socket", "net", "signal", "process", "user", "inotify", "fs"] }

@@ -120,39 +120,35 @@
 //!   signatures, modified RRsets, missing validation records) to ensure robust security.
 
 // External dependencies for async testing and cryptographic operations
-use tokio::test;
-use tokio::fs;
-use tokio::time::Duration;
-use ring::{signature, digest};
+use bytes::{BufMut, Bytes, BytesMut};
+use data_encoding::BASE32HEX_NOPAD;
+use ring::{digest, signature};
 use tempfile::{NamedTempFile, TempDir};
-use bytes::{Bytes, BytesMut, BufMut};
+use tokio::fs;
+use tokio::test;
+use tokio::time::Duration;
 use tracing::{debug, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
-use data_encoding::BASE32HEX_NOPAD;
 
 // Internal imports from dnsmasq implementation
-use dnsmasq::dns::dnssec::{
-    DnssecValidator, ValidationCounter, ValidationStatus,
-    CryptoAlgorithm, SignatureVerifier,
-};
-use dnsmasq::dns::dnssec::trust_anchors::TrustAnchorStore;
-use dnsmasq::dns::dnssec::blockdata::BlockData;
 use dnsmasq::dns::cache::DnsCache;
-use dnsmasq::dns::protocol::message::DnsMessage;
-use dnsmasq::dns::protocol::record::{ResourceRecord, RData};
-use dnsmasq::dns::protocol::name::DomainName;
+use dnsmasq::dns::dnssec::blockdata::BlockData;
+use dnsmasq::dns::dnssec::trust_anchors::TrustAnchorStore;
+use dnsmasq::dns::dnssec::{
+    CryptoAlgorithm, DnssecValidator, SignatureVerifier, ValidationCounter, ValidationStatus,
+};
 use dnsmasq::dns::protocol::constants::*;
+use dnsmasq::dns::protocol::message::DnsMessage;
+use dnsmasq::dns::protocol::name::DomainName;
+use dnsmasq::dns::protocol::record::{RData, ResourceRecord};
 use dnsmasq::error::{DnsError, DnsmasqError};
 use dnsmasq::types::RecordType;
+use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::net::IpAddr;
 
 // Shared test utilities
-use common::{
-    setup_test_server, DnsQueryBuilder, create_temp_config_file,
-    load_fixture,
-};
+use common::{create_temp_config_file, load_fixture, setup_test_server, DnsQueryBuilder};
 
 // Test module for common utilities
 mod common;
@@ -167,8 +163,9 @@ mod common;
 /// detailed observation of DNSSEC validation steps for debugging test failures.
 fn init_test_logging() {
     let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env()
-            .add_directive("dnsmasq=debug".parse().unwrap()))
+        .with_env_filter(
+            EnvFilter::from_default_env().add_directive("dnsmasq=debug".parse().unwrap()),
+        )
         .with_test_writer()
         .try_init();
 }
@@ -202,18 +199,15 @@ async fn create_trust_anchor_file(
     digest: &str,
 ) -> std::io::Result<NamedTempFile> {
     let mut temp_file = NamedTempFile::new()?;
-    
+
     // dnsmasq trust-anchor format: trust-anchor=domain,keytag,algorithm,digest_type,digest
     // Note: This is comma-separated, not the DNS zone file format
-    let content = format!(
-        "trust-anchor=.,{},{},{},{}\n",
-        key_tag, algorithm, digest_type, digest
-    );
-    
+    let content = format!("trust-anchor=.,{},{},{},{}\n", key_tag, algorithm, digest_type, digest);
+
     use std::io::Write;
     temp_file.write_all(content.as_bytes())?;
     temp_file.flush()?;
-    
+
     Ok(temp_file)
 }
 
@@ -241,21 +235,15 @@ fn build_dnskey_record(
     public_key: &[u8],
 ) -> Result<ResourceRecord, DnsError> {
     let domain_name = DomainName::new(name)?;
-    
+
     let rdata = RData::Dnskey {
         flags,
         protocol,
         algorithm,
         public_key: Bytes::copy_from_slice(public_key),
     };
-    
-    Ok(ResourceRecord::new(
-        domain_name,
-        RecordType::DNSKEY,
-        C_IN,
-        3600,
-        rdata,
-    ))
+
+    Ok(ResourceRecord::new(domain_name, RecordType::DNSKEY, C_IN, 3600, rdata))
 }
 
 /// Build a test RRSIG resource record for signature validation testing.
@@ -292,16 +280,12 @@ fn build_rrsig_record(
     signature: &[u8],
 ) -> Result<ResourceRecord, DnsError> {
     let domain_name = DomainName::new(name)
-        .map_err(|e| DnsError::InvalidName {
-            name: name.to_string(),
-            reason: e.to_string(),
-        })?;
-    let signer = DomainName::new(signer_name)
-        .map_err(|e| DnsError::InvalidName {
-            name: signer_name.to_string(),
-            reason: e.to_string(),
-        })?;
-    
+        .map_err(|e| DnsError::InvalidName { name: name.to_string(), reason: e.to_string() })?;
+    let signer = DomainName::new(signer_name).map_err(|e| DnsError::InvalidName {
+        name: signer_name.to_string(),
+        reason: e.to_string(),
+    })?;
+
     let rdata = RData::Rrsig {
         type_covered,
         algorithm,
@@ -313,14 +297,8 @@ fn build_rrsig_record(
         signer,
         signature: Bytes::copy_from_slice(signature),
     };
-    
-    Ok(ResourceRecord::new(
-        domain_name,
-        RecordType::RRSIG,
-        C_IN,
-        3600,
-        rdata,
-    ))
+
+    Ok(ResourceRecord::new(domain_name, RecordType::RRSIG, C_IN, 3600, rdata))
 }
 
 /// Build a test DS (Delegation Signer) record for trust chain validation.
@@ -363,25 +341,12 @@ fn build_ds_record(
     digest: &[u8],
 ) -> Result<ResourceRecord, DnsError> {
     let domain_name = DomainName::new(name)
-        .map_err(|e| DnsError::InvalidName {
-            name: name.to_string(),
-            reason: e.to_string(),
-        })?;
-    
-    let rdata = RData::Ds {
-        key_tag,
-        algorithm,
-        digest_type,
-        digest: Bytes::copy_from_slice(digest),
-    };
-    
-    Ok(ResourceRecord::new(
-        domain_name,
-        RecordType::DS,
-        C_IN,
-        3600,
-        rdata,
-    ))
+        .map_err(|e| DnsError::InvalidName { name: name.to_string(), reason: e.to_string() })?;
+
+    let rdata =
+        RData::Ds { key_tag, algorithm, digest_type, digest: Bytes::copy_from_slice(digest) };
+
+    Ok(ResourceRecord::new(domain_name, RecordType::DS, C_IN, 3600, rdata))
 }
 
 /// Build a test NSEC record for authenticated denial of existence.
@@ -418,28 +383,15 @@ fn build_nsec_record(
     type_bitmap: &[u8],
 ) -> Result<ResourceRecord, DnsError> {
     let domain_name = DomainName::new(name)
-        .map_err(|e| DnsError::InvalidName {
-            name: name.to_string(),
-            reason: e.to_string(),
-        })?;
-    let next_domain = DomainName::new(next_name)
-        .map_err(|e| DnsError::InvalidName {
-            name: next_name.to_string(),
-            reason: e.to_string(),
-        })?;
-    
-    let rdata = RData::Nsec {
-        next_domain,
-        type_bitmap: Bytes::copy_from_slice(type_bitmap),
-    };
-    
-    Ok(ResourceRecord::new(
-        domain_name,
-        RecordType::NSEC,
-        C_IN,
-        3600,
-        rdata,
-    ))
+        .map_err(|e| DnsError::InvalidName { name: name.to_string(), reason: e.to_string() })?;
+    let next_domain = DomainName::new(next_name).map_err(|e| DnsError::InvalidName {
+        name: next_name.to_string(),
+        reason: e.to_string(),
+    })?;
+
+    let rdata = RData::Nsec { next_domain, type_bitmap: Bytes::copy_from_slice(type_bitmap) };
+
+    Ok(ResourceRecord::new(domain_name, RecordType::NSEC, C_IN, 3600, rdata))
 }
 
 /// Build a test NSEC3 record for hashed authenticated denial.
@@ -495,18 +447,15 @@ fn build_nsec3_record(
     // NSEC3 owner name: <base32hex-hash>.<zone>
     let owner = format!("{}.{}", hash_b32, zone);
     let domain_name = DomainName::new(&owner)
-        .map_err(|e| DnsError::InvalidName {
-            name: owner.clone(),
-            reason: e.to_string(),
-        })?;
-    
+        .map_err(|e| DnsError::InvalidName { name: owner.clone(), reason: e.to_string() })?;
+
     // Decode next hashed owner name from base32hex
-    let next_hashed = BASE32HEX_NOPAD.decode(next_hash_b32.as_bytes())
-        .map_err(|e| DnsError::ParseFailed {
+    let next_hashed =
+        BASE32HEX_NOPAD.decode(next_hash_b32.as_bytes()).map_err(|e| DnsError::ParseFailed {
             server: "test_data".to_string(),
             reason: format!("Invalid base32hex encoding: {}", e),
         })?;
-    
+
     let rdata = RData::Nsec3 {
         hash_algorithm,
         flags,
@@ -515,14 +464,8 @@ fn build_nsec3_record(
         next_hashed: Bytes::copy_from_slice(&next_hashed),
         type_bitmap: Bytes::copy_from_slice(type_bitmap),
     };
-    
-    Ok(ResourceRecord::new(
-        domain_name,
-        RecordType::NSEC3,
-        C_IN,
-        3600,
-        rdata,
-    ))
+
+    Ok(ResourceRecord::new(domain_name, RecordType::NSEC3, C_IN, 3600, rdata))
 }
 
 /// Compute DNSKEY key tag for DS record matching.
@@ -539,15 +482,11 @@ fn build_nsec3_record(
 /// 16-bit key tag value
 fn compute_key_tag(dnskey_rdata: &[u8]) -> u16 {
     let mut ac: u32 = 0;
-    
+
     for (i, byte) in dnskey_rdata.iter().enumerate() {
-        ac += if i & 1 == 1 {
-            *byte as u32
-        } else {
-            (*byte as u32) << 8
-        };
+        ac += if i & 1 == 1 { *byte as u32 } else { (*byte as u32) << 8 };
     }
-    
+
     ac += (ac >> 16) & 0xFFFF;
     (ac & 0xFFFF) as u16
 }
@@ -564,14 +503,16 @@ fn generate_test_rsa_keypair() -> (Vec<u8>, Vec<u8>) {
     // Simplified test key generation - in production use dnssec-keygen or similar
     // For testing, use pre-generated test vectors
     let public_key = vec![
-        0x30, 0x82, 0x01, 0x22, // RSA public key DER header (simplified)
-        // ... public key bytes (truncated for brevity)
+        0x30, 0x82, 0x01,
+        0x22, // RSA public key DER header (simplified)
+             // ... public key bytes (truncated for brevity)
     ];
     let private_key = vec![
-        0x30, 0x82, 0x04, 0xA4, // PKCS#8 private key header (simplified)
-        // ... private key bytes (truncated for brevity)
+        0x30, 0x82, 0x04,
+        0xA4, // PKCS#8 private key header (simplified)
+             // ... private key bytes (truncated for brevity)
     ];
-    
+
     (public_key, private_key)
 }
 
@@ -602,35 +543,34 @@ fn generate_test_rsa_keypair() -> (Vec<u8>, Vec<u8>) {
 async fn test_load_trust_anchors() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing trust anchor loading from trust-anchors.conf");
-    
+
     // Create trust anchor file with current root zone KSK (2024)
     // . IN DS 20326 8 2 E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D
     let key_tag = 20326;
     let algorithm = 8; // RSA/SHA-256
     let digest_type = 2; // SHA-256
     let digest = "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D";
-    
-    let trust_anchor_file = create_trust_anchor_file(
-        key_tag, algorithm, digest_type, digest
-    ).await?;
-    
+
+    let trust_anchor_file =
+        create_trust_anchor_file(key_tag, algorithm, digest_type, digest).await?;
+
     // Initialize trust anchor store and load trust anchors
     let mut trust_store = TrustAnchorStore::new();
     trust_store.load_from_file(trust_anchor_file.path()).await?;
-    
+
     // Verify trust anchor is available
     let root_domain = DomainName::new(".")?;
     let anchors = trust_store.find_anchor(&root_domain);
     assert!(anchors.is_some(), "Root zone trust anchor should be loaded");
-    
+
     let anchors = anchors.unwrap();
     assert_eq!(anchors.len(), 1, "Should have exactly one trust anchor");
-    
+
     let anchor = &anchors[0];
     assert_eq!(anchor.keytag(), key_tag, "Key tag should match");
     assert_eq!(anchor.algorithm(), algorithm, "Algorithm should match");
     assert_eq!(anchor.digest_type(), digest_type, "Digest type should match");
-    
+
     info!("Trust anchor loading test passed");
     Ok(())
 }
@@ -644,11 +584,11 @@ async fn test_load_trust_anchors() -> Result<(), DnsmasqError> {
 async fn test_load_multiple_trust_anchors() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing multiple trust anchor loading (key rollover)");
-    
+
     // Create trust anchor file with two KSKs (old and new during rollover)
     let mut temp_file = NamedTempFile::new()?;
     use std::io::Write;
-    
+
     // dnsmasq trust-anchor format: trust-anchor=domain,keytag,algorithm,digest_type,digest
     let content = "\
 trust-anchor=.,19036,8,2,49AAC11D7B6F6446702E54A1607371607A1A41855200FD2CE1CDDE32F24E8FB5\n\
@@ -656,19 +596,19 @@ trust-anchor=.,20326,8,2,E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC68345710423
     ";
     temp_file.write_all(content.as_bytes())?;
     temp_file.flush()?;
-    
+
     let mut trust_store = TrustAnchorStore::new();
     trust_store.load_from_file(temp_file.path()).await?;
-    
+
     let root_domain = DomainName::new(".")?;
     let anchors = trust_store.find_anchor(&root_domain);
     assert!(anchors.is_some(), "Root zone trust anchors should be loaded");
-    
+
     let anchors = anchors.unwrap();
     assert_eq!(anchors.len(), 2, "Should have two trust anchors for rollover");
     assert!(anchors.iter().any(|a| a.keytag() == 19036), "Old KSK present");
     assert!(anchors.iter().any(|a| a.keytag() == 20326), "New KSK present");
-    
+
     info!("Multiple trust anchor test passed");
     Ok(())
 }
@@ -700,44 +640,45 @@ trust-anchor=.,20326,8,2,E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC68345710423
 async fn test_dnskey_validation() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing DNSKEY record validation");
-    
+
     // Build test DNSKEY record (RSA/SHA-256 ZSK)
     let (public_key, _) = generate_test_rsa_keypair();
     let dnskey_record = build_dnskey_record(
         "example.com",
-        256,  // ZSK flag
-        3,    // Protocol (always 3 for DNSSEC)
-        8,    // RSA/SHA-256
+        256, // ZSK flag
+        3,   // Protocol (always 3 for DNSSEC)
+        8,   // RSA/SHA-256
         &public_key,
     )?;
-    
+
     // Validate DNSKEY fields
     assert_eq!(dnskey_record.name().as_str(), "example.com", "Owner name should match");
     assert_eq!(dnskey_record.rtype(), RecordType::DNSKEY, "Record type should be DNSKEY");
-    
+
     // Extract and validate DNSKEY RDATA
     let dnskey_rdata = dnskey_record.rdata();
     let (flags, protocol, algorithm, _public_key_bytes) = match dnskey_rdata {
-        RData::Dnskey { flags, protocol, algorithm, public_key } => 
-            (*flags, *protocol, *algorithm, public_key.as_ref()),
+        RData::Dnskey { flags, protocol, algorithm, public_key } => {
+            (*flags, *protocol, *algorithm, public_key.as_ref())
+        }
         _ => panic!("Expected DNSKEY rdata"),
     };
-    
+
     assert_eq!(flags, 256, "ZSK flag should be 256");
     assert_eq!(protocol, 3, "Protocol must be 3");
     assert_eq!(algorithm, 8, "Algorithm should be RSA/SHA-256");
-    
+
     // Compute and verify key tag (requires wire format bytes)
     let mut dnskey_wire = Vec::new();
     dnskey_wire.extend_from_slice(&flags.to_be_bytes());
     dnskey_wire.push(protocol);
     dnskey_wire.push(algorithm);
     dnskey_wire.extend_from_slice(_public_key_bytes);
-    
+
     let key_tag = compute_key_tag(&dnskey_wire);
     debug!("Computed key tag: {}", key_tag);
     assert!(key_tag > 0, "Key tag should be non-zero");
-    
+
     info!("DNSKEY validation test passed");
     Ok(())
 }
@@ -753,26 +694,22 @@ async fn test_dnskey_validation() -> Result<(), DnsmasqError> {
 async fn test_dnskey_algorithm_support() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing DNSKEY algorithm support");
-    
+
     // Test mandatory algorithms
-    assert!(CryptoAlgorithm::RsaSha256.is_supported(),
-        "RSA/SHA-256 must be supported");
-    assert!(CryptoAlgorithm::EcdsaP256Sha256.is_supported(),
-        "ECDSA P-256 must be supported");
-    
+    assert!(CryptoAlgorithm::RsaSha256.is_supported(), "RSA/SHA-256 must be supported");
+    assert!(CryptoAlgorithm::EcdsaP256Sha256.is_supported(), "ECDSA P-256 must be supported");
+
     // Test recommended algorithms
-    assert!(CryptoAlgorithm::Ed25519.is_supported(),
-        "Ed25519 should be supported");
-    
+    assert!(CryptoAlgorithm::Ed25519.is_supported(), "Ed25519 should be supported");
+
     // Test deprecated algorithms (should warn but may still support)
     if CryptoAlgorithm::RsaSha1.is_supported() {
         warn!("RSA/SHA-1 is deprecated but still supported for compatibility");
     }
-    
+
     // Test that deprecated algorithms are marked as such
-    assert!(CryptoAlgorithm::RsaSha1.is_deprecated(),
-        "RSA/SHA-1 should be marked as deprecated");
-    
+    assert!(CryptoAlgorithm::RsaSha1.is_deprecated(), "RSA/SHA-1 should be marked as deprecated");
+
     info!("Algorithm support test passed");
     Ok(())
 }
@@ -806,61 +743,59 @@ async fn test_dnskey_algorithm_support() -> Result<(), DnsmasqError> {
 async fn test_rrsig_verification() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing RRSIG signature verification");
-    
+
     // Generate test key pair
     let (public_key, private_key) = generate_test_rsa_keypair();
-    
+
     // Build DNSKEY record
     let _dnskey_record = build_dnskey_record(
         "example.com",
-        257,  // KSK flag
+        257, // KSK flag
         3,
-        8,    // RSA/SHA-256
+        8, // RSA/SHA-256
         &public_key,
     )?;
-    
+
     // Create test RRset (A record for example.com)
     let _a_record: Vec<u8> = vec![
         // example.com. 3600 IN A 93.184.216.34
     ];
-    
+
     // Build RRSIG over A record
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as u32;
-    let inception = now - 3600;  // 1 hour ago
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+        as u32;
+    let inception = now - 3600; // 1 hour ago
     let expiration = now + 86400; // 24 hours from now
-    
+
     // Compute signature (simplified - production uses proper RRSIG construction)
-    let signature = vec![0u8; 256];  // Placeholder signature
-    
+    let signature = vec![0u8; 256]; // Placeholder signature
+
     let rrsig_record = build_rrsig_record(
         "example.com",
-        T_A,              // Type covered
-        8,                // Algorithm
-        2,                // Labels in example.com
-        3600,             // Original TTL
+        T_A,  // Type covered
+        8,    // Algorithm
+        2,    // Labels in example.com
+        3600, // Original TTL
         expiration,
         inception,
         compute_key_tag(&[0u8; 4]), // Key tag
         "example.com",
         &signature,
     )?;
-    
+
     // Validate RRSIG record
     assert_eq!(rrsig_record.rtype(), RecordType::RRSIG, "Should be RRSIG record");
-    
+
     // Validate timestamps by matching on the RRSIG rdata
     let rrsig_rdata = rrsig_record.rdata();
     let (actual_expiration, actual_inception) = match rrsig_rdata {
         RData::Rrsig { expiration, inception, .. } => (*expiration, *inception),
         _ => panic!("Expected RRSIG rdata"),
     };
-    
+
     assert!(actual_expiration > now, "Signature should not be expired");
     assert!(actual_inception <= now, "Signature should be valid (past inception)");
-    
+
     info!("RRSIG verification test passed");
     Ok(())
 }
@@ -873,16 +808,14 @@ async fn test_rrsig_verification() -> Result<(), DnsmasqError> {
 async fn test_rrsig_expiration() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing RRSIG expiration handling");
-    
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as u32;
-    
+
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+        as u32;
+
     // Build expired RRSIG (expired 1 hour ago)
-    let inception = now - 7200;   // 2 hours ago
-    let expiration = now - 3600;  // 1 hour ago (EXPIRED)
-    
+    let inception = now - 7200; // 2 hours ago
+    let expiration = now - 3600; // 1 hour ago (EXPIRED)
+
     let rrsig_record = build_rrsig_record(
         "example.com",
         T_A,
@@ -895,16 +828,16 @@ async fn test_rrsig_expiration() -> Result<(), DnsmasqError> {
         "example.com",
         &[0u8; 256],
     )?;
-    
+
     // Extract expiration from RRSIG rdata
     let rrsig_rdata = rrsig_record.rdata();
     let actual_expiration = match rrsig_rdata {
         RData::Rrsig { expiration, .. } => *expiration,
         _ => panic!("Expected RRSIG rdata"),
     };
-    
+
     assert!(actual_expiration < now, "RRSIG should be expired");
-    
+
     // Validation should fail due to expiration
     info!("RRSIG expiration test passed - expired signatures correctly rejected");
     Ok(())
@@ -943,44 +876,43 @@ async fn test_rrsig_expiration() -> Result<(), DnsmasqError> {
 async fn test_chain_of_trust_validation() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing complete chain of trust validation");
-    
+
     // Setup trust anchor for root
     let trust_anchor_file = create_trust_anchor_file(
-        20326, 8, 2,
-        "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D"
-    ).await?;
-    
+        20326,
+        8,
+        2,
+        "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D",
+    )
+    .await?;
+
     // Create trust anchor store and load trust anchors
     let mut trust_anchor_store = TrustAnchorStore::new();
     trust_anchor_store.load_from_file(trust_anchor_file.path()).await?;
-    
+
     // Create a DNS cache for the validator
     let cache = Arc::new(RwLock::new(DnsCache::with_capacity(150)));
-    
+
     // Create validator with trust anchors and cache
-    let _validator = DnssecValidator::new(
-        Arc::new(RwLock::new(trust_anchor_store)),
-        cache
-    );
-    
+    let _validator = DnssecValidator::new(Arc::new(RwLock::new(trust_anchor_store)), cache);
+
     // Build complete trust chain (simplified for testing)
     // In production, validator fetches DNSKEY/DS records via DNS queries
-    
+
     // 1. Root zone DNSKEY (matches trust anchor)
     // 2. .com DS in root zone
     // 3. .com DNSKEY
     // 4. example.com DS in .com zone
     // 5. example.com DNSKEY
     // 6. www.example.com A record + RRSIG
-    
+
     // Validate trust chain building (actual validation in integration)
     let root_name = DomainName::new(".")?;
     let trust_anchor_store_read = Arc::new(RwLock::new(TrustAnchorStore::new()));
     let mut store = trust_anchor_store_read.write().await;
     store.load_from_file(trust_anchor_file.path()).await?;
-    assert!(store.find_anchor(&root_name).is_some(),
-        "Root trust anchor should be available");
-    
+    assert!(store.find_anchor(&root_name).is_some(), "Root trust anchor should be available");
+
     info!("Chain of trust validation test passed");
     Ok(())
 }
@@ -993,38 +925,38 @@ async fn test_chain_of_trust_validation() -> Result<(), DnsmasqError> {
 async fn test_ds_record_validation() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing DS record validation");
-    
+
     // Generate DNSKEY
     let (public_key, _) = generate_test_rsa_keypair();
     let dnskey_rdata = {
         let mut buf = Vec::new();
-        buf.extend_from_slice(&257u16.to_be_bytes());  // KSK flag
-        buf.push(3);  // Protocol
-        buf.push(8);  // Algorithm
+        buf.extend_from_slice(&257u16.to_be_bytes()); // KSK flag
+        buf.push(3); // Protocol
+        buf.push(8); // Algorithm
         buf.extend_from_slice(&public_key);
         buf
     };
-    
+
     // Compute DS digest (SHA-256)
     let mut ds_input = Vec::new();
     // Owner name wire format
     ds_input.extend_from_slice(b"\x07example\x03com\x00");
     ds_input.extend_from_slice(&dnskey_rdata);
-    
+
     let digest_sha256 = digest::digest(&digest::SHA256, &ds_input);
-    
+
     // Build DS record
     let key_tag = compute_key_tag(&dnskey_rdata);
     let ds_record = build_ds_record(
         "example.com",
         key_tag,
-        8,  // Algorithm
-        2,  // SHA-256
+        8, // Algorithm
+        2, // SHA-256
         digest_sha256.as_ref(),
     )?;
-    
+
     assert_eq!(ds_record.rtype(), RecordType::DS, "Should be DS record");
-    
+
     // Verify DS matches DNSKEY by inspecting the rdata
     match ds_record.rdata() {
         RData::Ds { key_tag: ds_key_tag, .. } => {
@@ -1032,7 +964,7 @@ async fn test_ds_record_validation() -> Result<(), DnsmasqError> {
         }
         _ => panic!("Expected DS rdata"),
     }
-    
+
     info!("DS record validation test passed");
     Ok(())
 }
@@ -1059,30 +991,25 @@ async fn test_ds_record_validation() -> Result<(), DnsmasqError> {
 async fn test_nsec_proof_validation() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing NSEC authenticated denial validation");
-    
+
     // Build NSEC record proving "b.example.com" does not exist
     // NSEC chain: a.example.com -> c.example.com
     let type_bitmap = vec![
-        0x00, 0x06, 0x40, 0x01, 0x00, 0x00, 0x00, 0x03,  // A, AAAA, RRSIG, NSEC
+        0x00, 0x06, 0x40, 0x01, 0x00, 0x00, 0x00, 0x03, // A, AAAA, RRSIG, NSEC
     ];
-    
-    let nsec_record = build_nsec_record(
-        "a.example.com",
-        "c.example.com",
-        &type_bitmap,
-    )?;
-    
+
+    let nsec_record = build_nsec_record("a.example.com", "c.example.com", &type_bitmap)?;
+
     assert_eq!(nsec_record.rtype(), RecordType::NSEC, "Should be NSEC record");
-    
+
     // Validate NSEC proves non-existence of "b.example.com"
     // b.example.com falls between a.example.com and c.example.com alphabetically
     let query_name = "b.example.com";
     let owner = "a.example.com";
     let next = "c.example.com";
-    
-    assert!(query_name > owner && query_name < next,
-        "Query name should fall within NSEC span");
-    
+
+    assert!(query_name > owner && query_name < next, "Query name should fall within NSEC span");
+
     info!("NSEC proof validation test passed");
     Ok(())
 }
@@ -1105,18 +1032,18 @@ async fn test_nsec_proof_validation() -> Result<(), DnsmasqError> {
 async fn test_nsec3_proof_validation() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing NSEC3 hashed denial validation");
-    
+
     // NSEC3 parameters
-    let hash_algorithm = 1;  // SHA-1
-    let flags = 0;           // No opt-out
+    let hash_algorithm = 1; // SHA-1
+    let flags = 0; // No opt-out
     let iterations = 10;
     let salt = b"AABBCCDD";
-    
+
     // Build NSEC3 record
     let hash_b32 = "0P9MHAVEQVM6T7VVT5CK0D9T4I0MLU7D";
     let next_hash_b32 = "2T7B4G4VSA5SMI47K61MV5BV1A22BOJR";
     let type_bitmap = vec![0x00, 0x07, 0x62, 0x00, 0x00, 0x00, 0x00, 0x03];
-    
+
     let nsec3_record = build_nsec3_record(
         hash_b32,
         "example.com",
@@ -1127,9 +1054,9 @@ async fn test_nsec3_proof_validation() -> Result<(), DnsmasqError> {
         next_hash_b32,
         &type_bitmap,
     )?;
-    
+
     assert_eq!(nsec3_record.rtype(), RecordType::NSEC3, "Should be NSEC3 record");
-    
+
     // Validate NSEC3 parameters by matching on the rdata
     match nsec3_record.rdata() {
         RData::Nsec3 { hash_algorithm: alg, flags: f, iterations: iter, .. } => {
@@ -1139,7 +1066,7 @@ async fn test_nsec3_proof_validation() -> Result<(), DnsmasqError> {
         }
         _ => panic!("Expected NSEC3 rdata"),
     }
-    
+
     info!("NSEC3 proof validation test passed");
     Ok(())
 }
@@ -1152,27 +1079,26 @@ async fn test_nsec3_proof_validation() -> Result<(), DnsmasqError> {
 async fn test_wildcard_expansion() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing wildcard expansion with DNSSEC");
-    
+
     // Query: www.example.com (does not exist)
     // Wildcard: *.example.com (exists)
     // Closest encloser: example.com
     // Next closer: www.example.com
-    
+
     // NSEC proof must show:
     // 1. example.com exists (closest encloser)
     // 2. www.example.com does not exist (next closer)
     // 3. *.example.com exists (wildcard)
-    
+
     let nsec_record = build_nsec_record(
         "example.com",
         "z.example.com",
         &[0x00, 0x06, 0x40, 0x01, 0x00, 0x00, 0x00, 0x03],
     )?;
-    
+
     // Validate wildcard proof structure
-    assert_eq!(nsec_record.name().as_str(), "example.com",
-        "NSEC owner should be closest encloser");
-    
+    assert_eq!(nsec_record.name().as_str(), "example.com", "NSEC owner should be closest encloser");
+
     info!("Wildcard expansion test passed");
     Ok(())
 }
@@ -1202,31 +1128,29 @@ async fn test_wildcard_expansion() -> Result<(), DnsmasqError> {
 async fn test_bogus_response_handling() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing BOGUS response detection and handling");
-    
+
     let trust_anchor_file = create_trust_anchor_file(
-        20326, 8, 2,
-        "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D"
-    ).await?;
-    
+        20326,
+        8,
+        2,
+        "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D",
+    )
+    .await?;
+
     // Create trust anchor store and load trust anchors
     let mut trust_anchor_store = TrustAnchorStore::new();
     trust_anchor_store.load_from_file(trust_anchor_file.path()).await?;
-    
+
     // Create cache and validator
     let cache = Arc::new(RwLock::new(DnsCache::with_capacity(150)));
-    let _validator = DnssecValidator::new(
-        Arc::new(RwLock::new(trust_anchor_store)),
-        cache
-    );
-    
+    let _validator = DnssecValidator::new(Arc::new(RwLock::new(trust_anchor_store)), cache);
+
     // Build response with invalid signature (all zeros)
     let invalid_signature = vec![0u8; 256];
-    
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as u32;
-    
+
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+        as u32;
+
     let rrsig_record = build_rrsig_record(
         "example.com",
         T_A,
@@ -1239,10 +1163,10 @@ async fn test_bogus_response_handling() -> Result<(), DnsmasqError> {
         "example.com",
         &invalid_signature,
     );
-    
+
     // Validation should fail due to invalid signature
     // (Actual validation requires full DNS message and DNSKEY)
-    
+
     info!("BOGUS response handling test passed - invalid signatures rejected");
     Ok(())
 }
@@ -1255,23 +1179,22 @@ async fn test_bogus_response_handling() -> Result<(), DnsmasqError> {
 async fn test_indeterminate_response() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing indeterminate validation status");
-    
+
     // Simulate missing DNSKEY for validation
     // Validation cannot complete but is not definitively BOGUS
     // Should return INDETERMINATE status for retry
-    
+
     // Create an empty trust anchor store (no trust anchors)
     let trust_anchor_store = TrustAnchorStore::new();
     let cache = Arc::new(RwLock::new(DnsCache::with_capacity(150)));
-    let _validator = DnssecValidator::new(
-        Arc::new(RwLock::new(trust_anchor_store)),
-        cache
-    );
-    
+    let _validator = DnssecValidator::new(Arc::new(RwLock::new(trust_anchor_store)), cache);
+
     // Without trust anchors, validation status would be indeterminate or insecure
     // This is a simplified test - actual validation requires DNS queries
-    info!("Validator created without trust anchors - validation would be indeterminate or insecure");
-    
+    info!(
+        "Validator created without trust anchors - validation would be indeterminate or insecure"
+    );
+
     info!("Indeterminate response test passed");
     Ok(())
 }
@@ -1284,7 +1207,7 @@ async fn test_indeterminate_response() -> Result<(), DnsmasqError> {
 async fn test_dnssec_cd_bit() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing DNSSEC CD (Checking Disabled) bit handling");
-    
+
     // Build query with CD bit set
     let query = DnsQueryBuilder::new()
         .with_name("example.com")
@@ -1292,16 +1215,16 @@ async fn test_dnssec_cd_bit() -> Result<(), DnsmasqError> {
         .with_edns0()
         .with_do_bit()
         .build();
-    
+
     // When CD bit is set, server should:
     // 1. Return DNSSEC records (RRSIG, DNSKEY if queried)
     // 2. NOT set AD bit (validation not performed by server)
     // 3. NOT filter BOGUS responses (client responsible)
-    
+
     // Parse query and check for CD bit
     let msg = DnsMessage::from_bytes(&query)?;
     // CD bit is in flags - checking disabled
-    
+
     info!("CD bit handling test passed");
     Ok(())
 }
@@ -1329,12 +1252,12 @@ async fn test_dnssec_cd_bit() -> Result<(), DnsmasqError> {
 async fn test_key_rollover() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing DNSSEC key rollover scenarios");
-    
+
     // Simulate ZSK rollover with two active keys
     // Use different test keys by modifying one byte to ensure different key tags
     let (mut old_public_key, _) = generate_test_rsa_keypair();
     let (mut new_public_key, _) = generate_test_rsa_keypair();
-    
+
     // Modify the last byte to create a different key (for testing purposes only)
     // In production, these would be genuinely different cryptographic keys
     if !old_public_key.is_empty() {
@@ -1343,34 +1266,34 @@ async fn test_key_rollover() -> Result<(), DnsmasqError> {
     if !new_public_key.is_empty() {
         new_public_key.push(0x02);
     }
-    
+
     // Old ZSK (being phased out)
     let old_dnskey = build_dnskey_record(
         "example.com",
-        256,  // ZSK
+        256, // ZSK
         3,
         8,
         &old_public_key,
     )?;
-    
+
     // New ZSK (being phased in)
     let new_dnskey = build_dnskey_record(
         "example.com",
-        256,  // ZSK
+        256, // ZSK
         3,
         8,
         &new_public_key,
     )?;
-    
+
     // During rollover, both keys should be published and usable
     // Extract RDATA for key tag computation
     let old_rdata = old_dnskey.serialize_rdata()?;
     let new_rdata = new_dnskey.serialize_rdata()?;
     let old_key_tag = compute_key_tag(&old_rdata);
     let new_key_tag = compute_key_tag(&new_rdata);
-    
+
     assert_ne!(old_key_tag, new_key_tag, "Key tags should differ");
-    
+
     info!("Key rollover test passed - dual key validation supported");
     Ok(())
 }
@@ -1398,39 +1321,39 @@ async fn test_key_rollover() -> Result<(), DnsmasqError> {
 async fn test_algorithm_compatibility() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing ring vs Nettle algorithm compatibility");
-    
+
     // Test RSA-SHA256 (algorithm 8)
     // Use generated test key pair for compatibility testing
     let (rsa_public_key, _) = generate_test_rsa_keypair();
-    
+
     // For this test, we're validating that the crypto library can handle the key format
     // A real signature would be needed for full verification, but for compatibility testing
     // we verify the key loading mechanism works correctly
     let verifier = SignatureVerifier::new();
     let rsa_key_block = BlockData::new(&rsa_public_key);
-    
+
     // Create a dummy signature for testing (in production, this would be a real RRSIG)
     // The key compatibility test is primarily about ensuring the key format is handled correctly
     let rsa_signature = vec![0x00; 256]; // RSA-2048 signature is 256 bytes
     let signed_data = b"test data for signing";
-    
+
     // Attempt verification - we expect this to fail due to invalid signature,
     // but the important part is that it doesn't fail on key parsing
     let ring_result = verifier.verify(8, &rsa_key_block, &rsa_signature, signed_data);
-    
+
     // The key point is that we can parse the key without errors
     // Actual signature verification requires valid signature data
     // For this test, we verify that the crypto operation completes without panicking
     info!("RSA-SHA256 algorithm supported by ring (key parsing succeeded)");
-    
+
     // Test ECDSA P-256 (algorithm 13) - similar pattern
     // let ecdsa_key_block = BlockData::from_bytes(&ecdsa_public_key);
     // let ecdsa_result = verifier.verify(13, &ecdsa_key_block, &ecdsa_signature, signed_data);
-    
+
     // Test Ed25519 (algorithm 15)
     let _ed25519_verifier = SignatureVerifier::new();
     // Similar verification - would use verifier.verify(15, ...)
-    
+
     info!("Algorithm compatibility test passed - ring matches Nettle");
     Ok(())
 }
@@ -1462,14 +1385,14 @@ async fn test_algorithm_compatibility() -> Result<(), DnsmasqError> {
 async fn test_cname_chain_validation() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing DNSSEC validation through CNAME chains");
-    
+
     // Build CNAME chain with RRSIGs
     // www.example.com -> cdn.example.com -> final IP
-    
+
     // Each CNAME must have valid RRSIG
     // Final target must have valid RRSIG
     // All signatures must validate against respective DNSKEYs
-    
+
     // Validation should traverse entire chain
     info!("CNAME chain validation test passed");
     Ok(())
@@ -1487,42 +1410,47 @@ async fn test_cname_chain_validation() -> Result<(), DnsmasqError> {
 async fn test_validation_resource_limits() -> Result<(), DnsmasqError> {
     init_test_logging();
     info!("Testing DNSSEC validation resource limits");
-    
+
     let mut counter = ValidationCounter::new();
-    
+
     // ValidationCounter uses default limits from constants:
     // - DNSSEC_LIMIT_WORK (default work queries)
     // - DNSSEC_LIMIT_CRYPTO (default crypto operations)
     // - 20 (fixed signature failure limit)
-    
+
     // Simulate validation work up to default limit
     // Increment work count and verify limit checking
     let initial_work = counter.work_count;
-    
+
     // Increment work several times
     for _ in 0..5 {
         counter.increment_work()?;
     }
-    
-    assert_eq!(counter.work_count, initial_work + 5,
-        "Work count should increment correctly");
-    
+
+    assert_eq!(counter.work_count, initial_work + 5, "Work count should increment correctly");
+
     // Test crypto limit checking
     let initial_crypto = counter.crypto_count;
     for _ in 0..10 {
         counter.increment_crypto()?;
     }
-    
-    assert_eq!(counter.crypto_count, initial_crypto + 10,
-        "Crypto count should increment correctly");
-    
+
+    assert_eq!(
+        counter.crypto_count,
+        initial_crypto + 10,
+        "Crypto count should increment correctly"
+    );
+
     // Test signature failure tracking
     let initial_sig_fail = counter.sig_fail_count;
     counter.increment_sig_fail()?;
-    
-    assert_eq!(counter.sig_fail_count, initial_sig_fail + 1,
-        "Signature failure count should increment correctly");
-    
+
+    assert_eq!(
+        counter.sig_fail_count,
+        initial_sig_fail + 1,
+        "Signature failure count should increment correctly"
+    );
+
     info!("Resource limit enforcement test passed");
     Ok(())
 }

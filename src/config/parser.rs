@@ -316,14 +316,14 @@ impl ConfigParser {
     pub async fn parse_file<P: AsRef<Path>>(&mut self, path: P) -> Result<(), ConfigError> {
         // Use iterative processing with a work queue to avoid deep async recursion
         // that causes compiler type-checking overflow (E0275)
-        
+
         // Initialize work queue with the initial file and depth 0
         let mut work_queue: Vec<(PathBuf, usize)> = vec![(path.as_ref().to_path_buf(), 0)];
-        
+
         // Track if we had any fatal errors in the initial file
         let mut initial_file_result = Ok(());
         let mut is_first_file = true;
-        
+
         while let Some((current_path, depth)) = work_queue.pop() {
             // Check include depth
             if depth >= MAX_INCLUDE_DEPTH {
@@ -331,7 +331,7 @@ impl ConfigParser {
                     path: current_path.display().to_string(),
                     reason: format!("Maximum include depth ({}) exceeded", MAX_INCLUDE_DEPTH),
                 };
-                
+
                 if is_first_file {
                     return Err(err);
                 } else {
@@ -343,15 +343,14 @@ impl ConfigParser {
                     continue;
                 }
             }
-            
+
             // Canonicalize path for cycle detection
             let canonical_path = match tokio::fs::canonicalize(&current_path).await {
                 Ok(p) => p,
                 Err(e) => {
-                    let err = ConfigError::FileNotFound {
-                        path: current_path.display().to_string(),
-                    };
-                    
+                    let err =
+                        ConfigError::FileNotFound { path: current_path.display().to_string() };
+
                     if is_first_file {
                         return Err(err);
                     } else {
@@ -365,14 +364,14 @@ impl ConfigParser {
                     }
                 }
             };
-            
+
             // Check for include cycles
             if !self.visited_files.insert(canonical_path.clone()) {
                 let err = ConfigError::IncludeFailed {
                     path: canonical_path.display().to_string(),
                     reason: "Circular include detected (file already processed)".to_string(),
                 };
-                
+
                 if is_first_file {
                     return Err(err);
                 } else {
@@ -384,18 +383,17 @@ impl ConfigParser {
                     continue;
                 }
             }
-            
+
             // Open file for reading
             let file = match File::open(&canonical_path).await {
                 Ok(f) => f,
                 Err(e) => {
-                    let err = ConfigError::FileNotFound {
-                        path: canonical_path.display().to_string(),
-                    };
-                    
+                    let err =
+                        ConfigError::FileNotFound { path: canonical_path.display().to_string() };
+
                     // Remove from visited to allow retry
                     self.visited_files.remove(&canonical_path);
-                    
+
                     if is_first_file {
                         return Err(err);
                     } else {
@@ -409,26 +407,26 @@ impl ConfigParser {
                     }
                 }
             };
-            
+
             // Track current file for error reporting
             let previous_file = self.current_file.replace(canonical_path.clone());
             let previous_line = self.current_line;
             self.current_line = 0;
-            
+
             debug!(
                 file = %canonical_path.display(),
                 depth = depth,
                 "Parsing configuration file"
             );
-            
+
             // Parse file contents
             let reader = BufReader::new(file);
             let result = self.parse_reader(reader).await;
-            
+
             // Restore previous parsing context
             self.current_file = previous_file;
             self.current_line = previous_line;
-            
+
             // Handle parse result
             if let Err(e) = result {
                 if is_first_file {
@@ -447,21 +445,21 @@ impl ConfigParser {
                     continue;
                 }
             }
-            
+
             // Extract pending includes and add them to work queue
             let includes = std::mem::take(&mut self.pending_includes);
             for include_path in includes {
                 // Add to work queue with incremented depth
                 work_queue.push((include_path, depth + 1));
             }
-            
+
             // Remove from visited set to allow re-parsing in different include contexts
             // (matching C behavior where files can be included multiple times from different paths)
             self.visited_files.remove(&canonical_path);
-            
+
             is_first_file = false;
         }
-        
+
         initial_file_result
     }
 
@@ -775,10 +773,12 @@ impl ConfigParser {
         // Find # or ; that starts a comment (preceded by whitespace or at start)
         let comment_chars = ['#', ';'];
         let mut comment_pos = None;
-        
+
         for &ch in &comment_chars {
             if let Some(pos) = line.find(ch) {
-                if pos == 0 || line.as_bytes().get(pos - 1).is_some_and(|&b| b.is_ascii_whitespace()) {
+                if pos == 0
+                    || line.as_bytes().get(pos - 1).is_some_and(|&b| b.is_ascii_whitespace())
+                {
                     comment_pos = match comment_pos {
                         None => Some(pos),
                         Some(existing) => Some(existing.min(pos)),
@@ -786,7 +786,7 @@ impl ConfigParser {
                 }
             }
         }
-        
+
         match comment_pos {
             Some(pos) => &line[..pos],
             None => line,
@@ -912,7 +912,9 @@ impl ConfigParser {
             // Unknown option - return error for strict C compatibility
             _ => {
                 return Err(ConfigError::ParseError {
-                    file_path: self.current_file.as_ref()
+                    file_path: self
+                        .current_file
+                        .as_ref()
                         .map(|p| p.display().to_string())
                         .unwrap_or_else(|| "<input>".to_string()),
                     line_number: self.current_line,
@@ -961,7 +963,7 @@ impl ConfigParser {
                     self.make_parse_error(format!("Error reading directory entry: {}", e))
                 })?;
                 let path = entry.path();
-                
+
                 // Only include regular files
                 if !path.is_file() {
                     continue;
@@ -990,12 +992,9 @@ impl ConfigParser {
     /// Supports wildcards: * (any characters) and ? (single character)
     fn matches_pattern(filename: &str, pattern: &str) -> bool {
         // Simple implementation: convert glob pattern to regex
-        let regex_pattern = pattern
-            .replace('.', r"\.")
-            .replace('*', ".*")
-            .replace('?', ".");
+        let regex_pattern = pattern.replace('.', r"\.").replace('*', ".*").replace('?', ".");
         let regex_pattern = format!("^{}$", regex_pattern);
-        
+
         if let Ok(re) = regex::Regex::new(&regex_pattern) {
             re.is_match(filename)
         } else {
@@ -1053,26 +1052,26 @@ impl ConfigParser {
 
     fn parse_server_option(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
         use std::net::{IpAddr, SocketAddr};
-        
+
         if let Some(server_str) = value {
             // Parse server directive in format:
             // - server=8.8.8.8 (simple IP, default port 53)
             // - server=8.8.8.8#5353 (IP with custom port)
             // - server=/example.com/192.168.1.1 (domain-specific server)
             // - server=/local/ (authoritative, no forwarding)
-            
+
             if server_str.starts_with('/') {
                 // Domain-specific server: /domain/server or /domain/
                 let parts: Vec<&str> = server_str.split('/').collect();
                 if parts.len() >= 3 {
                     let domain = parts[1].to_string();
                     let server_addr = parts[2];
-                    
+
                     if server_addr.is_empty() {
                         // Authoritative domain (no forwarding)
                         let server = crate::types::ServerDetails::new_authoritative(domain.clone())
                             .map_err(|e| self.make_parse_error(format!("Invalid domain: {}", e)))?;
-                        
+
                         info!(domain = %domain, "Authoritative domain (no forwarding)");
                         // Add to servers list but NOT to upstream_servers (no forwarding)
                         self.config.dns.servers.push(server);
@@ -1081,47 +1080,56 @@ impl ConfigParser {
                         let (ip_str, port) = if let Some(hash_pos) = server_addr.find('#') {
                             let ip = &server_addr[..hash_pos];
                             let port_str = &server_addr[hash_pos + 1..];
-                            let port = port_str.parse::<u16>()
-                                .map_err(|_| self.make_parse_error(format!("Invalid port: {}", port_str)))?;
+                            let port = port_str.parse::<u16>().map_err(|_| {
+                                self.make_parse_error(format!("Invalid port: {}", port_str))
+                            })?;
                             (ip, port)
                         } else {
                             (server_addr, 53)
                         };
-                        
-                        let ip: IpAddr = ip_str.parse()
-                            .map_err(|_| self.make_parse_error(format!("Invalid IP address: {}", ip_str)))?;
+
+                        let ip: IpAddr = ip_str.parse().map_err(|_| {
+                            self.make_parse_error(format!("Invalid IP address: {}", ip_str))
+                        })?;
                         let socket_addr = SocketAddr::new(ip, port);
-                        
+
                         // Create ServerDetails with domain restriction
-                        let server = crate::types::ServerDetails::new(socket_addr, Some(domain.clone()), 0)
-                            .map_err(|e| self.make_parse_error(format!("Invalid server: {}", e)))?;
-                        
+                        let server =
+                            crate::types::ServerDetails::new(socket_addr, Some(domain.clone()), 0)
+                                .map_err(|e| {
+                                    self.make_parse_error(format!("Invalid server: {}", e))
+                                })?;
+
                         self.config.dns.upstream_servers.push(server.clone());
                         self.config.dns.servers.push(server);
                     }
                 } else {
-                    return Err(self.make_parse_error(format!("Invalid server format: {}", server_str)));
+                    return Err(
+                        self.make_parse_error(format!("Invalid server format: {}", server_str))
+                    );
                 }
             } else {
                 // Simple server IP address
                 let (ip_str, port) = if let Some(hash_pos) = server_str.find('#') {
                     let ip = &server_str[..hash_pos];
                     let port_str = &server_str[hash_pos + 1..];
-                    let port = port_str.parse::<u16>()
-                        .map_err(|_| self.make_parse_error(format!("Invalid port: {}", port_str)))?;
+                    let port = port_str.parse::<u16>().map_err(|_| {
+                        self.make_parse_error(format!("Invalid port: {}", port_str))
+                    })?;
                     (ip, port)
                 } else {
                     (server_str, 53)
                 };
-                
-                let ip: IpAddr = ip_str.parse()
-                    .map_err(|_| self.make_parse_error(format!("Invalid IP address: {}", ip_str)))?;
+
+                let ip: IpAddr = ip_str.parse().map_err(|_| {
+                    self.make_parse_error(format!("Invalid IP address: {}", ip_str))
+                })?;
                 let socket_addr = SocketAddr::new(ip, port);
-                
+
                 // Create ServerDetails without domain restriction
                 let server = crate::types::ServerDetails::new(socket_addr, None::<String>, 0)
                     .map_err(|e| self.make_parse_error(format!("Invalid server: {}", e)))?;
-                
+
                 self.config.dns.upstream_servers.push(server.clone());
                 self.config.dns.servers.push(server);
             }
@@ -1133,20 +1141,25 @@ impl ConfigParser {
 
     fn parse_dhcp_range(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
         use std::time::Duration;
-        
-        let range_str = value.ok_or_else(|| self.make_parse_error("Missing DHCP range".to_string()))?;
-        
+
+        let range_str =
+            value.ok_or_else(|| self.make_parse_error("Missing DHCP range".to_string()))?;
+
         let parts: Vec<&str> = range_str.split(',').collect();
         if parts.len() < 2 {
             return Err(self.make_parse_error(format!("Invalid DHCP range format: {}", range_str)));
         }
-        
+
         // Parse start and end IPs
-        let start: IpAddr = parts[0].trim().parse()
+        let start: IpAddr = parts[0]
+            .trim()
+            .parse()
             .map_err(|_| self.make_parse_error(format!("Invalid start IP: {}", parts[0])))?;
-        let end: IpAddr = parts[1].trim().parse()
+        let end: IpAddr = parts[1]
+            .trim()
+            .parse()
             .map_err(|_| self.make_parse_error(format!("Invalid end IP: {}", parts[1])))?;
-        
+
         // Parse optional parameters (netmask, constructor, flags, lease time)
         // IPv4 formats:
         // - start,end,lease_time
@@ -1158,28 +1171,28 @@ impl ConfigParser {
         let mut lease_time_override = None;
         let mut lease_time = None;
         let mut interface = None;
-        
+
         // Process remaining parameters
-        for i in 2..parts.len() {
-            let param = parts[i].trim();
-            
+        for part in parts.iter().skip(2) {
+            let param = part.trim();
+
             // Skip IPv6-specific flags
             if param.starts_with("ra-") || param == "slaac" || param == "off-link" {
                 continue;
             }
-            
+
             // Handle constructor:interface syntax for IPv6
             if param.starts_with("constructor:") {
                 interface = Some(param.strip_prefix("constructor:").unwrap().to_string());
                 continue;
             }
-            
+
             // Try to parse as IP address (netmask)
             if let Ok(ip) = param.parse::<IpAddr>() {
                 netmask = Some(ip);
                 continue;
             }
-            
+
             // Try to parse as lease time
             if param != "infinite" {
                 if let Ok(seconds) = Self::parse_time_duration(param) {
@@ -1188,10 +1201,10 @@ impl ConfigParser {
                 }
             }
         }
-        
+
         // Log before moving interface
         info!(start = %start, end = %end, netmask = ?netmask, lease_time = ?lease_time, interface = ?interface, "Added DHCP range");
-        
+
         let is_ipv6 = start.is_ipv6();
         let range = crate::config::types::DhcpRange {
             start,
@@ -1202,7 +1215,7 @@ impl ConfigParser {
             lease_time,
             is_ipv6,
         };
-        
+
         // Push to correct vector based on IP version
         if is_ipv6 {
             self.config.dhcp.v6_ranges.push(range);
@@ -1211,31 +1224,30 @@ impl ConfigParser {
         }
         Ok(())
     }
-    
+
     /// Parse time duration with suffix (e.g., "12h", "30m", "2d")
     fn parse_time_duration(time_str: &str) -> Result<u64, String> {
         let time_str = time_str.trim();
         if time_str.is_empty() {
             return Err("Empty time string".to_string());
         }
-        
+
         // Check if it ends with a unit suffix
-        let (num_str, multiplier) = if time_str.ends_with('h') {
-            (&time_str[..time_str.len()-1], 3600) // hours
-        } else if time_str.ends_with('m') {
-            (&time_str[..time_str.len()-1], 60) // minutes
-        } else if time_str.ends_with('d') {
-            (&time_str[..time_str.len()-1], 86400) // days
-        } else if time_str.ends_with('s') {
-            (&time_str[..time_str.len()-1], 1) // seconds
+        let (num_str, multiplier) = if let Some(stripped) = time_str.strip_suffix('h') {
+            (stripped, 3600) // hours
+        } else if let Some(stripped) = time_str.strip_suffix('m') {
+            (stripped, 60) // minutes
+        } else if let Some(stripped) = time_str.strip_suffix('d') {
+            (stripped, 86400) // days
+        } else if let Some(stripped) = time_str.strip_suffix('s') {
+            (stripped, 1) // seconds
         } else {
             // No suffix, assume seconds
             (time_str, 1)
         };
-        
-        let num: u64 = num_str.parse()
-            .map_err(|_| format!("Invalid number: {}", num_str))?;
-        
+
+        let num: u64 = num_str.parse().map_err(|_| format!("Invalid number: {}", num_str))?;
+
         Ok(num * multiplier)
     }
 
@@ -1250,17 +1262,18 @@ impl ConfigParser {
     }
 
     fn parse_dhcp_option(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
-        let opt_str = value.ok_or_else(|| self.make_parse_error("Missing DHCP option".to_string()))?;
-        
+        let opt_str =
+            value.ok_or_else(|| self.make_parse_error("Missing DHCP option".to_string()))?;
+
         let parts: Vec<&str> = opt_str.split(',').collect();
         if parts.is_empty() {
             return Err(self.make_parse_error(format!("Invalid DHCP option format: {}", opt_str)));
         }
-        
+
         // Check for DHCPv6 option prefix (option6:)
         let first_part = parts[0].trim();
         let is_v6 = first_part.starts_with("option6:");
-        
+
         // Parse option code
         let code_str = if is_v6 {
             // Remove "option6:" prefix
@@ -1268,7 +1281,7 @@ impl ConfigParser {
         } else {
             first_part
         };
-        
+
         // Try to parse as numeric code first, if that fails, treat as named option
         let code: u8 = if let Ok(num) = code_str.parse::<u8>() {
             num
@@ -1277,8 +1290,8 @@ impl ConfigParser {
             // For DHCPv6, "dns-server" maps to option 23
             // For DHCPv4, we'd map standard names to their codes
             match code_str {
-                "dns-server" if is_v6 => 23,  // DHCPv6 DNS_SERVERS option
-                "ntp-server" if is_v6 => 56,  // DHCPv6 NTP_SERVER option
+                "dns-server" if is_v6 => 23,    // DHCPv6 DNS_SERVERS option
+                "ntp-server" if is_v6 => 56,    // DHCPv6 NTP_SERVER option
                 "domain-search" if is_v6 => 24, // DHCPv6 DOMAIN_LIST option
                 // Add more mappings as needed
                 _ => {
@@ -1289,15 +1302,15 @@ impl ConfigParser {
                 }
             }
         };
-        
+
         // Parse option values
         let mut value_bytes = Vec::new();
         for part in parts.iter().skip(1) {
             let part = part.trim();
-            
+
             // Handle IPv6 addresses in brackets
             let part = part.trim_matches(|c| c == '[' || c == ']');
-            
+
             // Try to parse as IP address first
             if let Ok(ip) = part.parse::<IpAddr>() {
                 match ip {
@@ -1313,7 +1326,7 @@ impl ConfigParser {
                 value_bytes.extend_from_slice(part.as_bytes());
             }
         }
-        
+
         info!(code = code, is_v6 = is_v6, value_len = value_bytes.len(), "Added DHCP option");
         self.config.dhcp.options.push((code, value_bytes));
         Ok(())
@@ -1329,12 +1342,13 @@ impl ConfigParser {
     }
 
     fn parse_log_facility(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
-        let facility_str = value.ok_or_else(|| self.make_parse_error("Missing log facility".to_string()))?;
-        
+        let facility_str =
+            value.ok_or_else(|| self.make_parse_error("Missing log facility".to_string()))?;
+
         // log-facility can be either:
         // 1. A syslog facility name (daemon, local0-local7, user, etc.)
         // 2. A file path (starts with /)
-        
+
         if facility_str.starts_with('/') {
             // It's a file path
             self.config.logging.log_file = Some(PathBuf::from(facility_str));
@@ -1345,7 +1359,7 @@ impl ConfigParser {
             self.config.logging.log_facility = facility_str.to_string();
             info!(facility = %facility_str, "Set syslog facility");
         }
-        
+
         Ok(())
     }
 
@@ -1377,7 +1391,8 @@ impl ConfigParser {
     }
 
     fn parse_local_domain(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
-        let domain = value.ok_or_else(|| self.make_parse_error("Missing local domain".to_string()))?;
+        let domain =
+            value.ok_or_else(|| self.make_parse_error("Missing local domain".to_string()))?;
         self.config.dns.local_domains.push(domain.to_string());
         Ok(())
     }
@@ -1419,16 +1434,18 @@ impl ConfigParser {
                 let domain = parts[0].to_string();
                 if parts.len() >= 3 && !parts[2].is_empty() {
                     // address=/domain/ip
-                    let ip = parts[2]
-                        .parse()
-                        .map_err(|_| self.make_parse_error(format!("Invalid IP address: {}", parts[2])))?;
+                    let ip = parts[2].parse().map_err(|_| {
+                        self.make_parse_error(format!("Invalid IP address: {}", parts[2]))
+                    })?;
                     self.config.dns.address_records.push((domain, ip));
                 } else if parts.len() == 2 || (parts.len() >= 3 && parts[2].is_empty()) {
                     // address=/domain/ means NXDOMAIN - represented as empty address list
                     // We'll just skip these for now
                 }
             } else {
-                return Err(self.make_parse_error(format!("Invalid address record format: {}", record_str)));
+                return Err(
+                    self.make_parse_error(format!("Invalid address record format: {}", record_str))
+                );
             }
         } else {
             return Err(self.make_parse_error("Missing address record".to_string()));
@@ -1444,14 +1461,16 @@ impl ConfigParser {
                 let hostname = parts[0].to_string();
                 let mut addresses = Vec::new();
                 for addr_str in &parts[1..] {
-                    let ip = addr_str
-                        .parse()
-                        .map_err(|_| self.make_parse_error(format!("Invalid IP address: {}", addr_str)))?;
+                    let ip = addr_str.parse().map_err(|_| {
+                        self.make_parse_error(format!("Invalid IP address: {}", addr_str))
+                    })?;
                     addresses.push(ip);
                 }
                 self.config.dns.host_records.push((hostname, addresses));
             } else {
-                return Err(self.make_parse_error(format!("Invalid host record format: {}", record_str)));
+                return Err(
+                    self.make_parse_error(format!("Invalid host record format: {}", record_str))
+                );
             }
         } else {
             return Err(self.make_parse_error("Missing host record".to_string()));
@@ -1468,7 +1487,9 @@ impl ConfigParser {
                 let target = parts[1].to_string();
                 self.config.dns.cname_records.push((alias, target));
             } else {
-                return Err(self.make_parse_error(format!("Invalid CNAME record format: {}", record_str)));
+                return Err(
+                    self.make_parse_error(format!("Invalid CNAME record format: {}", record_str))
+                );
             }
         } else {
             return Err(self.make_parse_error("Missing CNAME record".to_string()));
@@ -1484,15 +1505,17 @@ impl ConfigParser {
                 let domain = parts[0].to_string();
                 let target = parts[1].to_string();
                 let priority = if parts.len() >= 3 {
-                    parts[2]
-                        .parse()
-                        .map_err(|_| self.make_parse_error(format!("Invalid MX priority: {}", parts[2])))?
+                    parts[2].parse().map_err(|_| {
+                        self.make_parse_error(format!("Invalid MX priority: {}", parts[2]))
+                    })?
                 } else {
                     10 // Default priority
                 };
                 self.config.dns.mx_records.push((domain, target, priority));
             } else {
-                return Err(self.make_parse_error(format!("Invalid MX record format: {}", record_str)));
+                return Err(
+                    self.make_parse_error(format!("Invalid MX record format: {}", record_str))
+                );
             }
         } else {
             return Err(self.make_parse_error("Missing MX record".to_string()));
@@ -1516,26 +1539,28 @@ impl ConfigParser {
             if parts.len() >= 3 {
                 let service = parts[0].to_string();
                 let target = parts[1].to_string();
-                let port = parts[2]
-                    .parse()
-                    .map_err(|_| self.make_parse_error(format!("Invalid SRV port: {}", parts[2])))?;
+                let port = parts[2].parse().map_err(|_| {
+                    self.make_parse_error(format!("Invalid SRV port: {}", parts[2]))
+                })?;
                 let priority = if parts.len() >= 4 {
-                    parts[3]
-                        .parse()
-                        .map_err(|_| self.make_parse_error(format!("Invalid SRV priority: {}", parts[3])))?
+                    parts[3].parse().map_err(|_| {
+                        self.make_parse_error(format!("Invalid SRV priority: {}", parts[3]))
+                    })?
                 } else {
                     0 // Default priority
                 };
                 let weight = if parts.len() >= 5 {
-                    parts[4]
-                        .parse()
-                        .map_err(|_| self.make_parse_error(format!("Invalid SRV weight: {}", parts[4])))?
+                    parts[4].parse().map_err(|_| {
+                        self.make_parse_error(format!("Invalid SRV weight: {}", parts[4]))
+                    })?
                 } else {
                     0 // Default weight
                 };
                 self.config.dns.srv_records.push((service, target, port, priority, weight));
             } else {
-                return Err(self.make_parse_error(format!("Invalid SRV record format: {}", record_str)));
+                return Err(
+                    self.make_parse_error(format!("Invalid SRV record format: {}", record_str))
+                );
             }
         } else {
             return Err(self.make_parse_error("Missing SRV record".to_string()));
@@ -1551,7 +1576,9 @@ impl ConfigParser {
                 let text = record_str[comma_pos + 1..].to_string();
                 self.config.dns.txt_records.push((name, text));
             } else {
-                return Err(self.make_parse_error(format!("Invalid TXT record format: {}", record_str)));
+                return Err(
+                    self.make_parse_error(format!("Invalid TXT record format: {}", record_str))
+                );
             }
         } else {
             return Err(self.make_parse_error("Missing TXT record".to_string()));
@@ -1568,7 +1595,9 @@ impl ConfigParser {
                 let target = parts[1].to_string();
                 self.config.dns.ptr_records.push((name, target));
             } else {
-                return Err(self.make_parse_error(format!("Invalid PTR record format: {}", record_str)));
+                return Err(
+                    self.make_parse_error(format!("Invalid PTR record format: {}", record_str))
+                );
             }
         } else {
             return Err(self.make_parse_error("Missing PTR record".to_string()));
@@ -1716,7 +1745,7 @@ mod tests {
         assert_eq!(ConfigParser::strip_comment("option=value # comment"), "option=value ");
         assert_eq!(ConfigParser::strip_comment("option=value#nocomment"), "option=value#nocomment");
         assert_eq!(ConfigParser::strip_comment("option=value"), "option=value");
-        
+
         // Test semicolon comments
         assert_eq!(ConfigParser::strip_comment("; comment"), "");
         assert_eq!(ConfigParser::strip_comment("option=value ; comment"), "option=value ");

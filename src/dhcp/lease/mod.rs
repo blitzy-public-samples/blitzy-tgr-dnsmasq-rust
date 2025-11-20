@@ -641,8 +641,7 @@ impl LeaseManager {
 
         // Execute lease script if configured
         if let Some(ref script_path) = self.config.scripts.script_path {
-            if let Err(e) =
-                execute_lease_script(script_path, LeaseAction::Del, &lease, None).await
+            if let Err(e) = execute_lease_script(script_path, LeaseAction::Del, &lease, None).await
             {
                 warn!(ip = %ip, error = %e, "Failed to execute lease script for deletion");
             }

@@ -61,8 +61,10 @@
 //! - 3: both fields contain options
 
 use crate::dhcp::v4::constants::{
-    BOOTREPLY, BOOTREQUEST, DHCP_CHADDR_MAX, MAGIC_COOKIE, MIN_PACKETSZ,
+    BOOTREPLY, DHCP_CHADDR_MAX, MAGIC_COOKIE, MIN_PACKETSZ,
 };
+#[cfg(test)]
+use crate::dhcp::v4::constants::BOOTREQUEST;
 use crate::dhcp::v4::options::{encode_options, parse_options, DhcpOption};
 use crate::error::DhcpError;
 use crate::types::MacAddress;
@@ -108,48 +110,48 @@ use std::net::Ipv4Addr;
 pub struct DhcpMessage {
     /// Operation code: BOOTREQUEST (1) or BOOTREPLY (2)
     pub(crate) op: u8,
-    
+
     /// Hardware address type (1 = Ethernet, see ARP section in RFC 1700)
     pub(crate) htype: u8,
-    
+
     /// Hardware address length (6 for Ethernet MAC addresses)
     pub(crate) hlen: u8,
-    
+
     /// Hop count, incremented by relay agents (client sets to 0)
     pub(crate) hops: u8,
-    
+
     /// Transaction ID, random number chosen by client for request/reply matching
     pub(crate) xid: u32,
-    
+
     /// Seconds elapsed since client began address acquisition or renewal process
     pub(crate) secs: u16,
-    
+
     /// Flags field (bit 0 = broadcast flag, 0x8000; remaining bits reserved)
     pub(crate) flags: u16,
-    
+
     /// Client IP address; only filled in if client is in BOUND, RENEW or REBINDING state
     pub(crate) ciaddr: Ipv4Addr,
-    
+
     /// 'Your' (client) IP address; filled by server in OFFER and ACK messages
     pub(crate) yiaddr: Ipv4Addr,
-    
+
     /// IP address of next server to use in bootstrap; returned in OFFER, ACK by server
     pub(crate) siaddr: Ipv4Addr,
-    
+
     /// Relay agent IP address, used in booting via a relay agent
     pub(crate) giaddr: Ipv4Addr,
-    
+
     /// Client hardware address (16 bytes, first hlen bytes valid, rest zero-padded)
     pub(crate) chaddr: [u8; DHCP_CHADDR_MAX],
-    
+
     /// Optional server host name, null-terminated string (64 bytes)
     /// May contain options if OPTION_OVERLOAD indicates sname overload
     pub(crate) sname: [u8; 64],
-    
+
     /// Boot file name, null-terminated string (128 bytes)
     /// May contain options if OPTION_OVERLOAD indicates file overload
     pub(crate) file: [u8; 128],
-    
+
     /// Parsed DHCP options (after magic cookie validation)
     pub(crate) options: Vec<DhcpOption>,
 }
@@ -288,16 +290,15 @@ impl DhcpMessage {
             })?;
 
         // Parse IPv4 addresses (ciaddr, yiaddr, siaddr, giaddr)
-        let (remaining, (ciaddr, yiaddr, siaddr, giaddr)) =
-            parse_ipv4_addresses(remaining).map_err(|e| DhcpError::ParseFailed {
+        let (remaining, (ciaddr, yiaddr, siaddr, giaddr)) = parse_ipv4_addresses(remaining)
+            .map_err(|e| DhcpError::ParseFailed {
                 reason: format!("Failed to parse IP addresses: {}", e),
             })?;
 
         // Parse chaddr (16 bytes), sname (64 bytes), file (128 bytes)
-        let (remaining, (chaddr, sname, file)) =
-            parse_variable_fields(remaining).map_err(|e| DhcpError::ParseFailed {
-                reason: format!("Failed to parse variable fields: {}", e),
-            })?;
+        let (remaining, (chaddr, sname, file)) = parse_variable_fields(remaining).map_err(|e| {
+            DhcpError::ParseFailed { reason: format!("Failed to parse variable fields: {}", e) }
+        })?;
 
         // Verify and consume magic cookie (0x63825363)
         let (remaining, _cookie) = verify(be_u32, |&cookie| cookie == MAGIC_COOKIE)(remaining)
@@ -531,13 +532,12 @@ impl DhcpMessage {
                 reason: format!("Invalid hardware address length: expected 6, found {}", self.hlen),
             });
         }
-        
-        let mac_bytes: [u8; 6] = self.chaddr[..6]
-            .try_into()
-            .map_err(|_| DhcpError::ParseFailed {
+
+        let mac_bytes: [u8; 6] =
+            self.chaddr[..6].try_into().map_err(|_| DhcpError::ParseFailed {
                 reason: "Failed to convert hardware address to MAC format".to_string(),
             })?;
-        
+
         Ok(MacAddress::from_bytes(mac_bytes))
     }
 
@@ -729,10 +729,16 @@ impl DhcpMessage {
 // Private Helper Functions for Parsing
 // ============================================================================
 
+/// Type alias for the first part of DHCP fixed header parsing result
+type HeaderPart1 = (u8, u8, u8, u8, u32, u16, u16);
+
+/// Type alias for variable fields parsing result (chaddr, sname, file)
+type VariableFields = ([u8; DHCP_CHADDR_MAX], [u8; 64], [u8; 128]);
+
 /// Parse the first part of the fixed header (16 bytes)
 ///
 /// Parses: op, htype, hlen, hops, xid, secs, flags
-fn parse_fixed_header_part1(input: &[u8]) -> IResult<&[u8], (u8, u8, u8, u8, u32, u16, u16)> {
+fn parse_fixed_header_part1(input: &[u8]) -> IResult<&[u8], HeaderPart1> {
     tuple((be_u8, be_u8, be_u8, be_u8, be_u32, be_u16, be_u16))(input)
 }
 
@@ -745,30 +751,10 @@ fn parse_ipv4_addresses(input: &[u8]) -> IResult<&[u8], (Ipv4Addr, Ipv4Addr, Ipv
     let (input, siaddr_bytes) = take(4usize)(input)?;
     let (input, giaddr_bytes) = take(4usize)(input)?;
 
-    let ciaddr = Ipv4Addr::new(
-        ciaddr_bytes[0],
-        ciaddr_bytes[1],
-        ciaddr_bytes[2],
-        ciaddr_bytes[3],
-    );
-    let yiaddr = Ipv4Addr::new(
-        yiaddr_bytes[0],
-        yiaddr_bytes[1],
-        yiaddr_bytes[2],
-        yiaddr_bytes[3],
-    );
-    let siaddr = Ipv4Addr::new(
-        siaddr_bytes[0],
-        siaddr_bytes[1],
-        siaddr_bytes[2],
-        siaddr_bytes[3],
-    );
-    let giaddr = Ipv4Addr::new(
-        giaddr_bytes[0],
-        giaddr_bytes[1],
-        giaddr_bytes[2],
-        giaddr_bytes[3],
-    );
+    let ciaddr = Ipv4Addr::new(ciaddr_bytes[0], ciaddr_bytes[1], ciaddr_bytes[2], ciaddr_bytes[3]);
+    let yiaddr = Ipv4Addr::new(yiaddr_bytes[0], yiaddr_bytes[1], yiaddr_bytes[2], yiaddr_bytes[3]);
+    let siaddr = Ipv4Addr::new(siaddr_bytes[0], siaddr_bytes[1], siaddr_bytes[2], siaddr_bytes[3]);
+    let giaddr = Ipv4Addr::new(giaddr_bytes[0], giaddr_bytes[1], giaddr_bytes[2], giaddr_bytes[3]);
 
     Ok((input, (ciaddr, yiaddr, siaddr, giaddr)))
 }
@@ -776,7 +762,7 @@ fn parse_ipv4_addresses(input: &[u8]) -> IResult<&[u8], (Ipv4Addr, Ipv4Addr, Ipv
 /// Parse variable-length fields: chaddr, sname, file (208 bytes total)
 ///
 /// Parses: chaddr (16 bytes), sname (64 bytes), file (128 bytes)
-fn parse_variable_fields(input: &[u8]) -> IResult<&[u8], ([u8; DHCP_CHADDR_MAX], [u8; 64], [u8; 128])> {
+fn parse_variable_fields(input: &[u8]) -> IResult<&[u8], VariableFields> {
     let (input, chaddr_bytes) = take(DHCP_CHADDR_MAX)(input)?;
     let (input, sname_bytes) = take(64usize)(input)?;
     let (input, file_bytes) = take(128usize)(input)?;
@@ -804,13 +790,15 @@ fn parse_variable_fields(input: &[u8]) -> IResult<&[u8], ([u8; DHCP_CHADDR_MAX],
 /// - `Some(3)`: both fields contain options
 /// - `None`: no overload option present
 fn find_overload_value(options: &[DhcpOption]) -> Option<u8> {
-    options.iter().find_map(|opt| {
-        if let DhcpOption::Overload(value) = opt {
-            Some(*value)
-        } else {
-            None
-        }
-    })
+    options.iter().find_map(
+        |opt| {
+            if let DhcpOption::Overload(value) = opt {
+                Some(*value)
+            } else {
+                None
+            }
+        },
+    )
 }
 
 impl Default for DhcpMessage {
@@ -855,7 +843,7 @@ mod tests {
     fn test_serialize_minimum_size() {
         let msg = DhcpMessage::new();
         let serialized = msg.serialize_dhcp_message();
-        
+
         // Must be at least MIN_PACKETSZ (300 bytes) for Linux compatibility
         assert!(serialized.len() >= MIN_PACKETSZ);
     }
@@ -896,7 +884,11 @@ mod tests {
         // Should fail with ParseFailed containing "Invalid magic cookie" message
         match result {
             Err(DhcpError::ParseFailed { reason }) => {
-                assert!(reason.contains("Invalid magic cookie"), "Expected magic cookie error, got: {}", reason);
+                assert!(
+                    reason.contains("Invalid magic cookie"),
+                    "Expected magic cookie error, got: {}",
+                    reason
+                );
             }
             other => panic!("Expected ParseFailed with magic cookie error, got: {:?}", other),
         }
@@ -961,7 +953,7 @@ mod tests {
     #[test]
     fn test_setters() {
         let mut msg = DhcpMessage::new();
-        
+
         msg.set_op(BOOTREPLY);
         msg.set_xid(0xDEADBEEF);
         msg.set_yiaddr(Ipv4Addr::new(192, 168, 1, 100));

@@ -232,7 +232,7 @@ fn lease_action_to_str(action: &LeaseAction) -> &'static str {
 /// # Environment Variables Set
 ///
 /// ## Timing (always present)
-
+///
 /// - `DNSMASQ_LEASE_EXPIRES`: Unix timestamp (seconds since epoch) when lease expires
 /// - `DNSMASQ_LEASE_LENGTH`: Remaining seconds until expiration from current time
 ///
@@ -378,23 +378,15 @@ pub async fn execute_lease_script(
     let mut cmd = Command::new(script_path);
 
     // Set command-line arguments
-    cmd.arg(action_str)
-        .arg(&identifier_arg)
-        .arg(&ip_arg)
-        .arg(hostname_arg);
+    cmd.arg(action_str).arg(&identifier_arg).arg(&ip_arg).arg(hostname_arg);
 
     // Environment variable: DNSMASQ_LEASE_EXPIRES (absolute Unix timestamp)
     if let Ok(expires_duration) = lease.expires.duration_since(UNIX_EPOCH) {
-        cmd.env(
-            "DNSMASQ_LEASE_EXPIRES",
-            expires_duration.as_secs().to_string(),
-        );
+        cmd.env("DNSMASQ_LEASE_EXPIRES", expires_duration.as_secs().to_string());
 
         // Environment variable: DNSMASQ_LEASE_LENGTH (remaining seconds)
         if let Ok(now_duration) = SystemTime::now().duration_since(UNIX_EPOCH) {
-            let remaining_secs = expires_duration
-                .as_secs()
-                .saturating_sub(now_duration.as_secs());
+            let remaining_secs = expires_duration.as_secs().saturating_sub(now_duration.as_secs());
             cmd.env("DNSMASQ_LEASE_LENGTH", remaining_secs.to_string());
         }
     }
@@ -408,11 +400,8 @@ pub async fn execute_lease_script(
     if let Some(ref client_id) = lease.client_id {
         let _client_id_hex = hex::encode(client_id.as_slice());
         // Convert to colon-separated format like C implementation
-        let client_id_formatted = client_id
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<Vec<_>>()
-            .join(":");
+        let client_id_formatted =
+            client_id.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
         cmd.env("DNSMASQ_CLIENT_ID", client_id_formatted);
     }
 
@@ -431,21 +420,15 @@ pub async fn execute_lease_script(
 
     // Environment variable: DNSMASQ_VENDOR_CLASS (hex-encoded)
     if let Some(ref vendor_class) = lease.vendorclass {
-        let vendor_hex = vendor_class
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<Vec<_>>()
-            .join(":");
+        let vendor_hex =
+            vendor_class.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
         cmd.env("DNSMASQ_VENDOR_CLASS", vendor_hex);
     }
 
     // Environment variable: DNSMASQ_RELAY_ADDRESS (hex-encoded relay agent info)
     if let Some(ref relay_agent) = lease.agent_id {
-        let relay_hex = relay_agent
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<Vec<_>>()
-            .join(":");
+        let relay_hex =
+            relay_agent.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
         cmd.env("DNSMASQ_RELAY_ADDRESS", relay_hex);
     }
 
@@ -461,9 +444,7 @@ pub async fn execute_lease_script(
     }
 
     // Configure stdio - no stdin, capture stdout/stderr for logging
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
 
     // Privilege dropping: Execute script with reduced privileges if configured
     // This matches the C implementation's helper process privilege separation model
@@ -671,11 +652,9 @@ async fn execute_lua_script(
     }
 
     // Build environment table for Lua script
-    let env_table = lua.create_table().map_err(|e| {
-        DhcpError::ScriptFailed {
-            script: script_path.display().to_string(),
-            reason: format!("Failed to create Lua table: {}", e),
-        }
+    let env_table = lua.create_table().map_err(|e| DhcpError::ScriptFailed {
+        script: script_path.display().to_string(),
+        reason: format!("Failed to create Lua table: {}", e),
     })?;
 
     // Populate environment table with lease metadata
@@ -683,9 +662,7 @@ async fn execute_lua_script(
         let _ = env_table.set("DNSMASQ_LEASE_EXPIRES", expires_duration.as_secs());
 
         if let Ok(now_duration) = SystemTime::now().duration_since(UNIX_EPOCH) {
-            let remaining = expires_duration
-                .as_secs()
-                .saturating_sub(now_duration.as_secs());
+            let remaining = expires_duration.as_secs().saturating_sub(now_duration.as_secs());
             let _ = env_table.set("DNSMASQ_LEASE_LENGTH", remaining);
         }
     }
@@ -695,11 +672,8 @@ async fn execute_lua_script(
     }
 
     if let Some(ref client_id) = lease.client_id {
-        let client_id_hex: String = client_id
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<Vec<String>>()
-            .join(":");
+        let client_id_hex: String =
+            client_id.iter().map(|b| format!("{:02x}", b)).collect::<Vec<String>>().join(":");
         let _ = env_table.set("DNSMASQ_CLIENT_ID", client_id_hex);
     }
 
@@ -714,20 +688,14 @@ async fn execute_lua_script(
     }
 
     if let Some(ref vendor) = lease.vendorclass {
-        let vendor_hex: String = vendor
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<Vec<String>>()
-            .join(":");
+        let vendor_hex: String =
+            vendor.iter().map(|b| format!("{:02x}", b)).collect::<Vec<String>>().join(":");
         let _ = env_table.set("DNSMASQ_VENDOR_CLASS", vendor_hex);
     }
 
     if let Some(ref agent) = lease.agent_id {
-        let agent_hex: String = agent
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<Vec<String>>()
-            .join(":");
+        let agent_hex: String =
+            agent.iter().map(|b| format!("{:02x}", b)).collect::<Vec<String>>().join(":");
         let _ = env_table.set("DNSMASQ_RELAY_ADDRESS", agent_hex);
     }
 
@@ -770,9 +738,8 @@ async fn execute_lua_script(
     let hostname_str = lease.hostname.as_deref().unwrap_or("*");
 
     // Invoke Lua function: lease_event(action, identifier, ip, hostname, env_table)
-    lease_fn
-        .call::<()>((action_str, identifier, ip_str, hostname_str, env_table))
-        .map_err(|e| {
+    lease_fn.call::<()>((action_str, identifier, ip_str, hostname_str, env_table)).map_err(
+        |e| {
             error!(
                 script = %script_path.display(),
                 action = action_str,
@@ -783,7 +750,8 @@ async fn execute_lua_script(
                 script: script_path.display().to_string(),
                 reason: format!("Lua execution error: {}", e),
             }
-        })?;
+        },
+    )?;
 
     info!(
         script = %script_path.display(),
@@ -794,4 +762,3 @@ async fn execute_lua_script(
 
     Ok(())
 }
-

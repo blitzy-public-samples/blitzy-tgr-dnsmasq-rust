@@ -942,12 +942,7 @@ impl ServerDetails {
             None => None,
         };
 
-        Ok(Self {
-            addr,
-            domain,
-            flags,
-            address: Some(addr.ip()),
-        })
+        Ok(Self { addr, domain, flags, address: Some(addr.ip()) })
     }
 
     /// Returns the server socket address.
@@ -973,19 +968,17 @@ impl ServerDetails {
     /// # Arguments
     ///
     /// * `domain` - Domain name to answer authoritatively
-    pub fn new_authoritative(
-        domain: impl Into<String>,
-    ) -> Result<Self, DnsmasqError> {
+    pub fn new_authoritative(domain: impl Into<String>) -> Result<Self, DnsmasqError> {
         use std::net::{IpAddr, Ipv4Addr};
-        
+
         // Use dummy address for authoritative entries (0.0.0.0:0)
         let dummy_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
-        
+
         Ok(Self {
             addr: dummy_addr,
             domain: Some(DomainName::new(domain)?),
             flags: 0,
-            address: None,  // None indicates authoritative (no forwarding)
+            address: None, // None indicates authoritative (no forwarding)
         })
     }
 }

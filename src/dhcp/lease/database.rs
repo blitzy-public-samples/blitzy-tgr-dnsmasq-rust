@@ -107,10 +107,7 @@ pub async fn read_leases(lease_file_path: &Path, now: SystemTime) -> Result<Vec<
 
     let file = File::open(lease_file_path).await.map_err(|e| {
         error!("Failed to open lease file {}: {}", lease_file_path.display(), e);
-        DhcpError::LeaseDatabaseFailed {
-            operation: "read".to_string(),
-            reason: e.to_string(),
-        }
+        DhcpError::LeaseDatabaseFailed { operation: "read".to_string(), reason: e.to_string() }
     })?;
 
     let reader = BufReader::new(file);
@@ -318,8 +315,6 @@ fn parse_hex_string(hex_str: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-
-
 /// Write DHCP leases to a persistent lease file
 ///
 /// Serializes all active leases to the lease file in the format compatible
@@ -375,10 +370,7 @@ pub async fn write_leases(
         .await
         .map_err(|e| {
             error!("Failed to create temporary lease file {}: {}", temp_path.display(), e);
-            DhcpError::LeaseDatabaseFailed {
-                operation: "write".to_string(),
-                reason: e.to_string(),
-            }
+            DhcpError::LeaseDatabaseFailed { operation: "write".to_string(), reason: e.to_string() }
         })?;
 
     // Track if we need to write DHCPv6 section
@@ -427,18 +419,12 @@ pub async fn write_leases(
     // Flush and sync to ensure data is written
     file.flush().await.map_err(|e| {
         error!("Failed to flush lease file: {}", e);
-        DhcpError::LeaseDatabaseFailed {
-            operation: "write".to_string(),
-            reason: e.to_string(),
-        }
+        DhcpError::LeaseDatabaseFailed { operation: "write".to_string(), reason: e.to_string() }
     })?;
 
     file.sync_all().await.map_err(|e| {
         error!("Failed to sync lease file: {}", e);
-        DhcpError::LeaseDatabaseFailed {
-            operation: "write".to_string(),
-            reason: e.to_string(),
-        }
+        DhcpError::LeaseDatabaseFailed { operation: "write".to_string(), reason: e.to_string() }
     })?;
 
     // Close the file explicitly
@@ -447,10 +433,7 @@ pub async fn write_leases(
     // Atomically replace the old file with the new one
     tokio::fs::rename(&temp_path, lease_file_path).await.map_err(|e| {
         error!("Failed to rename {} to {}: {}", temp_path.display(), lease_file_path.display(), e);
-        DhcpError::LeaseDatabaseFailed {
-            operation: "write".to_string(),
-            reason: e.to_string(),
-        }
+        DhcpError::LeaseDatabaseFailed { operation: "write".to_string(), reason: e.to_string() }
     })?;
 
     debug!("Successfully wrote {} leases to {}", leases.len(), lease_file_path.display());
@@ -497,10 +480,7 @@ async fn write_lease_entry(file: &mut File, lease: &Lease) -> std::io::Result<()
             .map(|c| c.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":"))
             .unwrap_or_else(|| "*".to_string());
 
-        format!(
-            "{} {} {} {} {}\n",
-            expires_secs, iaid_str, lease.ip, hostname, client_id_str
-        )
+        format!("{} {} {} {} {}\n", expires_secs, iaid_str, lease.ip, hostname, client_id_str)
     };
 
     file.write_all(line.as_bytes()).await?;
@@ -514,26 +494,24 @@ async fn write_duid_line(file: &mut File, duid: &[u8]) -> Result<(), DhcpError> 
     let line = format!("duid {}\n", duid_hex);
     file.write_all(line.as_bytes()).await.map_err(|e| {
         error!("Failed to write DUID line: {}", e);
-        DhcpError::LeaseDatabaseFailed {
-            operation: "write".to_string(),
-            reason: e.to_string(),
-        }
+        DhcpError::LeaseDatabaseFailed { operation: "write".to_string(), reason: e.to_string() }
     })?;
 
     Ok(())
 }
 
 /// Write agent-info line for a lease
-async fn write_agent_info_line(file: &mut File, ip: &IpAddr, agent_id: &[u8]) -> Result<(), DhcpError> {
+async fn write_agent_info_line(
+    file: &mut File,
+    ip: &IpAddr,
+    agent_id: &[u8],
+) -> Result<(), DhcpError> {
     let agent_hex = agent_id.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
 
     let line = format!("agent-info {} {}\n", ip, agent_hex);
     file.write_all(line.as_bytes()).await.map_err(|e| {
         error!("Failed to write agent-info line: {}", e);
-        DhcpError::LeaseDatabaseFailed {
-            operation: "write".to_string(),
-            reason: e.to_string(),
-        }
+        DhcpError::LeaseDatabaseFailed { operation: "write".to_string(), reason: e.to_string() }
     })?;
 
     Ok(())
@@ -551,10 +529,7 @@ async fn write_vendorclass_line(
     let line = format!("vendorclass {} {}\n", ip, vendor_hex);
     file.write_all(line.as_bytes()).await.map_err(|e| {
         error!("Failed to write vendorclass line: {}", e);
-        DhcpError::LeaseDatabaseFailed {
-            operation: "write".to_string(),
-            reason: e.to_string(),
-        }
+        DhcpError::LeaseDatabaseFailed { operation: "write".to_string(), reason: e.to_string() }
     })?;
 
     Ok(())
@@ -572,8 +547,6 @@ mod tests {
         assert!(parse_hex_string("0123").is_ok());
         assert!(parse_hex_string("xyz").is_err());
     }
-
-
 
     #[tokio::test]
     async fn test_write_and_read_leases() {

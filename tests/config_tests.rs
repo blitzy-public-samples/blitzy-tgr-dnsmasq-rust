@@ -36,7 +36,9 @@ use tempfile::{tempdir, NamedTempFile, TempDir};
 use tokio::time::{timeout, Duration};
 
 mod common;
-use common::{create_temp_config_file, create_temp_dir, generate_test_config, with_timeout, TestConfigOptions};
+use common::{
+    create_temp_config_file, create_temp_dir, generate_test_config, with_timeout, TestConfigOptions,
+};
 
 /// Test parsing empty configuration file with default values
 /// Validates that all defaults match C dnsmasq behavior
@@ -45,45 +47,19 @@ async fn test_parse_empty_config() {
     let temp_file = create_temp_config_file("").unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     // Verify default values match C implementation
     assert_eq!(config.network.port, 53, "Default DNS port should be 53");
     assert_eq!(config.dns.cache_size, 150, "Default cache size should be 150");
-    assert_eq!(
-        config.dns.domain_needed, false,
-        "domain-needed should default to false"
-    );
-    assert_eq!(
-        config.dns.bogus_priv, false,
-        "bogus-priv should default to false"
-    );
-    assert_eq!(
-        config.network.bind_interfaces, false,
-        "bind-interfaces should default to false"
-    );
-    assert_eq!(
-        config.dhcp.authoritative, false,
-        "dhcp-authoritative should default to false"
-    );
-    assert_eq!(
-        config.logging.log_queries, false,
-        "log-queries should default to false"
-    );
-    assert!(
-        config.network.interfaces.is_empty(),
-        "Should have no interfaces by default"
-    );
-    assert!(
-        config.dns.upstream_servers.is_empty(),
-        "Should have no upstream servers by default"
-    );
+    assert_eq!(config.dns.domain_needed, false, "domain-needed should default to false");
+    assert_eq!(config.dns.bogus_priv, false, "bogus-priv should default to false");
+    assert_eq!(config.network.bind_interfaces, false, "bind-interfaces should default to false");
+    assert_eq!(config.dhcp.authoritative, false, "dhcp-authoritative should default to false");
+    assert_eq!(config.logging.log_queries, false, "log-queries should default to false");
+    assert!(config.network.interfaces.is_empty(), "Should have no interfaces by default");
+    assert!(config.dns.upstream_servers.is_empty(), "Should have no upstream servers by default");
 }
 
 /// Test parsing basic DNS configuration options
@@ -101,13 +77,8 @@ cache-size=500
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     assert_eq!(config.network.port, 5353, "Port should be 5353");
     assert_eq!(config.dns.cache_size, 500, "Cache size should be 500");
@@ -122,18 +93,10 @@ async fn test_parse_dns_port_zero() {
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
-    assert_eq!(
-        config.network.port, 0,
-        "Port=0 should disable DNS"
-    );
+    assert_eq!(config.network.port, 0, "Port=0 should disable DNS");
 }
 
 /// Test parsing interface and network binding options
@@ -152,33 +115,14 @@ except-interface=lo
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
-    assert_eq!(
-        config.network.interfaces.len(),
-        2,
-        "Should have 2 interfaces"
-    );
-    assert!(
-        config.network.interfaces.contains(&"eth0".to_string()),
-        "Should include eth0"
-    );
-    assert!(
-        config.network.interfaces.contains(&"wlan0".to_string()),
-        "Should include wlan0"
-    );
+    assert_eq!(config.network.interfaces.len(), 2, "Should have 2 interfaces");
+    assert!(config.network.interfaces.contains(&"eth0".to_string()), "Should include eth0");
+    assert!(config.network.interfaces.contains(&"wlan0".to_string()), "Should include wlan0");
 
-    assert_eq!(
-        config.network.listen_addresses.len(),
-        2,
-        "Should have 2 listen addresses"
-    );
+    assert_eq!(config.network.listen_addresses.len(), 2, "Should have 2 listen addresses");
     assert!(
         config.network.listen_addresses.contains(&"127.0.0.1".parse().unwrap()),
         "Should include 127.0.0.1"
@@ -188,20 +132,10 @@ except-interface=lo
         "Should include 192.168.1.1"
     );
 
-    assert!(
-        config.network.bind_interfaces,
-        "bind-interfaces should be true"
-    );
+    assert!(config.network.bind_interfaces, "bind-interfaces should be true");
 
-    assert_eq!(
-        config.network.except_interfaces.len(),
-        1,
-        "Should have 1 excluded interface"
-    );
-    assert!(
-        config.network.except_interfaces.contains(&"lo".to_string()),
-        "Should exclude lo"
-    );
+    assert_eq!(config.network.except_interfaces.len(), 1, "Should have 1 excluded interface");
+    assert!(config.network.except_interfaces.contains(&"lo".to_string()), "Should exclude lo");
 }
 
 /// Test parsing upstream server configurations
@@ -221,28 +155,15 @@ no-resolv
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
-    assert_eq!(
-        config.dns.upstream_servers.len(),
-        4,
-        "Should have 4 upstream servers"
-    );
+    assert_eq!(config.dns.upstream_servers.len(), 4, "Should have 4 upstream servers");
     assert!(config.dns.no_resolv, "no-resolv should be true");
 
     // Verify general servers (no domain restriction)
-    let general_servers: Vec<_> = config
-        .dns
-        .servers
-        .iter()
-        .filter(|s| s.domain.is_none())
-        .collect();
+    let general_servers: Vec<_> =
+        config.dns.servers.iter().filter(|s| s.domain.is_none()).collect();
     assert_eq!(general_servers.len(), 3, "Should have 3 general servers");
 
     // Verify domain-specific servers
@@ -252,11 +173,7 @@ no-resolv
         .iter()
         .filter(|s| s.domain.as_ref().map(|d| d.as_str()) == Some("example.com"))
         .collect();
-    assert_eq!(
-        example_servers.len(),
-        1,
-        "Should have 1 server for example.com"
-    );
+    assert_eq!(example_servers.len(), 1, "Should have 1 server for example.com");
 
     // Verify local domain (no server = authoritative)
     let local_servers: Vec<_> = config
@@ -265,11 +182,7 @@ no-resolv
         .iter()
         .filter(|s| s.domain.as_ref().map(|d| d.as_str()) == Some("local") && s.address.is_none())
         .collect();
-    assert_eq!(
-        local_servers.len(),
-        1,
-        "Should have 1 local authoritative entry"
-    );
+    assert_eq!(local_servers.len(), 1, "Should have 1 local authoritative entry");
 }
 
 /// Test parsing DHCP configuration options
@@ -289,23 +202,11 @@ dhcp-leasefile=/var/lib/misc/dnsmasq.leases
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
-    assert_eq!(
-        config.dhcp.v4_ranges.len(),
-        2,
-        "Should have 2 DHCP ranges"
-    );
-    assert!(
-        config.dhcp.authoritative,
-        "dhcp-authoritative should be true"
-    );
+    assert_eq!(config.dhcp.v4_ranges.len(), 2, "Should have 2 DHCP ranges");
+    assert!(config.dhcp.authoritative, "dhcp-authoritative should be true");
     assert_eq!(
         config.dhcp.lease_file,
         Some(PathBuf::from("/var/lib/misc/dnsmasq.leases")),
@@ -319,22 +220,11 @@ dhcp-leasefile=/var/lib/misc/dnsmasq.leases
         "192.168.1.50",
         "First range start should be 192.168.1.50"
     );
-    assert_eq!(
-        range1.end.to_string(),
-        "192.168.1.150",
-        "First range end should be 192.168.1.150"
-    );
-    assert_eq!(
-        range1.lease_time,
-        Some(12 * 3600),
-        "First range lease time should be 12 hours"
-    );
+    assert_eq!(range1.end.to_string(), "192.168.1.150", "First range end should be 192.168.1.150");
+    assert_eq!(range1.lease_time, Some(12 * 3600), "First range lease time should be 12 hours");
 
     // Verify DHCP options
-    assert!(
-        config.dhcp.options.len() >= 2,
-        "Should have at least 2 DHCP options"
-    );
+    assert!(config.dhcp.options.len() >= 2, "Should have at least 2 DHCP options");
 }
 
 /// Test parsing DHCPv6 configuration options
@@ -350,26 +240,12 @@ dhcp-option=option6:dns-server,[2001:4860:4860::8888]
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
-    assert!(
-        config.dhcp.enable_ra,
-        "Router Advertisement should be enabled"
-    );
-    assert!(
-        !config.dhcp.v6_ranges.is_empty(),
-        "Should have IPv6 DHCP range"
-    );
-    assert!(
-        config.dhcp.v6_ranges.iter().all(|r| r.is_ipv6),
-        "All v6_ranges should be IPv6"
-    );
+    assert!(config.dhcp.enable_ra, "Router Advertisement should be enabled");
+    assert!(!config.dhcp.v6_ranges.is_empty(), "Should have IPv6 DHCP range");
+    assert!(config.dhcp.v6_ranges.iter().all(|r| r.is_ipv6), "All v6_ranges should be IPv6");
 }
 
 /// Test parsing logging configuration options
@@ -387,21 +263,12 @@ quiet-ra
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     assert!(config.logging.log_queries, "log-queries should be true");
     assert!(config.logging.log_dhcp, "log-dhcp should be true");
-    assert_eq!(
-        config.logging.log_facility,
-        "/var/log/dnsmasq.log",
-        "log-facility should match"
-    );
+    assert_eq!(config.logging.log_facility, "/var/log/dnsmasq.log", "log-facility should match");
     assert!(config.logging.quiet_dhcp, "quiet-dhcp should be true");
     assert!(config.logging.quiet_dhcp6, "quiet-dhcp6 should be true");
     assert!(config.logging.quiet_ra, "quiet-ra should be true");
@@ -420,23 +287,12 @@ dnssec-timestamp=/var/lib/misc/dnsmasq.time
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     assert!(config.dns.dnssec_enabled, "DNSSEC should be enabled");
-    assert!(
-        config.dns.dnssec_enabled_check_unsigned,
-        "dnssec-check-unsigned should be true"
-    );
-    assert!(
-        !config.dns.trust_anchors.is_empty(),
-        "Should have trust anchors"
-    );
+    assert!(config.dns.dnssec_enabled_check_unsigned, "dnssec-check-unsigned should be true");
+    assert!(!config.dns.trust_anchors.is_empty(), "Should have trust anchors");
 }
 
 /// Test parsing TFTP configuration options
@@ -446,7 +302,7 @@ async fn test_parse_tftp_options() {
     // Create temporary TFTP root directory
     let tftp_root_dir = TempDir::new().unwrap();
     let tftp_root_path = tftp_root_dir.path().to_str().unwrap();
-    
+
     let config_content = format!(
         r#"
 enable-tftp
@@ -461,13 +317,8 @@ tftp-no-blocksize
     let temp_file = create_temp_config_file(&config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     assert!(config.tftp.enabled, "TFTP should be enabled");
     assert_eq!(
@@ -476,14 +327,8 @@ tftp-no-blocksize
         "TFTP root should match"
     );
     assert!(config.tftp.tftp_secure, "tftp-secure should be true");
-    assert!(
-        config.tftp.tftp_unique_root,
-        "tftp-unique-root should be true"
-    );
-    assert!(
-        config.tftp.tftp_no_blocksize,
-        "tftp-no-blocksize should be true"
-    );
+    assert!(config.tftp.tftp_unique_root, "tftp-unique-root should be true");
+    assert!(config.tftp.tftp_no_blocksize, "tftp-no-blocksize should be true");
 }
 
 /// Test parsing security and privilege options
@@ -497,24 +342,11 @@ group=nogroup
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
-    assert_eq!(
-        config.security.user,
-        Some("nobody".to_string()),
-        "User should be nobody"
-    );
-    assert_eq!(
-        config.security.group,
-        Some("nogroup".to_string()),
-        "Group should be nogroup"
-    );
+    assert_eq!(config.security.user, Some("nobody".to_string()), "User should be nobody");
+    assert_eq!(config.security.group, Some("nogroup".to_string()), "Group should be nogroup");
 }
 
 /// Test parsing address and host record options
@@ -530,24 +362,11 @@ host-record=server.local,192.168.1.10,2001:db8::1
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
-    assert_eq!(
-        config.dns.address_records.len(),
-        2,
-        "Should have 2 address records"
-    );
-    assert_eq!(
-        config.dns.host_records.len(),
-        2,
-        "Should have 2 host records"
-    );
+    assert_eq!(config.dns.address_records.len(), 2, "Should have 2 address records");
+    assert_eq!(config.dns.host_records.len(), 2, "Should have 2 host records");
 }
 
 /// Test parsing CNAME records
@@ -561,19 +380,10 @@ cname=www.local,server.local
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
-    assert_eq!(
-        config.dns.cname_records.len(),
-        2,
-        "Should have 2 CNAME records"
-    );
+    assert_eq!(config.dns.cname_records.len(), 2, "Should have 2 CNAME records");
 }
 
 /// Test parsing MX records
@@ -588,13 +398,8 @@ mx-target=mail.example.com
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     assert_eq!(config.dns.mx_records.len(), 2, "Should have 2 MX records");
     assert_eq!(
@@ -615,13 +420,8 @@ srv-host=_ldap._tcp.local,ldap.local,389,0,0
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     assert_eq!(config.dns.srv_records.len(), 2, "Should have 2 SRV records");
 }
@@ -637,13 +437,8 @@ txt-record=_dmarc.example.com,"v=DMARC1; p=reject; rua=mailto:postmaster@example
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     assert_eq!(config.dns.txt_records.len(), 2, "Should have 2 TXT records");
 }
@@ -659,13 +454,8 @@ ptr-record=1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa,server.local
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     assert_eq!(config.dns.ptr_records.len(), 2, "Should have 2 PTR records");
 }
@@ -691,19 +481,9 @@ async fn test_cli_argument_parsing() {
     .await
     .unwrap();
 
-    assert_eq!(
-        config.network.port,
-        5353,
-        "CLI port should override config file"
-    );
-    assert_eq!(
-        config.dns.cache_size, 1000,
-        "CLI cache-size should override config file"
-    );
-    assert!(
-        config.dns.domain_needed,
-        "CLI domain-needed should be set"
-    );
+    assert_eq!(config.network.port, 5353, "CLI port should override config file");
+    assert_eq!(config.dns.cache_size, 1000, "CLI cache-size should override config file");
+    assert!(config.dns.domain_needed, "CLI domain-needed should be set");
     assert!(config.dns.bogus_priv, "CLI bogus-priv should be set");
 }
 
@@ -726,19 +506,9 @@ async fn test_cli_short_form_arguments() {
     .await
     .unwrap();
 
-    assert_eq!(
-        config.network.port,
-        5353,
-        "Short form -p should set port"
-    );
-    assert_eq!(
-        config.dns.cache_size, 1000,
-        "Short form -c should set cache-size"
-    );
-    assert!(
-        config.logging.no_daemon,
-        "Short form -d should enable no-daemon"
-    );
+    assert_eq!(config.network.port, 5353, "Short form -p should set port");
+    assert_eq!(config.dns.cache_size, 1000, "Short form -c should set cache-size");
+    assert!(config.logging.no_daemon, "Short form -d should enable no-daemon");
 }
 
 /// Test include file processing
@@ -767,31 +537,16 @@ async fn test_include_file_processing() {
     fs::write(conf_d.join("01-dns.conf"), "bogus-priv\n").unwrap();
     fs::write(conf_d.join("02-dhcp.conf"), "dhcp-authoritative\n").unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        main_file.to_str().unwrap(),
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", main_file.to_str().unwrap()])
+            .await
+            .unwrap();
 
     assert_eq!(config.network.port, 53, "Main config port should be 53");
-    assert_eq!(
-        config.dns.cache_size, 500,
-        "Included file should set cache-size"
-    );
-    assert!(
-        config.dns.domain_needed,
-        "Included file should set domain-needed"
-    );
-    assert!(
-        config.dns.bogus_priv,
-        "conf.d file should set bogus-priv"
-    );
-    assert!(
-        config.dhcp.authoritative,
-        "conf.d file should set dhcp-authoritative"
-    );
+    assert_eq!(config.dns.cache_size, 500, "Included file should set cache-size");
+    assert!(config.dns.domain_needed, "Included file should set domain-needed");
+    assert!(config.dns.bogus_priv, "conf.d file should set bogus-priv");
+    assert!(config.dhcp.authoritative, "conf.d file should set dhcp-authoritative");
 }
 
 /// Test comment handling
@@ -811,23 +566,12 @@ bogus-priv    # Comment with trailing spaces
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     assert_eq!(config.network.port, 5353, "Port should parse despite comment");
-    assert_eq!(
-        config.dns.cache_size, 500,
-        "Cache size should parse despite comment"
-    );
-    assert!(
-        config.dns.domain_needed,
-        "domain-needed should parse correctly"
-    );
+    assert_eq!(config.dns.cache_size, 500, "Cache size should parse despite comment");
+    assert!(config.dns.domain_needed, "domain-needed should parse correctly");
     assert!(config.dns.bogus_priv, "bogus-priv should parse correctly");
 }
 
@@ -839,24 +583,12 @@ async fn test_whitespace_handling() {
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
-    assert_eq!(
-        config.network.port,
-        5353,
-        "Should handle leading/trailing spaces"
-    );
+    assert_eq!(config.network.port, 5353, "Should handle leading/trailing spaces");
     assert_eq!(config.dns.cache_size, 500, "Should handle blank lines");
-    assert!(
-        config.dns.domain_needed,
-        "Should handle tab indentation"
-    );
+    assert!(config.dns.domain_needed, "Should handle tab indentation");
     assert!(config.dns.bogus_priv, "Should handle trailing whitespace");
 }
 
@@ -868,17 +600,9 @@ async fn test_error_reporting_invalid_option() {
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let result = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await;
+    let result = dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await;
 
-    assert!(
-        result.is_err(),
-        "Should fail on invalid option"
-    );
+    assert!(result.is_err(), "Should fail on invalid option");
     let err = result.unwrap_err();
     let err_msg = format!("{}", err);
     assert!(
@@ -895,12 +619,7 @@ async fn test_error_reporting_invalid_port() {
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let result = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await;
+    let result = dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await;
 
     assert!(result.is_err(), "Should fail on port out of range");
 }
@@ -912,12 +631,7 @@ async fn test_error_reporting_invalid_ip() {
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let result = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await;
+    let result = dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await;
 
     assert!(result.is_err(), "Should fail on invalid IP address");
 }
@@ -932,20 +646,12 @@ dhcp-range=192.168.1.100,192.168.1.200,24h
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let result = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await;
+    let result = dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await;
 
     // Configuration parsing may succeed, but validation should catch overlap
     if let Ok(config) = result {
         let validation_result = dnsmasq::config::validate_config(&config);
-        assert!(
-            validation_result.is_err(),
-            "Validation should fail on overlapping DHCP ranges"
-        );
+        assert!(validation_result.is_err(), "Validation should fail on overlapping DHCP ranges");
     }
 }
 
@@ -966,19 +672,9 @@ async fn test_option_precedence() {
     .await
     .unwrap();
 
-    assert_eq!(
-        config.network.port,
-        5353,
-        "CLI should override config file"
-    );
-    assert_eq!(
-        config.dns.cache_size, 300,
-        "Config file should override default (150)"
-    );
-    assert_eq!(
-        config.dhcp.authoritative, false,
-        "Should use default when not specified"
-    );
+    assert_eq!(config.network.port, 5353, "CLI should override config file");
+    assert_eq!(config.dns.cache_size, 300, "Config file should override default (150)");
+    assert_eq!(config.dhcp.authoritative, false, "Should use default when not specified");
 }
 
 /// Test configuration validation with --test mode
@@ -993,21 +689,13 @@ dhcp-range=192.168.1.50,192.168.1.150,12h
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-        "--test",
-    ])
-    .await
-    .unwrap();
+    let config = dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path, "--test"])
+        .await
+        .unwrap();
 
     // Validate configuration
     let result = dnsmasq::config::validate_config(&config);
-    assert!(
-        result.is_ok(),
-        "Valid configuration should pass validation"
-    );
+    assert!(result.is_ok(), "Valid configuration should pass validation");
 }
 
 /// Test validation detects invalid configurations
@@ -1023,10 +711,7 @@ async fn test_config_validation_detects_errors() {
         .unwrap();
 
     let result = dnsmasq::config::validate_config(&config);
-    assert!(
-        result.is_err(),
-        "Validation should fail when start > end in DHCP range"
-    );
+    assert!(result.is_err(), "Validation should fail when start > end in DHCP range");
 }
 
 /// Test parsing of complex multi-value options
@@ -1047,21 +732,12 @@ listen-address=::1
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     assert_eq!(config.dns.upstream_servers.len(), 3, "Should have 3 servers");
     assert_eq!(config.network.interfaces.len(), 3, "Should have 3 interfaces");
-    assert_eq!(
-        config.network.listen_addresses.len(),
-        3,
-        "Should have 3 listen addresses"
-    );
+    assert_eq!(config.network.listen_addresses.len(), 3, "Should have 3 listen addresses");
 }
 
 /// Test parsing of boolean flags with no- prefix
@@ -1077,13 +753,8 @@ no-poll
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     assert!(config.dns.domain_needed, "domain-needed should be true");
     assert!(config.dns.no_resolv, "no-resolv should be true");
@@ -1103,28 +774,17 @@ dhcp-boot="pxelinux.0"
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     assert_eq!(config.dns.txt_records.len(), 2, "Should have 2 TXT records");
 
     // Verify quoted strings are parsed correctly
     let txt1 = &config.dns.txt_records[0];
-    assert!(
-        txt1.1.contains("This is a test with spaces"),
-        "Should preserve spaces in quotes"
-    );
+    assert!(txt1.1.contains("This is a test with spaces"), "Should preserve spaces in quotes");
 
     let txt2 = &config.dns.txt_records[1];
-    assert!(
-        txt2.1.contains("quotes"),
-        "Should handle escaped quotes"
-    );
+    assert!(txt2.1.contains("quotes"), "Should handle escaped quotes");
 }
 
 /// Test parsing of time duration values
@@ -1140,27 +800,14 @@ dhcp-range=192.168.2.10,192.168.2.20,infinite
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     assert_eq!(config.dhcp.v4_ranges.len(), 4, "Should have 4 DHCP ranges");
 
     // Verify time parsing
-    assert_eq!(
-        config.dhcp.v4_ranges[0].lease_time,
-        Some(12 * 3600),
-        "12h should be 43200 seconds"
-    );
-    assert_eq!(
-        config.dhcp.v4_ranges[1].lease_time,
-        Some(30 * 60),
-        "30m should be 1800 seconds"
-    );
+    assert_eq!(config.dhcp.v4_ranges[0].lease_time, Some(12 * 3600), "12h should be 43200 seconds");
+    assert_eq!(config.dhcp.v4_ranges[1].lease_time, Some(30 * 60), "30m should be 1800 seconds");
     assert_eq!(
         config.dhcp.v4_ranges[2].lease_time,
         Some(2 * 24 * 3600),
@@ -1181,81 +828,47 @@ server=/example.com/192.168.1.1
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
-    assert!(
-        config.dhcp.v4_ranges[0].netmask.is_some(),
-        "Should parse netmask"
-    );
+    assert!(config.dhcp.v4_ranges[0].netmask.is_some(), "Should parse netmask");
 }
 
 /// Test configuration reload simulation (SIGHUP behavior)
 #[tokio::test]
 async fn test_config_reload() {
-    let temp_file = create_temp_config_file("port=5353\ncache-size=500\n")
-        .unwrap();
+    let temp_file = create_temp_config_file("port=5353\ncache-size=500\n").unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
     // Load initial configuration
-    let config1 = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config1 =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     assert_eq!(config1.network.port, 5353, "Initial port should be 5353");
-    assert_eq!(
-        config1.dns.cache_size, 500,
-        "Initial cache size should be 500"
-    );
+    assert_eq!(config1.dns.cache_size, 500, "Initial cache size should be 500");
 
     // Modify configuration file
     fs::write(config_path, "port=8053\ncache-size=1000\ndomain-needed\n").unwrap();
 
     // Reload configuration (simulates SIGHUP)
-    let config2 = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config2 =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     assert_eq!(config2.network.port, 8053, "Reloaded port should be 8053");
-    assert_eq!(
-        config2.dns.cache_size, 1000,
-        "Reloaded cache size should be 1000"
-    );
-    assert!(
-        config2.dns.domain_needed,
-        "Reloaded config should have domain-needed"
-    );
+    assert_eq!(config2.dns.cache_size, 1000, "Reloaded cache size should be 1000");
+    assert!(config2.dns.domain_needed, "Reloaded config should have domain-needed");
 }
 
 /// Test handling of missing configuration file
 #[tokio::test]
 async fn test_missing_config_file() {
-    let result = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        "/nonexistent/path/dnsmasq.conf",
-    ])
-    .await;
+    let result =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", "/nonexistent/path/dnsmasq.conf"])
+            .await;
 
     // Depending on implementation, may fail or use defaults
     // C dnsmasq exits with error on missing --conf-file
-    assert!(
-        result.is_err(),
-        "Should fail when specified config file does not exist"
-    );
+    assert!(result.is_err(), "Should fail when specified config file does not exist");
 }
 
 /// Test environment variable handling
@@ -1268,13 +881,8 @@ async fn test_environment_variable_handling() {
 
     // Note: Actual implementation may or may not support DNSMASQ_OPTS
     // This tests the behavior if supported
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     env::remove_var("DNSMASQ_OPTS");
 
@@ -1355,13 +963,8 @@ group=nogroup
     let temp_file = create_temp_config_file(config_content).unwrap();
     let config_path = temp_file.path().to_str().unwrap();
 
-    let config = dnsmasq::config::load_config([
-        "dnsmasq",
-        "--conf-file",
-        config_path,
-    ])
-    .await
-    .unwrap();
+    let config =
+        dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     // Validate core DNS settings
     assert_eq!(config.network.port, 53);
