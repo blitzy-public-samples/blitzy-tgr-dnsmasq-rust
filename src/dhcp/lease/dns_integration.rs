@@ -62,11 +62,10 @@ use crate::dns::cache::DnsCache;
 use crate::dns::protocol::name::DomainName;
 use crate::error::DhcpError;
 use crate::types::{IpAddr, RecordType};
-use std::net::Ipv6Addr;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// Register a DHCP lease hostname in the DNS cache
 ///
@@ -493,7 +492,7 @@ mod tests {
 
         // Verify it was added
         {
-            let cache_lock = cache.read().await;
+            let mut cache_lock = cache.write().await;
             let domain_name = DomainName::new(hostname).unwrap();
             let record_type = RecordType::A;
             assert!(cache_lock.find_by_name(&domain_name, record_type).is_some());
@@ -506,7 +505,7 @@ mod tests {
 
         // Verify it was removed
         {
-            let cache_lock = cache.read().await;
+            let mut cache_lock = cache.write().await;
             let domain_name = DomainName::new(hostname).unwrap();
             let record_type = RecordType::A;
             assert!(cache_lock.find_by_name(&domain_name, record_type).is_none());
@@ -528,7 +527,7 @@ mod tests {
 
         // Verify both were added
         {
-            let cache_lock = cache.read().await;
+            let mut cache_lock = cache.write().await;
             let record_type = RecordType::A;
 
             let hostname_domain = DomainName::new(hostname).unwrap();
@@ -557,7 +556,7 @@ mod tests {
 
         // Verify it was not added
         {
-            let cache_lock = cache.read().await;
+            let mut cache_lock = cache.write().await;
             let domain_name = DomainName::new(hostname).unwrap();
             let record_type = RecordType::A;
             assert!(cache_lock.find_by_name(&domain_name, record_type).is_none());
@@ -607,7 +606,7 @@ mod tests {
 
         // Verify active leases were registered
         {
-            let cache_lock = cache.read().await;
+            let mut cache_lock = cache.write().await;
             let record_type = RecordType::A;
 
             let host1_domain = DomainName::new("host1").unwrap();

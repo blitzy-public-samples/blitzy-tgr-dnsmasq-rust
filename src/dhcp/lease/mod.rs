@@ -108,6 +108,13 @@ bitflags! {
     }
 }
 
+impl Default for LeaseFlags {
+    /// Returns an empty set of lease flags.
+    fn default() -> Self {
+        LeaseFlags::empty()
+    }
+}
+
 /// DHCP lease lifecycle action for script execution.
 ///
 /// Enum representing lease state change events that trigger helper script
@@ -271,6 +278,29 @@ impl Lease {
     pub fn set_fqdn(&mut self, domain: &str) {
         if let Some(ref hostname) = self.hostname {
             self.fqdn = Some(format!("{}.{}", hostname, domain));
+        }
+    }
+}
+
+impl Default for Lease {
+    /// Returns a default lease with placeholder values.
+    ///
+    /// This is primarily used for testing and struct initialization with the
+    /// `..Default::default()` syntax. For production use, prefer `Lease::new()`.
+    fn default() -> Self {
+        Self {
+            ip: IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)),
+            mac: None,
+            hostname: None,
+            client_id: None,
+            expires: SystemTime::UNIX_EPOCH,
+            iaid: None,
+            flags: LeaseFlags::empty(),
+            interface: String::new(),
+            fqdn: None,
+            vendorclass: None,
+            agent_id: None,
+            slaac_addresses: None,
         }
     }
 }
