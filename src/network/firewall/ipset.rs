@@ -269,13 +269,12 @@ use nix::sys::socket::{
 };
 use nix::sys::utsname::uname;
 use std::mem;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::os::unix::io::RawFd;
+use std::net::{IpAddr, Ipv4Addr};
+use std::os::unix::io::{AsRawFd, RawFd};
 use tokio::task;
 use tracing::{debug, error, info, warn};
 
 use super::{FirewallBackend, FirewallError, Result};
-use crate::types::IpAddr as DnsmasqIpAddr;
 
 // ============================================================================
 // Constants: ipset netlink protocol definitions
@@ -546,7 +545,7 @@ impl IpsetBackend {
                 FirewallError::ProtocolError(format!("Failed to create raw socket: {}", e))
             })?;
 
-            self.socket_fd = Some(fd);
+            self.socket_fd = Some(fd.as_raw_fd());
         } else {
             info!(
                 kernel_version = format!("{}.{}.{}", version.0, version.1, version.2),
@@ -558,7 +557,7 @@ impl IpsetBackend {
                 NixAddressFamily::Netlink,
                 SockType::Raw,
                 SockFlag::empty(),
-                SockProtocol::NetlinkNetfilter,
+                SockProtocol::NetlinkNetFilter,
             )
             .map_err(|e| {
                 FirewallError::ProtocolError(format!("Failed to create netlink socket: {}", e))
@@ -566,11 +565,12 @@ impl IpsetBackend {
 
             // Bind netlink socket
             let addr = NetlinkAddr::new(0, 0);  // pid=0 (kernel assigns), groups=0
-            bind(fd, &addr).map_err(|e| {
+            let raw_fd = fd.as_raw_fd();
+            bind(raw_fd, &addr).map_err(|e| {
                 FirewallError::ProtocolError(format!("Failed to bind netlink socket: {}", e))
             })?;
 
-            self.socket_fd = Some(fd);
+            self.socket_fd = Some(raw_fd);
         }
 
         debug!(
@@ -642,7 +642,7 @@ impl IpsetBackend {
             IpAddr::V6(ipv6) => (libc::AF_INET6 as u8, ipv6.octets().to_vec()),
         };
 
-        let addrsz = addr_bytes.len();
+        let _addrsz = addr_bytes.len();
 
         // Build netlink message in blocking task
         let set_name_owned = set_name.to_string();
@@ -690,8 +690,6 @@ impl IpsetBackend {
                 buffer.put_u8(0);
             }
 
-            let mut current_len = buffer.len();
-
             // Helper function to add netlink attribute
             let add_attr = |buf: &mut BytesMut, attr_type: u16, data: &[u8]| {
                 let payload_len = nl_align(mem::size_of::<NlAttr>()) + data.len();
@@ -711,22 +709,18 @@ impl IpsetBackend {
                 buf.put_slice(data);
 
                 // Pad payload to alignment
-                while buf.len() % 4 != 0 {
+                while !buf.len().is_multiple_of(4) {
                     buf.put_u8(0);
                 }
-
-                buf.len() - current_len
             };
 
             // 3. Add IPSET_ATTR_PROTOCOL
             let proto = IPSET_PROTOCOL;
-            current_len = buffer.len();
             add_attr(&mut buffer, IPSET_ATTR_PROTOCOL, &[proto]);
 
             // 4. Add IPSET_ATTR_SETNAME
             let mut setname_bytes = set_name_owned.as_bytes().to_vec();
             setname_bytes.push(0);  // Null terminator
-            current_len = buffer.len();
             add_attr(&mut buffer, IPSET_ATTR_SETNAME, &setname_bytes);
 
             // 5. Add nested IPSET_ATTR_DATA
@@ -746,7 +740,6 @@ impl IpsetBackend {
                 IPSET_ATTR_IPADDR_IPV6
             } | NLA_F_NET_BYTEORDER;
 
-            current_len = buffer.len();
             add_attr(&mut buffer, addr_attr_type, &addr_bytes);
 
             // Fix nested IP attribute length
@@ -754,7 +747,7 @@ impl IpsetBackend {
             buffer[nested_ip_start..nested_ip_start + 2].copy_from_slice(&nested_ip_len.to_ne_bytes());
 
             // Align buffer
-            while buffer.len() % 4 != 0 {
+            while !buffer.len().is_multiple_of(4) {
                 buffer.put_u8(0);
             }
 

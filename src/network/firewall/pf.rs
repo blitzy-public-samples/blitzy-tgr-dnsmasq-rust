@@ -540,6 +540,12 @@ pub struct PfBackend {
     pf_fd: Arc<Mutex<Option<OwnedFd>>>,
 }
 
+impl Default for PfBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PfBackend {
     /// Create a new PfBackend instance without opening /dev/pf.
     ///
@@ -699,19 +705,23 @@ impl PfBackend {
         }
 
         // Construct pfr_table structure
-        let mut table = pfr_table::default();
-        table.pfrt_flags = PFR_TFLAG_PERSIST;
+        let mut table = pfr_table {
+            pfrt_flags: PFR_TFLAG_PERSIST,
+            ..Default::default()
+        };
         
         // Copy table name into pfrt_name field (safe: length validated above)
         let name_bytes = table_name.as_bytes();
         table.pfrt_name[..name_bytes.len()].copy_from_slice(name_bytes);
 
         // Construct pfioc_table structure for ioctl
-        let mut io = pfioc_table::default();
-        io.pfrio_buffer = &mut table as *mut pfr_table as *mut libc::c_void;
-        io.pfrio_esize = std::mem::size_of::<pfr_table>() as libc::c_int;
-        io.pfrio_size = 1;
-        io.pfrio_flags = 0;
+        let mut io = pfioc_table {
+            pfrio_buffer: &mut table as *mut pfr_table as *mut libc::c_void,
+            pfrio_esize: std::mem::size_of::<pfr_table>() as libc::c_int,
+            pfrio_size: 1,
+            pfrio_flags: 0,
+            ..Default::default()
+        };
 
         // Execute DIOCRADDTABLES ioctl
         // SAFETY: fd is valid (checked by get_fd), io structure is properly initialized
@@ -778,7 +788,7 @@ impl PfBackend {
                 
                 // SAFETY: pfra_union discriminated by pfra_af = AF_INET
                 unsafe {
-                    addr.pfra_u.pfra_ip4addr = std::mem::transmute(ipv4.octets());
+                    addr.pfra_u.pfra_ip4addr = std::mem::transmute::<[u8; 4], libc::in_addr>(ipv4.octets());
                 }
             }
             IpAddr::V6(ipv6) => {
@@ -798,12 +808,14 @@ impl PfBackend {
         table.pfrt_name[..name_bytes.len()].copy_from_slice(name_bytes);
 
         // Construct pfioc_table structure for DIOCRADDADDRS
-        let mut io = pfioc_table::default();
-        io.pfrio_table = table;
-        io.pfrio_buffer = &mut addr as *mut pfr_addr as *mut libc::c_void;
-        io.pfrio_esize = std::mem::size_of::<pfr_addr>() as libc::c_int;
-        io.pfrio_size = 1;
-        io.pfrio_flags = 0;
+        let mut io = pfioc_table {
+            pfrio_table: table,
+            pfrio_buffer: &mut addr as *mut pfr_addr as *mut libc::c_void,
+            pfrio_esize: std::mem::size_of::<pfr_addr>() as libc::c_int,
+            pfrio_size: 1,
+            pfrio_flags: 0,
+            ..Default::default()
+        };
 
         // Execute DIOCRADDADDRS ioctl
         // SAFETY: fd is valid, io structure is properly initialized
@@ -861,7 +873,7 @@ impl PfBackend {
                 addr.pfra_net = 0x20;
                 
                 unsafe {
-                    addr.pfra_u.pfra_ip4addr = std::mem::transmute(ipv4.octets());
+                    addr.pfra_u.pfra_ip4addr = std::mem::transmute::<[u8; 4], libc::in_addr>(ipv4.octets());
                 }
             }
             IpAddr::V6(ipv6) => {
@@ -881,12 +893,14 @@ impl PfBackend {
         table.pfrt_name[..name_bytes.len()].copy_from_slice(name_bytes);
 
         // Construct pfioc_table structure for DIOCRDELADDRS
-        let mut io = pfioc_table::default();
-        io.pfrio_table = table;
-        io.pfrio_buffer = &mut addr as *mut pfr_addr as *mut libc::c_void;
-        io.pfrio_esize = std::mem::size_of::<pfr_addr>() as libc::c_int;
-        io.pfrio_size = 1;
-        io.pfrio_flags = 0;
+        let mut io = pfioc_table {
+            pfrio_table: table,
+            pfrio_buffer: &mut addr as *mut pfr_addr as *mut libc::c_void,
+            pfrio_esize: std::mem::size_of::<pfr_addr>() as libc::c_int,
+            pfrio_size: 1,
+            pfrio_flags: 0,
+            ..Default::default()
+        };
 
         // Execute DIOCRDELADDRS ioctl
         // SAFETY: fd is valid, io structure is properly initialized
