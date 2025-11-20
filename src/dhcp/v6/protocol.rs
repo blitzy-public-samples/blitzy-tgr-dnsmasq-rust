@@ -182,22 +182,18 @@
 
 use std::net::IpAddr;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 
-use anyhow::Context;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 // Internal imports from depends_on_files
-use crate::config::types::{DhcpContext, DnsConfig};
+use crate::config::types::DhcpContext;
 use crate::config::Config;
-use crate::dhcp::common::{log_tags, match_netid, match_netid_wild};
 use crate::dhcp::lease::{Lease, LeaseManager};
 use crate::dhcp::v6::constants::*;
 use crate::dhcp::v6::message::DhcpV6Message;
-use crate::dns::cache::DnsCache;
 use crate::error::DhcpError;
-use crate::types::{MacAddress, Timestamp};
 
 /// DHCPv6 status codes per RFC 3315 Section 24.4.
 ///
@@ -219,22 +215,22 @@ use crate::types::{MacAddress, Timestamp};
 pub enum StatusCode {
     /// Request was successful.
     Success,
-    
+
     /// General failure not covered by more specific status codes.
     UnspecFail,
-    
+
     /// Server has no addresses available to assign to client's IA_NA.
     NoAddrsAvail,
-    
+
     /// Client's IA_NA, IA_TA, or IA_PD binding doesn't exist on this server.
     NoBinding,
-    
+
     /// Address or prefix is not appropriate for the link (wrong subnet).
     NotOnLink,
-    
+
     /// Client used unicast when it should have used multicast.
     UseMulticast,
-    
+
     /// Server has no prefixes available for IA_PD delegation.
     NoPrefixAvail,
 }
@@ -532,7 +528,9 @@ impl DhcpV6StateMachine {
         // Validate we have context (address pool)
         let context = ctx.context.as_ref().ok_or_else(|| {
             debug!("No matching DHCPv6 context found for interface {}", ctx.interface);
-            DhcpError::V6ProtocolError { reason: "No address pool configured for interface".to_string() }
+            DhcpError::V6ProtocolError {
+                reason: "No address pool configured for interface".to_string(),
+            }
         })?;
 
         // Check if any addresses are available in the pool
@@ -558,7 +556,7 @@ impl DhcpV6StateMachine {
         // Add required options
         // OPTION_SERVER_ID (required)
         response.add_option(OPTION_SERVER_ID, self.server_duid.clone());
-        
+
         // OPTION_CLIENT_ID (echo from request, required)
         response.add_option(OPTION_CLIENT_ID, ctx.clid.clone());
 
@@ -566,27 +564,27 @@ impl DhcpV6StateMachine {
         // IA_NA format: IAID (4) + T1 (4) + T2 (4) + IA options
         let lease_secs = self.config.dhcp.lease_time.as_secs() as u32;
         let mut ia_na_data = Vec::new();
-        
+
         // Write IAID, T1, T2
         ia_na_data.extend_from_slice(&ctx.iaid.to_be_bytes());
-        ia_na_data.extend_from_slice(&lease_secs.to_be_bytes());  // T1
-        ia_na_data.extend_from_slice(&lease_secs.to_be_bytes());  // T2
-        
+        ia_na_data.extend_from_slice(&lease_secs.to_be_bytes()); // T1
+        ia_na_data.extend_from_slice(&lease_secs.to_be_bytes()); // T2
+
         // Add IAADDR sub-option
         // Extract IPv6 address from IpAddr
         if let IpAddr::V6(ipv6_addr) = available_address {
             // IAADDR option header
             ia_na_data.extend_from_slice(&OPTION_IAADDR.to_be_bytes());
-            
+
             // IAADDR length: 16 (address) + 4 (preferred) + 4 (valid) = 24 bytes
             ia_na_data.extend_from_slice(&24u16.to_be_bytes());
-            
+
             // IAADDR data: address + preferred_lifetime + valid_lifetime
             ia_na_data.extend_from_slice(&ipv6_addr.octets());
-            ia_na_data.extend_from_slice(&lease_secs.to_be_bytes());  // preferred_lifetime
-            ia_na_data.extend_from_slice(&lease_secs.to_be_bytes());  // valid_lifetime
+            ia_na_data.extend_from_slice(&lease_secs.to_be_bytes()); // preferred_lifetime
+            ia_na_data.extend_from_slice(&lease_secs.to_be_bytes()); // valid_lifetime
         }
-        
+
         response.add_option(OPTION_IA_NA, ia_na_data);
 
         info!("Sending ADVERTISE with offered address");
@@ -631,29 +629,29 @@ impl DhcpV6StateMachine {
             if server_id_bytes != self.server_duid {
                 debug!("Server ID mismatch, ignoring request");
                 return Err(DhcpError::V6ProtocolError {
-                    reason: "Server ID does not match this server".to_string()
+                    reason: "Server ID does not match this server".to_string(),
                 });
             }
         } else {
-            return Err(DhcpError::V6ProtocolError { reason: "No SERVER_ID in REQUEST".to_string() });
+            return Err(DhcpError::V6ProtocolError {
+                reason: "No SERVER_ID in REQUEST".to_string(),
+            });
         }
 
         // Extract requested address from IA_NA option
-        let ia_na_data = msg
-            .get_option(OPTION_IA_NA)
-            .ok_or_else(|| DhcpError::V6ProtocolError { reason: "No IA_NA in REQUEST".to_string() })?;
+        let ia_na_data = msg.get_option(OPTION_IA_NA).ok_or_else(|| {
+            DhcpError::V6ProtocolError { reason: "No IA_NA in REQUEST".to_string() }
+        })?;
 
         // Parse IAID from IA_NA (first 4 bytes)
         if ia_na_data.len() < 12 {
-            return Err(DhcpError::V6ProtocolError { reason: "Malformed IA_NA option".to_string() });
+            return Err(DhcpError::V6ProtocolError {
+                reason: "Malformed IA_NA option".to_string(),
+            });
         }
 
-        let requested_iaid = u32::from_be_bytes([
-            ia_na_data[0],
-            ia_na_data[1],
-            ia_na_data[2],
-            ia_na_data[3],
-        ]);
+        let requested_iaid =
+            u32::from_be_bytes([ia_na_data[0], ia_na_data[1], ia_na_data[2], ia_na_data[3]]);
 
         if requested_iaid != ctx.iaid {
             warn!(
@@ -671,15 +669,15 @@ impl DhcpV6StateMachine {
         debug!(address = %requested_address, "Client requesting address");
 
         // Validate address is in our pool
-        let context = ctx.context.as_ref().ok_or_else(|| {
-            DhcpError::V6ProtocolError { reason: "No matching address pool".to_string() }
+        let context = ctx.context.as_ref().ok_or_else(|| DhcpError::V6ProtocolError {
+            reason: "No matching address pool".to_string(),
         })?;
 
         self.validate_address_in_pool(&requested_address, context)?;
 
         // Allocate the lease
         let lease_duration = self.config.dhcp.lease_time;
-        
+
         let lease = self
             .lease_manager
             .write()
@@ -736,16 +734,18 @@ impl DhcpV6StateMachine {
         // Verify server ID
         if let Some(server_id_bytes) = msg.get_option(OPTION_SERVER_ID) {
             if server_id_bytes != self.server_duid {
-                return Err(DhcpError::V6ProtocolError { reason: "Server ID mismatch".to_string() });
+                return Err(DhcpError::V6ProtocolError {
+                    reason: "Server ID mismatch".to_string(),
+                });
             }
         } else {
             return Err(DhcpError::V6ProtocolError { reason: "No SERVER_ID in RENEW".to_string() });
         }
 
         // Extract address from IA_NA
-        let ia_na_data = msg
-            .get_option(OPTION_IA_NA)
-            .ok_or_else(|| DhcpError::V6ProtocolError { reason: "No IA_NA in RENEW".to_string() })?;
+        let ia_na_data = msg.get_option(OPTION_IA_NA).ok_or_else(|| {
+            DhcpError::V6ProtocolError { reason: "No IA_NA in RENEW".to_string() }
+        })?;
 
         let ia_options = &ia_na_data[12..];
         let address = self.parse_iaaddr_from_options(ia_options)?;
@@ -753,14 +753,11 @@ impl DhcpV6StateMachine {
         debug!(address = %address, "Client renewing address");
 
         // Find existing lease
-        let mut lease_mgr = self.lease_manager.write().await;
-        let lease = lease_mgr
-            .find_by_ip(&address)
-            .await
-            .ok_or_else(|| {
-                warn!(address = %address, "No binding found for RENEW");
-                DhcpError::V6ProtocolError { reason: "No binding found".to_string() }
-            })?;
+        let lease_mgr = self.lease_manager.write().await;
+        let lease = lease_mgr.find_by_ip(&address).await.ok_or_else(|| {
+            warn!(address = %address, "No binding found for RENEW");
+            DhcpError::V6ProtocolError { reason: "No binding found".to_string() }
+        })?;
 
         // Verify client ID matches
         if lease.client_id.as_ref() != Some(&ctx.clid) {
@@ -770,9 +767,7 @@ impl DhcpV6StateMachine {
 
         // Extend the lease
         let lease_duration = self.config.dhcp.lease_time;
-        let renewed_lease = lease_mgr
-            .renew_lease(&address, lease_duration)
-            .await?;
+        let renewed_lease = lease_mgr.renew_lease(&address, lease_duration).await?;
 
         info!(
             address = %address,
@@ -812,9 +807,9 @@ impl DhcpV6StateMachine {
         info!("Processing REBIND message");
 
         // Extract address from IA_NA
-        let ia_na_data = msg
-            .get_option(OPTION_IA_NA)
-            .ok_or_else(|| DhcpError::V6ProtocolError { reason: "No IA_NA in REBIND".to_string() })?;
+        let ia_na_data = msg.get_option(OPTION_IA_NA).ok_or_else(|| {
+            DhcpError::V6ProtocolError { reason: "No IA_NA in REBIND".to_string() }
+        })?;
 
         let ia_options = &ia_na_data[12..];
         let address = self.parse_iaaddr_from_options(ia_options)?;
@@ -829,8 +824,8 @@ impl DhcpV6StateMachine {
         }
 
         // Find or create lease
-        let mut lease_mgr = self.lease_manager.write().await;
-        
+        let lease_mgr = self.lease_manager.write().await;
+
         let lease = if let Some(existing_lease) = lease_mgr.find_by_ip(&address).await {
             // Verify client ID matches if lease exists
             if existing_lease.client_id.as_ref() != Some(&ctx.clid) {
@@ -838,7 +833,7 @@ impl DhcpV6StateMachine {
                 drop(lease_mgr);
                 return self.build_reply_with_status(ctx, StatusCode::NoBinding);
             }
-            
+
             // Renew existing lease
             let lease_duration = self.config.dhcp.lease_time;
             lease_mgr.renew_lease(&address, lease_duration).await?
@@ -892,16 +887,20 @@ impl DhcpV6StateMachine {
         // Verify server ID
         if let Some(server_id_bytes) = msg.get_option(OPTION_SERVER_ID) {
             if server_id_bytes != self.server_duid {
-                return Err(DhcpError::V6ProtocolError { reason: "Server ID mismatch".to_string() });
+                return Err(DhcpError::V6ProtocolError {
+                    reason: "Server ID mismatch".to_string(),
+                });
             }
         } else {
-            return Err(DhcpError::V6ProtocolError { reason: "No SERVER_ID in RELEASE".to_string() });
+            return Err(DhcpError::V6ProtocolError {
+                reason: "No SERVER_ID in RELEASE".to_string(),
+            });
         }
 
         // Extract address from IA_NA
-        let ia_na_data = msg
-            .get_option(OPTION_IA_NA)
-            .ok_or_else(|| DhcpError::V6ProtocolError { reason: "No IA_NA in RELEASE".to_string() })?;
+        let ia_na_data = msg.get_option(OPTION_IA_NA).ok_or_else(|| {
+            DhcpError::V6ProtocolError { reason: "No IA_NA in RELEASE".to_string() }
+        })?;
 
         let ia_options = &ia_na_data[12..];
         let address = self.parse_iaaddr_from_options(ia_options)?;
@@ -909,7 +908,7 @@ impl DhcpV6StateMachine {
         debug!(address = %address, "Client releasing address");
 
         // Find and validate lease
-        let mut lease_mgr = self.lease_manager.write().await;
+        let lease_mgr = self.lease_manager.write().await;
         let lease = lease_mgr.find_by_ip(&address).await;
 
         if let Some(lease) = lease {
@@ -959,16 +958,20 @@ impl DhcpV6StateMachine {
         // Verify server ID
         if let Some(server_id_bytes) = msg.get_option(OPTION_SERVER_ID) {
             if server_id_bytes != self.server_duid {
-                return Err(DhcpError::V6ProtocolError { reason: "Server ID mismatch".to_string() });
+                return Err(DhcpError::V6ProtocolError {
+                    reason: "Server ID mismatch".to_string(),
+                });
             }
         } else {
-            return Err(DhcpError::V6ProtocolError { reason: "No SERVER_ID in DECLINE".to_string() });
+            return Err(DhcpError::V6ProtocolError {
+                reason: "No SERVER_ID in DECLINE".to_string(),
+            });
         }
 
         // Extract address from IA_NA
-        let ia_na_data = msg
-            .get_option(OPTION_IA_NA)
-            .ok_or_else(|| DhcpError::V6ProtocolError { reason: "No IA_NA in DECLINE".to_string() })?;
+        let ia_na_data = msg.get_option(OPTION_IA_NA).ok_or_else(|| {
+            DhcpError::V6ProtocolError { reason: "No IA_NA in DECLINE".to_string() }
+        })?;
 
         let ia_options = &ia_na_data[12..];
         let address = self.parse_iaaddr_from_options(ia_options)?;
@@ -976,7 +979,7 @@ impl DhcpV6StateMachine {
         warn!(address = %address, "Client declined address (duplicate detected)");
 
         // Mark lease as declined
-        let mut lease_mgr = self.lease_manager.write().await;
+        let lease_mgr = self.lease_manager.write().await;
         if let Some(mut lease) = lease_mgr.find_by_ip(&address).await {
             // Verify client ID
             if lease.client_id.as_ref() != Some(&ctx.clid) {
@@ -987,7 +990,7 @@ impl DhcpV6StateMachine {
 
             // Mark as declined
             lease.flags.insert(crate::dhcp::lease::LeaseFlags::DECLINED);
-            
+
             // Update lease in database
             // Note: LeaseManager would need a mark_declined method for proper implementation
             info!(address = %address, "Address marked as declined");
@@ -1026,9 +1029,9 @@ impl DhcpV6StateMachine {
         info!("Processing CONFIRM message");
 
         // Extract address from IA_NA
-        let ia_na_data = msg
-            .get_option(OPTION_IA_NA)
-            .ok_or_else(|| DhcpError::V6ProtocolError { reason: "No IA_NA in CONFIRM".to_string() })?;
+        let ia_na_data = msg.get_option(OPTION_IA_NA).ok_or_else(|| {
+            DhcpError::V6ProtocolError { reason: "No IA_NA in CONFIRM".to_string() }
+        })?;
 
         let ia_options = &ia_na_data[12..];
         let address = self.parse_iaaddr_from_options(ia_options)?;
@@ -1072,11 +1075,11 @@ impl DhcpV6StateMachine {
     /// # Returns
     ///
     /// REPLY with DNS servers, domain list, and other options
-    #[instrument(skip(self, msg), fields(iface = %ctx.interface))]
+    #[instrument(skip(self, _msg), fields(iface = %ctx.interface))]
     pub async fn handle_information_request(
         &self,
         ctx: &RequestContext,
-        msg: &DhcpV6Message,
+        _msg: &DhcpV6Message,
     ) -> Result<DhcpV6Message, DhcpError> {
         info!("Processing INFORMATION-REQUEST message");
 
@@ -1085,7 +1088,7 @@ impl DhcpV6StateMachine {
 
         // OPTION_SERVER_ID (required)
         response.add_option(OPTION_SERVER_ID, self.server_duid.clone());
-        
+
         // OPTION_CLIENT_ID (echo from request, required)
         response.add_option(OPTION_CLIENT_ID, ctx.clid.clone());
 
@@ -1107,11 +1110,11 @@ impl DhcpV6StateMachine {
     ///
     /// This is a server implementation, so this method should never be called.
     /// Included to satisfy the exports schema requirements for complete API surface.
-    #[instrument(skip(self, msg), fields(iface = %ctx.interface))]
+    #[instrument(skip(self, _msg), fields(iface = %ctx.interface))]
     pub async fn handle_advertise(
         &self,
         ctx: &RequestContext,
-        msg: &DhcpV6Message,
+        _msg: &DhcpV6Message,
     ) -> Result<DhcpV6Message, DhcpError> {
         warn!("Server received ADVERTISE message (unexpected, should be client-only)");
         Err(DhcpError::V6ProtocolError {
@@ -1128,11 +1131,11 @@ impl DhcpV6StateMachine {
     ///
     /// This is a server implementation, so this method should never be called.
     /// Included to satisfy the exports schema requirements for complete API surface.
-    #[instrument(skip(self, msg), fields(iface = %ctx.interface))]
+    #[instrument(skip(self, _msg), fields(iface = %ctx.interface))]
     pub async fn handle_reply(
         &self,
         ctx: &RequestContext,
-        msg: &DhcpV6Message,
+        _msg: &DhcpV6Message,
     ) -> Result<DhcpV6Message, DhcpError> {
         warn!("Server received REPLY message (unexpected, should be client-only)");
         Err(DhcpError::V6ProtocolError {
@@ -1227,7 +1230,9 @@ impl DhcpV6StateMachine {
 
         // DUID maximum length is 128 bytes per RFC 3315
         if duid.len() > 128 {
-            return Err(DhcpError::V6ProtocolError { reason: "DUID too long (max 128 bytes)".to_string() });
+            return Err(DhcpError::V6ProtocolError {
+                reason: "DUID too long (max 128 bytes)".to_string(),
+            });
         }
 
         let duid_type = u16::from_be_bytes([duid[0], duid[1]]);
@@ -1238,7 +1243,7 @@ impl DhcpV6StateMachine {
                 // Minimum 8 bytes total
                 if duid.len() < 8 {
                     return Err(DhcpError::V6ProtocolError {
-                        reason: "DUID-LLT too short (min 8 bytes)".to_string()
+                        reason: "DUID-LLT too short (min 8 bytes)".to_string(),
                     });
                 }
                 debug!(duid_type = "DUID-LLT", len = duid.len(), "DUID validated");
@@ -1249,7 +1254,7 @@ impl DhcpV6StateMachine {
                 // Minimum 6 bytes total
                 if duid.len() < 6 {
                     return Err(DhcpError::V6ProtocolError {
-                        reason: "DUID-EN too short (min 6 bytes)".to_string()
+                        reason: "DUID-EN too short (min 6 bytes)".to_string(),
                     });
                 }
                 debug!(duid_type = "DUID-EN", len = duid.len(), "DUID validated");
@@ -1260,7 +1265,7 @@ impl DhcpV6StateMachine {
                 // Minimum 4 bytes total
                 if duid.len() < 4 {
                     return Err(DhcpError::V6ProtocolError {
-                        reason: "DUID-LL too short (min 4 bytes)".to_string()
+                        reason: "DUID-LL too short (min 4 bytes)".to_string(),
                     });
                 }
                 debug!(duid_type = "DUID-LL", len = duid.len(), "DUID validated");
@@ -1269,7 +1274,7 @@ impl DhcpV6StateMachine {
             _ => {
                 // Unknown DUID type - reject per RFC 3315 (only types 1, 2, 3 are defined)
                 Err(DhcpError::V6ProtocolError {
-                    reason: format!("Invalid DUID type: {}", duid_type)
+                    reason: format!("Invalid DUID type: {}", duid_type),
                 })
             }
         }
@@ -1298,16 +1303,14 @@ impl DhcpV6StateMachine {
 
         // OPTION_SERVER_ID (required)
         response.add_option(OPTION_SERVER_ID, self.server_duid.clone());
-        
+
         // OPTION_CLIENT_ID (required)
         response.add_option(OPTION_CLIENT_ID, ctx.clid.clone());
 
         // Calculate T1 and T2 (renewal and rebinding times)
-        let lease_duration = lease
-            .expires
-            .duration_since(SystemTime::now())
-            .unwrap_or(Duration::from_secs(3600));
-        
+        let lease_duration =
+            lease.expires.duration_since(SystemTime::now()).unwrap_or(Duration::from_secs(3600));
+
         let t1 = (lease_duration.as_secs() as f64 * 0.5) as u32; // 50% of lease time
         let t2 = (lease_duration.as_secs() as f64 * 0.8) as u32; // 80% of lease time
         let lifetime_secs = lease_duration.as_secs() as u32;
@@ -1315,27 +1318,27 @@ impl DhcpV6StateMachine {
         // Build IA_NA option manually
         // IA_NA format: IAID (4) + T1 (4) + T2 (4) + IA options
         let mut ia_na_data = Vec::new();
-        
+
         // Write IAID, T1, T2
         ia_na_data.extend_from_slice(&ctx.iaid.to_be_bytes());
         ia_na_data.extend_from_slice(&t1.to_be_bytes());
         ia_na_data.extend_from_slice(&t2.to_be_bytes());
-        
+
         // Add IAADDR sub-option
         // Extract IPv6 address from IpAddr
         if let IpAddr::V6(ipv6_addr) = lease.ip {
             // IAADDR option header
             ia_na_data.extend_from_slice(&OPTION_IAADDR.to_be_bytes());
-            
+
             // IAADDR length: 16 (address) + 4 (preferred) + 4 (valid) = 24 bytes
             ia_na_data.extend_from_slice(&24u16.to_be_bytes());
-            
+
             // IAADDR data: address + preferred_lifetime + valid_lifetime
             ia_na_data.extend_from_slice(&ipv6_addr.octets());
-            ia_na_data.extend_from_slice(&lifetime_secs.to_be_bytes());  // preferred_lifetime
-            ia_na_data.extend_from_slice(&lifetime_secs.to_be_bytes());  // valid_lifetime
+            ia_na_data.extend_from_slice(&lifetime_secs.to_be_bytes()); // preferred_lifetime
+            ia_na_data.extend_from_slice(&lifetime_secs.to_be_bytes()); // valid_lifetime
         }
-        
+
         response.add_option(OPTION_IA_NA, ia_na_data);
 
         // Add STATUS_CODE if not success
@@ -1376,7 +1379,7 @@ impl DhcpV6StateMachine {
 
         // OPTION_SERVER_ID (required)
         response.add_option(OPTION_SERVER_ID, self.server_duid.clone());
-        
+
         // OPTION_CLIENT_ID (required)
         response.add_option(OPTION_CLIENT_ID, ctx.clid.clone());
 
@@ -1399,10 +1402,10 @@ impl DhcpV6StateMachine {
         // For now, return the start address of the pool
         // Full implementation would scan for available addresses in range
         // This is a simplified version for the initial implementation
-        
+
         let lease_mgr = self.lease_manager.read().await;
         let start_addr = context.start6;
-        
+
         // Check if start address is available
         if lease_mgr.find_by_ip(&start_addr).await.is_none() {
             return Ok(start_addr);
@@ -1437,7 +1440,7 @@ impl DhcpV6StateMachine {
     /// Determines if unicast is allowed for this client.
     ///
     /// Checks if server has provided OPTION_UNICAST to client previously.
-    fn unicast_allowed_for_client(&self, ctx: &RequestContext) -> bool {
+    fn unicast_allowed_for_client(&self, _ctx: &RequestContext) -> bool {
         // Simplified implementation
         // Full implementation would check if OPTION_UNICAST was sent to this client
         // For now, allow unicast for RENEW/REBIND/RELEASE but not initial SOLICIT
@@ -1450,38 +1453,41 @@ impl DhcpV6StateMachine {
     fn parse_iaaddr_from_options(&self, ia_options: &[u8]) -> Result<IpAddr, DhcpError> {
         // Parse TLV options looking for OPTION_IAADDR (5)
         let mut offset = 0;
-        
+
         while offset + 4 <= ia_options.len() {
             let option_code = u16::from_be_bytes([ia_options[offset], ia_options[offset + 1]]);
             let option_len =
                 u16::from_be_bytes([ia_options[offset + 2], ia_options[offset + 3]]) as usize;
-            
+
             offset += 4;
-            
+
             if offset + option_len > ia_options.len() {
-                return Err(DhcpError::V6ProtocolError { reason: "Malformed IA option".to_string() });
+                return Err(DhcpError::V6ProtocolError {
+                    reason: "Malformed IA option".to_string(),
+                });
             }
-            
+
             if option_code == OPTION_IAADDR {
                 // IAADDR: IPv6 address (16 bytes) + preferred-lifetime (4) + valid-lifetime (4)
                 if option_len < 16 {
-                    return Err(DhcpError::V6ProtocolError { reason: "IAADDR too short".to_string() });
+                    return Err(DhcpError::V6ProtocolError {
+                        reason: "IAADDR too short".to_string(),
+                    });
                 }
-                
-                let addr_bytes: [u8; 16] = ia_options[offset..offset + 16]
-                    .try_into()
-                    .map_err(|_| DhcpError::V6ProtocolError { reason: "Invalid IPv6 address".to_string() })?;
-                
+
+                let addr_bytes: [u8; 16] =
+                    ia_options[offset..offset + 16].try_into().map_err(|_| {
+                        DhcpError::V6ProtocolError { reason: "Invalid IPv6 address".to_string() }
+                    })?;
+
                 let ipv6_addr = std::net::Ipv6Addr::from(addr_bytes);
                 return Ok(IpAddr::V6(ipv6_addr));
             }
-            
+
             offset += option_len;
         }
-        
-        Err(DhcpError::V6ProtocolError {
-            reason: "No IAADDR found in IA_NA".to_string(),
-        })
+
+        Err(DhcpError::V6ProtocolError { reason: "No IAADDR found in IA_NA".to_string() })
     }
 }
 
@@ -1498,29 +1504,35 @@ impl DhcpV6StateMachine {
 /// # Returns
 ///
 /// Ok(()) on success, Err if domain name is invalid
+///
+/// # Note
+///
+/// This function is reserved for implementing DNS options (OPTION_DNS_SERVER, OPTION_DOMAIN_SEARCH)
+/// as indicated by TODOs at lines 1088 and 1346. The C implementation supports these options.
+#[allow(dead_code)]
 fn encode_dns_name(domain: &str, output: &mut Vec<u8>) -> Result<(), DhcpError> {
     if domain.is_empty() {
         // Empty domain -> just root (single zero byte)
         output.push(0);
         return Ok(());
     }
-    
+
     for label in domain.split('.') {
         if label.is_empty() {
             continue; // Skip empty labels (e.g., trailing dot)
         }
-        
+
         if label.len() > 63 {
-            return Err(DhcpError::V6ProtocolError { 
-                reason: format!("DNS label too long: {} bytes (max 63)", label.len()) 
+            return Err(DhcpError::V6ProtocolError {
+                reason: format!("DNS label too long: {} bytes (max 63)", label.len()),
             });
         }
-        
+
         // Write length byte followed by label bytes
         output.push(label.len() as u8);
         output.extend_from_slice(label.as_bytes());
     }
-    
+
     // Terminate with zero byte
     output.push(0);
     Ok(())
@@ -1544,16 +1556,9 @@ mod tests {
     fn test_request_context_creation() {
         let clid = vec![0x00, 0x01, 0x00, 0x01, 0x29, 0xf3, 0xa4, 0x32];
         let txid = [0x12, 0x34, 0x56];
-        
-        let ctx = RequestContext::new(
-            clid.clone(),
-            txid,
-            "eth0",
-            0x12345678,
-            OPTION_IA_NA,
-            true,
-        );
-        
+
+        let ctx = RequestContext::new(clid.clone(), txid, "eth0", 0x12345678, OPTION_IA_NA, true);
+
         assert_eq!(ctx.clid, clid);
         assert_eq!(ctx.clid_len, clid.len());
         assert_eq!(ctx.transaction_id, txid);
@@ -1598,17 +1603,10 @@ mod tests {
     fn test_request_context_with_hostname() {
         let clid = vec![0x00, 0x01];
         let txid = [0x11, 0x22, 0x33];
-        
-        let ctx = RequestContext::new(
-            clid.clone(),
-            txid,
-            "eth1",
-            0x1234,
-            OPTION_IA_NA,
-            false,
-        )
-        .with_hostname(Some("testhost.local".to_string()));
-        
+
+        let ctx = RequestContext::new(clid.clone(), txid, "eth1", 0x1234, OPTION_IA_NA, false)
+            .with_hostname(Some("testhost.local".to_string()));
+
         assert_eq!(ctx.client_hostname, Some("testhost.local".to_string()));
         assert_eq!(ctx.interface, "eth1");
         assert_eq!(ctx.multicast_dest, false);
@@ -1618,26 +1616,19 @@ mod tests {
     fn test_request_context_with_context() {
         use crate::config::types::DhcpContext;
         use std::net::Ipv6Addr;
-        
+
         let clid = vec![0x00, 0x03, 0x00, 0x01];
         let txid = [0xAA, 0xBB, 0xCC];
-        
+
         let dhcp_ctx = DhcpContext {
             start6: IpAddr::V6(Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1)),
             flags: 0,
             if_index: 1,
         };
-        
-        let ctx = RequestContext::new(
-            clid,
-            txid,
-            "eth0",
-            0x9999,
-            OPTION_IA_PD,
-            true,
-        )
-        .with_context(Some(dhcp_ctx.clone()));
-        
+
+        let ctx = RequestContext::new(clid, txid, "eth0", 0x9999, OPTION_IA_PD, true)
+            .with_context(Some(dhcp_ctx.clone()));
+
         assert_eq!(ctx.ia_type, OPTION_IA_PD);
         assert!(ctx.context.is_some());
     }
@@ -1646,38 +1637,17 @@ mod tests {
     fn test_request_context_ia_types() {
         let clid = vec![0x00, 0x01];
         let txid = [0x00, 0x00, 0x00];
-        
+
         // Test IA_NA
-        let ctx_na = RequestContext::new(
-            clid.clone(),
-            txid,
-            "eth0",
-            0x1111,
-            OPTION_IA_NA,
-            true,
-        );
+        let ctx_na = RequestContext::new(clid.clone(), txid, "eth0", 0x1111, OPTION_IA_NA, true);
         assert_eq!(ctx_na.ia_type, OPTION_IA_NA);
-        
+
         // Test IA_TA
-        let ctx_ta = RequestContext::new(
-            clid.clone(),
-            txid,
-            "eth0",
-            0x2222,
-            OPTION_IA_TA,
-            true,
-        );
+        let ctx_ta = RequestContext::new(clid.clone(), txid, "eth0", 0x2222, OPTION_IA_TA, true);
         assert_eq!(ctx_ta.ia_type, OPTION_IA_TA);
-        
+
         // Test IA_PD
-        let ctx_pd = RequestContext::new(
-            clid,
-            txid,
-            "eth0",
-            0x3333,
-            OPTION_IA_PD,
-            true,
-        );
+        let ctx_pd = RequestContext::new(clid, txid, "eth0", 0x3333, OPTION_IA_PD, true);
         assert_eq!(ctx_pd.ia_type, OPTION_IA_PD);
     }
 
@@ -1685,25 +1655,13 @@ mod tests {
     fn test_request_context_clid_len() {
         // Test various CLID lengths
         let short_clid = vec![0x00, 0x01];
-        let ctx_short = RequestContext::new(
-            short_clid.clone(),
-            [0, 0, 0],
-            "eth0",
-            0,
-            OPTION_IA_NA,
-            true,
-        );
+        let ctx_short =
+            RequestContext::new(short_clid.clone(), [0, 0, 0], "eth0", 0, OPTION_IA_NA, true);
         assert_eq!(ctx_short.clid_len, 2);
-        
+
         let long_clid = vec![0u8; 128];
-        let ctx_long = RequestContext::new(
-            long_clid.clone(),
-            [0, 0, 0],
-            "eth0",
-            0,
-            OPTION_IA_NA,
-            true,
-        );
+        let ctx_long =
+            RequestContext::new(long_clid.clone(), [0, 0, 0], "eth0", 0, OPTION_IA_NA, true);
         assert_eq!(ctx_long.clid_len, 128);
     }
 
@@ -1712,10 +1670,10 @@ mod tests {
         let clid = vec![0x00, 0x01];
         let txid1 = [0x12, 0x34, 0x56];
         let txid2 = [0xFF, 0xEE, 0xDD];
-        
+
         let ctx1 = RequestContext::new(clid.clone(), txid1, "eth0", 0, OPTION_IA_NA, true);
         let ctx2 = RequestContext::new(clid, txid2, "eth0", 0, OPTION_IA_NA, true);
-        
+
         assert_eq!(ctx1.transaction_id, txid1);
         assert_eq!(ctx2.transaction_id, txid2);
         assert_ne!(ctx1.transaction_id, ctx2.transaction_id);
@@ -1723,27 +1681,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_duid_llt_valid() {
-        use std::sync::Arc;
-        use tokio::sync::RwLock;
         use crate::config::Config;
         use crate::dhcp::lease::LeaseManager;
         use crate::dns::cache::DnsCache;
-        
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+
         let config = Arc::new(Config::default());
         let dns_cache = Arc::new(RwLock::new(DnsCache::new(&DnsConfig::default())));
-        let lease_manager = Arc::new(RwLock::new(LeaseManager::new(
-            config.clone(),
-            dns_cache,
-            1000,
-        )));
-        let server_duid = vec![0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF];
-        
-        let state_machine = DhcpV6StateMachine::new(
-            config,
-            lease_manager,
-            server_duid,
-        );
-        
+        let lease_manager =
+            Arc::new(RwLock::new(LeaseManager::new(config.clone(), dns_cache, 1000)));
+        let server_duid = vec![
+            0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF,
+        ];
+
+        let state_machine = DhcpV6StateMachine::new(config, lease_manager, server_duid);
+
         // Valid DUID-LLT: type(2) + hw_type(2) + time(4) + ll_addr(6+) = 14+ bytes
         let duid_llt = vec![
             0x00, 0x01, // Type: DUID-LLT
@@ -1751,196 +1704,155 @@ mod tests {
             0x12, 0x34, 0x56, 0x78, // Time
             0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, // MAC address
         ];
-        
+
         assert!(state_machine.validate_duid(&duid_llt).is_ok());
     }
 
     #[tokio::test]
     async fn test_validate_duid_en_valid() {
-        use std::sync::Arc;
-        use tokio::sync::RwLock;
         use crate::config::Config;
         use crate::dhcp::lease::LeaseManager;
         use crate::dns::cache::DnsCache;
-        
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+
         let config = Arc::new(Config::default());
         let dns_cache = Arc::new(RwLock::new(DnsCache::new(&DnsConfig::default())));
-        let lease_manager = Arc::new(RwLock::new(LeaseManager::new(
-            config.clone(),
-            dns_cache,
-            1000,
-        )));
+        let lease_manager =
+            Arc::new(RwLock::new(LeaseManager::new(config.clone(), dns_cache, 1000)));
         let server_duid = vec![0x00, 0x02, 0x00, 0x00, 0x09, 0x12, 0x01, 0x02, 0x03];
-        
-        let state_machine = DhcpV6StateMachine::new(
-            config,
-            lease_manager,
-            server_duid,
-        );
-        
+
+        let state_machine = DhcpV6StateMachine::new(config, lease_manager, server_duid);
+
         // Valid DUID-EN: type(2) + enterprise_number(4) + identifier(1+) = 7+ bytes
         let duid_en = vec![
             0x00, 0x02, // Type: DUID-EN
             0x00, 0x00, 0x09, 0x12, // Enterprise number
             0x01, 0x02, 0x03, // Identifier
         ];
-        
+
         assert!(state_machine.validate_duid(&duid_en).is_ok());
     }
 
     #[tokio::test]
     async fn test_validate_duid_ll_valid() {
-        use std::sync::Arc;
-        use tokio::sync::RwLock;
         use crate::config::Config;
         use crate::dhcp::lease::LeaseManager;
         use crate::dns::cache::DnsCache;
-        
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+
         let config = Arc::new(Config::default());
         let dns_cache = Arc::new(RwLock::new(DnsCache::new(&DnsConfig::default())));
-        let lease_manager = Arc::new(RwLock::new(LeaseManager::new(
-            config.clone(),
-            dns_cache,
-            1000,
-        )));
+        let lease_manager =
+            Arc::new(RwLock::new(LeaseManager::new(config.clone(), dns_cache, 1000)));
         let server_duid = vec![0x00, 0x03, 0x00, 0x01, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF];
-        
-        let state_machine = DhcpV6StateMachine::new(
-            config,
-            lease_manager,
-            server_duid,
-        );
-        
+
+        let state_machine = DhcpV6StateMachine::new(config, lease_manager, server_duid);
+
         // Valid DUID-LL: type(2) + hw_type(2) + ll_addr(6+) = 10+ bytes
         let duid_ll = vec![
             0x00, 0x03, // Type: DUID-LL
             0x00, 0x01, // HW Type: Ethernet
             0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, // MAC address
         ];
-        
+
         assert!(state_machine.validate_duid(&duid_ll).is_ok());
     }
 
     #[tokio::test]
     async fn test_validate_duid_too_short() {
-        use std::sync::Arc;
-        use tokio::sync::RwLock;
         use crate::config::Config;
         use crate::dhcp::lease::LeaseManager;
         use crate::dns::cache::DnsCache;
-        
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+
         let config = Arc::new(Config::default());
         let dns_cache = Arc::new(RwLock::new(DnsCache::new(&DnsConfig::default())));
-        let lease_manager = Arc::new(RwLock::new(LeaseManager::new(
-            config.clone(),
-            dns_cache,
-            1000,
-        )));
+        let lease_manager =
+            Arc::new(RwLock::new(LeaseManager::new(config.clone(), dns_cache, 1000)));
         let server_duid = vec![0x00, 0x01];
-        
-        let state_machine = DhcpV6StateMachine::new(
-            config,
-            lease_manager,
-            server_duid,
-        );
-        
+
+        let state_machine = DhcpV6StateMachine::new(config, lease_manager, server_duid);
+
         // DUID too short (minimum is 2 bytes for type)
         let duid_short = vec![0x00];
-        
+
         let result = state_machine.validate_duid(&duid_short);
         assert!(result.is_err());
         if let Err(e) = result {
-            assert!(format!("{:?}", e).contains("too short") || format!("{:?}", e).contains("Invalid"));
+            assert!(
+                format!("{:?}", e).contains("too short") || format!("{:?}", e).contains("Invalid")
+            );
         }
     }
 
     #[tokio::test]
     async fn test_validate_duid_too_long() {
-        use std::sync::Arc;
-        use tokio::sync::RwLock;
         use crate::config::Config;
         use crate::dhcp::lease::LeaseManager;
         use crate::dns::cache::DnsCache;
-        
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+
         let config = Arc::new(Config::default());
         let dns_cache = Arc::new(RwLock::new(DnsCache::new(&DnsConfig::default())));
-        let lease_manager = Arc::new(RwLock::new(LeaseManager::new(
-            config.clone(),
-            dns_cache,
-            1000,
-        )));
+        let lease_manager =
+            Arc::new(RwLock::new(LeaseManager::new(config.clone(), dns_cache, 1000)));
         let server_duid = vec![0x00, 0x01];
-        
-        let state_machine = DhcpV6StateMachine::new(
-            config,
-            lease_manager,
-            server_duid,
-        );
-        
+
+        let state_machine = DhcpV6StateMachine::new(config, lease_manager, server_duid);
+
         // DUID too long (maximum is 128 bytes per RFC 3315)
         let duid_long = vec![0u8; 129];
-        
+
         let result = state_machine.validate_duid(&duid_long);
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_validate_duid_invalid_type() {
-        use std::sync::Arc;
-        use tokio::sync::RwLock;
         use crate::config::Config;
         use crate::dhcp::lease::LeaseManager;
         use crate::dns::cache::DnsCache;
-        
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+
         let config = Arc::new(Config::default());
         let dns_cache = Arc::new(RwLock::new(DnsCache::new(&DnsConfig::default())));
-        let lease_manager = Arc::new(RwLock::new(LeaseManager::new(
-            config.clone(),
-            dns_cache,
-            1000,
-        )));
+        let lease_manager =
+            Arc::new(RwLock::new(LeaseManager::new(config.clone(), dns_cache, 1000)));
         let server_duid = vec![0x00, 0x01];
-        
-        let state_machine = DhcpV6StateMachine::new(
-            config,
-            lease_manager,
-            server_duid,
-        );
-        
+
+        let state_machine = DhcpV6StateMachine::new(config, lease_manager, server_duid);
+
         // Invalid DUID type (only 1, 2, 3 are valid per RFC 3315)
         let duid_invalid = vec![
             0x00, 0xFF, // Invalid type 255
-            0x00, 0x01,
-            0xAA, 0xBB,
+            0x00, 0x01, 0xAA, 0xBB,
         ];
-        
+
         let result = state_machine.validate_duid(&duid_invalid);
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_state_machine_creation() {
-        use std::sync::Arc;
-        use tokio::sync::RwLock;
         use crate::config::Config;
         use crate::dhcp::lease::LeaseManager;
         use crate::dns::cache::DnsCache;
-        
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+
         let config = Arc::new(Config::default());
         let dns_cache = Arc::new(RwLock::new(DnsCache::new(&DnsConfig::default())));
-        let lease_manager = Arc::new(RwLock::new(LeaseManager::new(
-            config.clone(),
-            dns_cache,
-            1000,
-        )));
+        let lease_manager =
+            Arc::new(RwLock::new(LeaseManager::new(config.clone(), dns_cache, 1000)));
         let server_duid = vec![0x00, 0x03, 0x00, 0x01, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF];
-        
-        let state_machine = DhcpV6StateMachine::new(
-            config,
-            lease_manager,
-            server_duid.clone(),
-        );
-        
+
+        let state_machine = DhcpV6StateMachine::new(config, lease_manager, server_duid.clone());
+
         // Verify creation succeeded (no panic) - cannot access private fields
         // but we can at least ensure construction works
         let _ = state_machine;
