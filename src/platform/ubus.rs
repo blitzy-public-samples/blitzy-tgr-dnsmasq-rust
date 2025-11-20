@@ -31,6 +31,7 @@
 use crate::error::PlatformError;
 use crate::util::metrics::{MetricsCollector, get_metric_name};
 use crate::types::MacAddress;
+#[cfg(feature = "conntrack")]
 use crate::network::conntrack::ConnmarkAllowlist;
 use crate::dhcp::lease::Lease;
 use crate::constants::UBUS_SERVICE_NAME;
@@ -38,8 +39,6 @@ use crate::constants::UBUS_SERVICE_NAME;
 use libc::{c_char, c_int, c_void};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
-use std::ffi::{CStr, CString};
 use std::ptr;
 use std::sync::Arc;
 use tokio::io::unix::AsyncFd;
@@ -209,6 +208,7 @@ pub enum UbusEvent {
     NetworkChange,
     
     /// Connmark allowlist updated (refused domains)
+    #[cfg(feature = "conntrack")]
     #[serde(rename = "connmark-allowlist.refused")]
     ConnmarkAllowlistRefused {
         mark: u32,
@@ -217,6 +217,7 @@ pub enum UbusEvent {
     },
     
     /// Connmark allowlist updated (resolved domains)
+    #[cfg(feature = "conntrack")]
     #[serde(rename = "connmark-allowlist.resolved")]
     ConnmarkAllowlistResolved {
         mark: u32,
@@ -596,7 +597,7 @@ impl UbusDaemon {
         }
         
         // Serialize event to JSON
-        let event_json = serde_json::to_value(&event).map_err(|e| {
+        let _event_json = serde_json::to_value(&event).map_err(|e| {
             error!("Failed to serialize event: {}", e);
             PlatformError::UbusError {
                 operation: "broadcast_event".to_string(),
@@ -610,7 +611,9 @@ impl UbusDaemon {
             UbusEvent::DhcpLeaseOld { .. } => "dhcp.old",
             UbusEvent::DhcpLeaseDeleted { .. } => "dhcp.del",
             UbusEvent::NetworkChange => "network.change",
+            #[cfg(feature = "conntrack")]
             UbusEvent::ConnmarkAllowlistRefused { .. } => "connmark-allowlist.refused",
+            #[cfg(feature = "conntrack")]
             UbusEvent::ConnmarkAllowlistResolved { .. } => "connmark-allowlist.resolved",
         };
         
@@ -725,7 +728,7 @@ mod tests {
         
         let lease = Lease {
             ip: "192.168.1.100".parse::<IpAddr>().unwrap(),
-            mac: Some(MacAddress([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff])),
+            mac: Some(MacAddress::new([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff])),
             hostname: Some("testhost".to_string()),
             interface: "eth0".to_string(),
             expires: SystemTime::now(),
