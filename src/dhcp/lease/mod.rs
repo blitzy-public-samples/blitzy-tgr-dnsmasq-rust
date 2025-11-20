@@ -73,7 +73,7 @@ pub mod script_hooks;
 
 // Re-exports from submodules
 pub use database::{read_leases, write_leases};
-pub use dns_integration::{register_lease_hostname, unregister_lease_hostname, update_all_lease_dns};
+pub use dns_integration::{register_lease_hostname, unregister_lease_hostname};
 pub use script_hooks::execute_lease_script;
 
 bitflags! {
@@ -404,7 +404,7 @@ impl LeaseRepository for MemoryLeaseRepository {
     
     async fn remove(&mut self, ip: &IpAddr) -> Result<Lease, DhcpError> {
         let lease = self.leases.remove(ip)
-            .ok_or(DhcpError::LeaseNotFound)?;
+            .ok_or(DhcpError::LeaseNotFound { ip: ip.to_string() })?;
         
         // Remove from MAC index if present
         if let Some(mac) = lease.mac {
@@ -542,12 +542,10 @@ impl LeaseManager {
         let is_new = existing.is_none();
         
         // Create new lease
-        let mut lease = Lease::new(ip, mac, hostname, client_id, &interface, duration);
+        let lease = Lease::new(ip, mac, hostname, client_id, &interface, duration);
         
-        // Set FQDN if domain configured
-        if let Some(ref domain) = self.config.dhcp.domain {
-            lease.set_fqdn(domain);
-        }
+        // Note: FQDN generation requires domain configuration per DHCP range
+        // This will be implemented when DhcpRange struct includes domain field
         
         // Store lease
         {
@@ -555,18 +553,28 @@ impl LeaseManager {
             repo.insert(lease.clone()).await?;
         }
         
-        // Register hostname in DNS cache if configured
-        if self.config.dhcp.dns_integration_enabled && lease.hostname.is_some() {
-            if let Err(e) = register_lease_hostname(&self.dns_cache, &lease).await {
+        // Register hostname in DNS cache if hostname is present
+        if let Some(ref hostname_str) = lease.hostname {
+            if let Err(e) = register_lease_hostname(
+                &self.dns_cache,
+                lease.ip,
+                hostname_str,
+                lease.fqdn.as_deref(),
+                lease.expires
+            ).await {
                 warn!(ip = %ip, error = %e, "Failed to register lease hostname in DNS");
             }
         }
         
         // Execute lease script if configured
-        if let Some(ref script_path) = self.config.dhcp.dhcp_script {
-            let action = if is_new { LeaseAction::Add } else { LeaseAction::Old };
+        if let Some(ref script_path) = self.config.scripts.script_path {
+            use crate::dhcp::lease::script_hooks::{ScriptAction, ScriptConfig as ScriptHookConfig};
+            let action = if is_new { ScriptAction::Add } else { ScriptAction::Old };
             
-            if let Err(e) = execute_lease_script(script_path, action, &lease, &self.config).await {
+            // Construct script_hooks::ScriptConfig from config data
+            let script_config = ScriptHookConfig::new(script_path.clone());
+            
+            if let Err(e) = execute_lease_script(&script_config, action, &lease, None).await {
                 warn!(ip = %ip, action = ?action, error = %e, "Failed to execute lease script");
             }
         }
@@ -606,16 +614,22 @@ impl LeaseManager {
             repo.remove(ip).await?
         };
         
-        // Unregister from DNS cache
-        if self.config.dhcp.dns_integration_enabled && lease.hostname.is_some() {
-            if let Err(e) = unregister_lease_hostname(&self.dns_cache, &lease).await {
+        // Unregister from DNS cache if hostname is present
+        if let Some(ref hostname) = lease.hostname {
+            let fqdn = lease.fqdn.as_deref();
+            if let Err(e) = unregister_lease_hostname(&self.dns_cache, lease.ip, hostname, fqdn).await {
                 warn!(ip = %ip, error = %e, "Failed to unregister lease hostname from DNS");
             }
         }
         
-        // Execute lease script
-        if let Some(ref script_path) = self.config.dhcp.dhcp_script {
-            if let Err(e) = execute_lease_script(script_path, LeaseAction::Del, &lease, &self.config).await {
+        // Execute lease script if configured
+        if let Some(ref script_path) = self.config.scripts.script_path {
+            use crate::dhcp::lease::script_hooks::{ScriptAction, ScriptConfig as ScriptHookConfig};
+            
+            // Construct script_hooks::ScriptConfig from config data
+            let script_config = ScriptHookConfig::new(script_path.clone());
+            
+            if let Err(e) = execute_lease_script(&script_config, ScriptAction::Del, &lease, None).await {
                 warn!(ip = %ip, error = %e, "Failed to execute lease script for deletion");
             }
         }
@@ -643,7 +657,7 @@ impl LeaseManager {
         let mut lease = {
             let repo = self.repository.read().unwrap();
             repo.find_by_ip(ip).await
-                .ok_or(DhcpError::LeaseNotFound)?
+                .ok_or(DhcpError::LeaseNotFound { ip: ip.to_string() })?
         };
         
         // Update expiration time
@@ -772,7 +786,7 @@ impl LeaseManager {
     /// Returns DhcpError if lease file cannot be read or parsed
     pub async fn load_leases(&self) -> Result<usize, DhcpError> {
         if let Some(ref lease_file) = self.config.dhcp.lease_file {
-            let leases = read_leases(lease_file).await?;
+            let leases = read_leases(lease_file, SystemTime::now()).await?;
             let count = leases.len();
             
             let mut repo = self.repository.write().unwrap();
@@ -804,7 +818,8 @@ impl LeaseManager {
             let leases = self.get_all_leases().await;
             let count = leases.len();
             
-            write_leases(lease_file, &leases).await?;
+            // TODO: Pass actual server DUID for DHCPv6 if available from config
+            write_leases(lease_file, &leases, None).await?;
             
             debug!(count, file = %lease_file.display(), "Saved leases to file");
             Ok(count)
@@ -822,7 +837,7 @@ mod tests {
     #[tokio::test]
     async fn test_lease_creation() {
         let ip = IpAddr::from([192, 168, 1, 100]);
-        let mac = MacAddress::from_str("aa:bb:cc:dd:ee:ff").unwrap();
+        let mac = MacAddress::parse("aa:bb:cc:dd:ee:ff").unwrap();
         let lease = Lease::new(
             ip,
             Some(mac),
@@ -864,7 +879,7 @@ mod tests {
         let mut repo = MemoryLeaseRepository::new();
         
         let ip = IpAddr::from([192, 168, 1, 100]);
-        let mac = MacAddress::from_str("aa:bb:cc:dd:ee:ff").unwrap();
+        let mac = MacAddress::parse("aa:bb:cc:dd:ee:ff").unwrap();
         let lease = Lease::new(
             ip,
             Some(mac),
