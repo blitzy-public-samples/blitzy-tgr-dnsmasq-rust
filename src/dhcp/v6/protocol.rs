@@ -1541,6 +1541,8 @@ fn encode_dns_name(domain: &str, output: &mut Vec<u8>) -> Result<(), DhcpError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::types::DnsConfig;
+    use crate::dns::cache::DnsCache;
 
     #[test]
     fn test_status_code_to_u16() {
@@ -1683,7 +1685,6 @@ mod tests {
     async fn test_validate_duid_llt_valid() {
         use crate::config::Config;
         use crate::dhcp::lease::LeaseManager;
-        use crate::dns::cache::DnsCache;
         use std::sync::Arc;
         use tokio::sync::RwLock;
 
@@ -1712,7 +1713,6 @@ mod tests {
     async fn test_validate_duid_en_valid() {
         use crate::config::Config;
         use crate::dhcp::lease::LeaseManager;
-        use crate::dns::cache::DnsCache;
         use std::sync::Arc;
         use tokio::sync::RwLock;
 
@@ -1738,7 +1738,6 @@ mod tests {
     async fn test_validate_duid_ll_valid() {
         use crate::config::Config;
         use crate::dhcp::lease::LeaseManager;
-        use crate::dns::cache::DnsCache;
         use std::sync::Arc;
         use tokio::sync::RwLock;
 
@@ -1764,7 +1763,6 @@ mod tests {
     async fn test_validate_duid_too_short() {
         use crate::config::Config;
         use crate::dhcp::lease::LeaseManager;
-        use crate::dns::cache::DnsCache;
         use std::sync::Arc;
         use tokio::sync::RwLock;
 
@@ -1792,7 +1790,6 @@ mod tests {
     async fn test_validate_duid_too_long() {
         use crate::config::Config;
         use crate::dhcp::lease::LeaseManager;
-        use crate::dns::cache::DnsCache;
         use std::sync::Arc;
         use tokio::sync::RwLock;
 
@@ -1815,7 +1812,6 @@ mod tests {
     async fn test_validate_duid_invalid_type() {
         use crate::config::Config;
         use crate::dhcp::lease::LeaseManager;
-        use crate::dns::cache::DnsCache;
         use std::sync::Arc;
         use tokio::sync::RwLock;
 
@@ -1841,7 +1837,6 @@ mod tests {
     async fn test_state_machine_creation() {
         use crate::config::Config;
         use crate::dhcp::lease::LeaseManager;
-        use crate::dns::cache::DnsCache;
         use std::sync::Arc;
         use tokio::sync::RwLock;
 
