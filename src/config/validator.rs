@@ -64,7 +64,7 @@ use crate::config::types::{Config, StaticLease};
 use crate::constants::MAXLEASES;
 use crate::error::ConfigError;
 use crate::types::DomainName;
-use nix::unistd::{Group, User};
+// use nix::unistd::{Group, User}; // Not needed - validation deferred to runtime
 use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
@@ -222,9 +222,12 @@ impl<'a> ConfigValidator<'a> {
 
         // Validate upstream DNS servers
         for server in &self.config.dns.upstream_servers {
-            // ServerDetails.addr is a SocketAddr, validate the IP
-            let ip_addr = server.addr().ip();
-            self.validate_ip_address(&ip_addr, "upstream DNS server")?;
+            // Skip validation for authoritative domains (address = None)
+            if server.address.is_some() {
+                // ServerDetails.addr is a SocketAddr, validate the IP
+                let ip_addr = server.addr().ip();
+                self.validate_ip_address(&ip_addr, "upstream DNS server")?;
+            }
 
             // Validate domain restriction if present
             if let Some(domain) = server.domain() {
@@ -820,27 +823,10 @@ impl<'a> ConfigValidator<'a> {
     /// - `Ok(())` if security configuration is valid
     /// - `Err(ConfigError)` for invalid security settings
     fn validate_security_config(&mut self) -> ValidationResult {
-        // Validate user exists
-        if let Some(ref username) = self.config.security.user {
-            User::from_name(username)
-                .map_err(|_| ConfigError::ValidationFailed {
-                    reason: format!("User '{}' does not exist on system", username),
-                })?
-                .ok_or_else(|| ConfigError::ValidationFailed {
-                    reason: format!("User '{}' does not exist on system", username),
-                })?;
-        }
-
-        // Validate group exists
-        if let Some(ref groupname) = self.config.security.group {
-            Group::from_name(groupname)
-                .map_err(|_| ConfigError::ValidationFailed {
-                    reason: format!("Group '{}' does not exist on system", groupname),
-                })?
-                .ok_or_else(|| ConfigError::ValidationFailed {
-                    reason: format!("Group '{}' does not exist on system", groupname),
-                })?;
-        }
+        // Note: User and group existence validation is deferred to runtime
+        // (during privilege dropping) to match C dnsmasq behavior.
+        // Configuration parsing should accept any user/group name without
+        // validating system existence.
 
         // Validate chroot directory
         if let Some(ref chroot_path) = self.config.security.chroot {

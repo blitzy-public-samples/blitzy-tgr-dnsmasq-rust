@@ -206,6 +206,7 @@
 use crate::config::types::Config;
 use crate::error::ConfigError;
 use std::collections::HashSet;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -257,6 +258,9 @@ pub struct ConfigParser {
 
     /// Current line number (for error reporting)
     current_line: usize,
+
+    /// Pending include files to process (collected during parsing, processed after)
+    pending_includes: Vec<PathBuf>,
 }
 
 impl ConfigParser {
@@ -279,13 +283,16 @@ impl ConfigParser {
             include_depth: 0,
             current_file: None,
             current_line: 0,
+            pending_includes: Vec::new(),
         }
     }
 
     /// Parses configuration from a file path.
     ///
     /// Reads the file line-by-line, processing configuration directives and handling
-    /// include directives recursively. Maintains cycle detection to prevent infinite loops.
+    /// include directives iteratively using a work queue. Maintains cycle detection to
+    /// prevent infinite loops. This avoids deep async recursion that causes compiler
+    /// type-checking overflow (E0275).
     ///
     /// # Arguments
     ///
@@ -307,57 +314,155 @@ impl ConfigParser {
     /// parser.parse_file("/etc/dnsmasq.conf").await?;
     /// ```
     pub async fn parse_file<P: AsRef<Path>>(&mut self, path: P) -> Result<(), ConfigError> {
-        let path = path.as_ref();
-
-        // Canonicalize path for cycle detection
-        let canonical_path = tokio::fs::canonicalize(path)
-            .await
-            .map_err(|_e| ConfigError::FileNotFound { path: path.display().to_string() })?;
-
-        // Check for include cycles
-        if !self.visited_files.insert(canonical_path.clone()) {
-            return Err(ConfigError::IncludeFailed {
-                path: path.display().to_string(),
-                reason: "Circular include detected (file already processed)".to_string(),
-            });
+        // Use iterative processing with a work queue to avoid deep async recursion
+        // that causes compiler type-checking overflow (E0275)
+        
+        // Initialize work queue with the initial file and depth 0
+        let mut work_queue: Vec<(PathBuf, usize)> = vec![(path.as_ref().to_path_buf(), 0)];
+        
+        // Track if we had any fatal errors in the initial file
+        let mut initial_file_result = Ok(());
+        let mut is_first_file = true;
+        
+        while let Some((current_path, depth)) = work_queue.pop() {
+            // Check include depth
+            if depth >= MAX_INCLUDE_DEPTH {
+                let err = ConfigError::IncludeFailed {
+                    path: current_path.display().to_string(),
+                    reason: format!("Maximum include depth ({}) exceeded", MAX_INCLUDE_DEPTH),
+                };
+                
+                if is_first_file {
+                    return Err(err);
+                } else {
+                    // For included files, log but don't fail (matching C behavior)
+                    warn!(
+                        path = %current_path.display(),
+                        "Maximum include depth exceeded, skipping file"
+                    );
+                    continue;
+                }
+            }
+            
+            // Canonicalize path for cycle detection
+            let canonical_path = match tokio::fs::canonicalize(&current_path).await {
+                Ok(p) => p,
+                Err(e) => {
+                    let err = ConfigError::FileNotFound {
+                        path: current_path.display().to_string(),
+                    };
+                    
+                    if is_first_file {
+                        return Err(err);
+                    } else {
+                        // For included files, log but don't fail (matching C behavior)
+                        warn!(
+                            path = %current_path.display(),
+                            error = %e,
+                            "Failed to canonicalize path, skipping file"
+                        );
+                        continue;
+                    }
+                }
+            };
+            
+            // Check for include cycles
+            if !self.visited_files.insert(canonical_path.clone()) {
+                let err = ConfigError::IncludeFailed {
+                    path: canonical_path.display().to_string(),
+                    reason: "Circular include detected (file already processed)".to_string(),
+                };
+                
+                if is_first_file {
+                    return Err(err);
+                } else {
+                    // For included files, log but don't fail (matching C behavior)
+                    warn!(
+                        path = %canonical_path.display(),
+                        "Circular include detected, skipping"
+                    );
+                    continue;
+                }
+            }
+            
+            // Open file for reading
+            let file = match File::open(&canonical_path).await {
+                Ok(f) => f,
+                Err(e) => {
+                    let err = ConfigError::FileNotFound {
+                        path: canonical_path.display().to_string(),
+                    };
+                    
+                    // Remove from visited to allow retry
+                    self.visited_files.remove(&canonical_path);
+                    
+                    if is_first_file {
+                        return Err(err);
+                    } else {
+                        // For included files, log but don't fail (matching C behavior)
+                        warn!(
+                            path = %canonical_path.display(),
+                            error = %e,
+                            "Failed to open file, skipping"
+                        );
+                        continue;
+                    }
+                }
+            };
+            
+            // Track current file for error reporting
+            let previous_file = self.current_file.replace(canonical_path.clone());
+            let previous_line = self.current_line;
+            self.current_line = 0;
+            
+            debug!(
+                file = %canonical_path.display(),
+                depth = depth,
+                "Parsing configuration file"
+            );
+            
+            // Parse file contents
+            let reader = BufReader::new(file);
+            let result = self.parse_reader(reader).await;
+            
+            // Restore previous parsing context
+            self.current_file = previous_file;
+            self.current_line = previous_line;
+            
+            // Handle parse result
+            if let Err(e) = result {
+                if is_first_file {
+                    // Store error to return after cleanup
+                    initial_file_result = Err(e);
+                    self.visited_files.remove(&canonical_path);
+                    break;
+                } else {
+                    // For included files, log but continue (matching C behavior)
+                    warn!(
+                        path = %canonical_path.display(),
+                        error = %e,
+                        "Failed to parse configuration file"
+                    );
+                    self.visited_files.remove(&canonical_path);
+                    continue;
+                }
+            }
+            
+            // Extract pending includes and add them to work queue
+            let includes = std::mem::take(&mut self.pending_includes);
+            for include_path in includes {
+                // Add to work queue with incremented depth
+                work_queue.push((include_path, depth + 1));
+            }
+            
+            // Remove from visited set to allow re-parsing in different include contexts
+            // (matching C behavior where files can be included multiple times from different paths)
+            self.visited_files.remove(&canonical_path);
+            
+            is_first_file = false;
         }
-
-        // Check include depth
-        if self.include_depth >= MAX_INCLUDE_DEPTH {
-            return Err(ConfigError::IncludeFailed {
-                path: path.display().to_string(),
-                reason: format!("Maximum include depth ({}) exceeded", MAX_INCLUDE_DEPTH),
-            });
-        }
-
-        // Open file for reading
-        let file = File::open(&canonical_path).await.map_err(|_e| ConfigError::FileNotFound {
-            path: canonical_path.display().to_string(),
-        })?;
-
-        // Track current file for error reporting
-        let previous_file = self.current_file.replace(canonical_path.clone());
-        let previous_line = self.current_line;
-        self.current_line = 0;
-
-        debug!(
-            file = %canonical_path.display(),
-            "Parsing configuration file"
-        );
-
-        // Parse file contents
-        let reader = BufReader::new(file);
-        let result = self.parse_reader(reader).await;
-
-        // Restore previous parsing context
-        self.current_file = previous_file;
-        self.current_line = previous_line;
-
-        // Remove from visited set to allow re-parsing in different include contexts
-        // (matching C behavior where files can be included multiple times from different paths)
-        self.visited_files.remove(&canonical_path);
-
-        result
+        
+        initial_file_result
     }
 
     /// Parses configuration from a string.
@@ -663,17 +768,29 @@ impl ConfigParser {
 
     /// Strips comments from a line.
     ///
-    /// Comments begin with `#` character and extend to end of line. The `#` must
-    /// be preceded by whitespace or be at the start of line to be recognized as
-    /// a comment (matching C behavior).
+    /// Comments begin with `#` or `;` character and extend to end of line. The comment
+    /// character must be preceded by whitespace or be at the start of line to be recognized
+    /// as a comment (matching C behavior).
     fn strip_comment(line: &str) -> &str {
-        // Find # that starts a comment (preceded by whitespace or at start)
-        if let Some(pos) = line.find('#') {
-            if pos == 0 || line.as_bytes().get(pos - 1).is_some_and(|&b| b.is_ascii_whitespace()) {
-                return &line[..pos];
+        // Find # or ; that starts a comment (preceded by whitespace or at start)
+        let comment_chars = ['#', ';'];
+        let mut comment_pos = None;
+        
+        for &ch in &comment_chars {
+            if let Some(pos) = line.find(ch) {
+                if pos == 0 || line.as_bytes().get(pos - 1).is_some_and(|&b| b.is_ascii_whitespace()) {
+                    comment_pos = match comment_pos {
+                        None => Some(pos),
+                        Some(existing) => Some(existing.min(pos)),
+                    };
+                }
             }
         }
-        line
+        
+        match comment_pos {
+            Some(pos) => &line[..pos],
+            None => line,
+        }
     }
 
     /// Parses an option directive into configuration.
@@ -732,28 +849,54 @@ impl ConfigParser {
             "port" => self.parse_port_option(option_value)?,
             "listen-address" => self.parse_listen_address(option_value)?,
             "interface" => self.parse_interface(option_value)?,
+            "except-interface" => self.parse_except_interface(option_value)?,
             "bind-interfaces" => self.config.network.bind_interfaces = true,
             "bind-dynamic" => self.config.network.bind_dynamic = true,
 
             // DNS options
             "cache-size" => self.parse_cache_size(option_value)?,
             "no-resolv" => self.config.dns.no_resolv = true,
+            "no-hosts" => self.config.dns.no_hosts = true,
             "no-poll" => self.config.dns.no_poll = true,
             "server" => self.parse_server_option(option_value)?,
             "domain-needed" => self.config.dns.domain_needed = true,
             "bogus-priv" => self.config.dns.bogus_priv = true,
             "dnssec" => self.config.dns.dnssec_enabled = true,
+            "trust-anchor" => self.parse_trust_anchor(option_value)?,
+            "dnssec-timestamp" => self.parse_dnssec_timestamp(option_value)?,
+
+            // DNS record options
+            "address" => self.parse_address_record(option_value)?,
+            "host-record" => self.parse_host_record(option_value)?,
+            "cname" => self.parse_cname_record(option_value)?,
+            "mx-host" => self.parse_mx_record(option_value)?,
+            "mx-target" => self.parse_mx_target(option_value)?,
+            "srv-host" => self.parse_srv_record(option_value)?,
+            "txt-record" => self.parse_txt_record(option_value)?,
+            "ptr-record" => self.parse_ptr_record(option_value)?,
 
             // DHCP options
             "dhcp-range" => self.parse_dhcp_range(option_value)?,
             "dhcp-host" => self.parse_dhcp_host(option_value)?,
             "dhcp-option" => self.parse_dhcp_option(option_value)?,
             "dhcp-leasefile" => self.parse_dhcp_leasefile(option_value)?,
+            "dhcp-boot" => self.parse_dhcp_boot(option_value)?,
+            "dhcp-authoritative" => self.config.dhcp.authoritative = true,
+
+            // TFTP options
+            "tftp-root" => self.parse_tftp_root(option_value)?,
+            "enable-tftp" => self.parse_enable_tftp()?,
+            "tftp-secure" => self.parse_tftp_secure()?,
+            "tftp-unique-root" => self.parse_tftp_unique_root()?,
+            "tftp-no-blocksize" => self.parse_tftp_no_blocksize()?,
 
             // Logging options
             "log-queries" => self.config.logging.log_queries = true,
             "log-dhcp" => self.config.logging.log_dhcp = true,
             "log-facility" => self.parse_log_facility(option_value)?,
+            "quiet-dhcp" => self.config.logging.quiet_dhcp = true,
+            "quiet-dhcp6" => self.config.logging.quiet_dhcp6 = true,
+            "quiet-ra" => self.config.logging.quiet_ra = true,
 
             // Security options
             "user" => self.parse_user_option(option_value)?,
@@ -762,15 +905,19 @@ impl ConfigParser {
             // Platform options
             "no-daemon" => self.config.platform.daemon_mode = false,
             "pid-file" => self.parse_pid_file(option_value)?,
+            "local" => self.parse_local_domain(option_value)?,
+            "dnssec-check-unsigned" => self.config.dns.dnssec_enabled_check_unsigned = true,
+            "enable-ra" => self.config.dhcp.enable_ra = true,
 
-            // Unknown option - log warning but don't fail (matching C lenient behavior)
+            // Unknown option - return error for strict C compatibility
             _ => {
-                warn!(
-                    option = %option_name,
-                    file = ?self.current_file,
-                    line = self.current_line,
-                    "Unknown configuration option (ignored)"
-                );
+                return Err(ConfigError::ParseError {
+                    file_path: self.current_file.as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "<input>".to_string()),
+                    line_number: self.current_line,
+                    reason: format!("Unknown configuration option '{}'", option_name),
+                });
             }
         }
 
@@ -779,8 +926,8 @@ impl ConfigParser {
 
     /// Handles include directives (conf-file, conf-dir).
     ///
-    /// For conf-file: recursively parses the specified file
-    /// For conf-dir: parses all files in the directory matching pattern
+    /// For conf-file: adds the file to pending_includes for processing
+    /// For conf-dir: enumerates directory and adds matching files to pending_includes
     fn handle_include_directive(
         &mut self,
         directive: &str,
@@ -792,31 +939,69 @@ impl ConfigParser {
             "Processing include directive"
         );
 
-        // Note: Using blocking std::fs here since we're called from parse_line
-        // which is synchronous. In a real implementation, we'd make parse_line async.
-        // For now, this demonstrates the logic structure.
-
         if directive == "conf-file" {
-            // Single file include
-            let _path = PathBuf::from(path_str);
-            // Would call: self.parse_file(path).await?
-            // For this synchronous context, we'll just log and continue
-            info!(path = %path_str, "Would include configuration file");
+            // Single file include - add to pending list
+            let path = PathBuf::from(path_str);
+            self.pending_includes.push(path);
         } else if directive == "conf-dir" {
             // Directory include with optional pattern
             let parts: Vec<&str> = path_str.split(',').collect();
             let dir_path = parts[0];
             let pattern = parts.get(1).map(|s| s.trim()).unwrap_or("*.conf");
 
-            info!(
-                dir = %dir_path,
-                pattern = %pattern,
-                "Would include configuration directory"
-            );
-            // Would: enumerate directory, filter by pattern, parse each file
+            // Enumerate directory and add matching files
+            let dir = std::fs::read_dir(dir_path).map_err(|e| {
+                self.make_parse_error(format!("Cannot read directory {}: {}", dir_path, e))
+            })?;
+
+            // Collect matching files
+            let mut matching_files: Vec<PathBuf> = Vec::new();
+            for entry in dir {
+                let entry = entry.map_err(|e| {
+                    self.make_parse_error(format!("Error reading directory entry: {}", e))
+                })?;
+                let path = entry.path();
+                
+                // Only include regular files
+                if !path.is_file() {
+                    continue;
+                }
+
+                // Match against pattern (simple glob pattern matching)
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    if Self::matches_pattern(file_name, pattern) {
+                        matching_files.push(path);
+                    }
+                }
+            }
+
+            // Sort files for deterministic ordering (matches C dnsmasq behavior)
+            matching_files.sort();
+
+            // Add to pending includes
+            self.pending_includes.extend(matching_files);
         }
 
         Ok(())
+    }
+
+    /// Simple glob pattern matcher for conf-dir
+    ///
+    /// Supports wildcards: * (any characters) and ? (single character)
+    fn matches_pattern(filename: &str, pattern: &str) -> bool {
+        // Simple implementation: convert glob pattern to regex
+        let regex_pattern = pattern
+            .replace('.', r"\.")
+            .replace('*', ".*")
+            .replace('?', ".");
+        let regex_pattern = format!("^{}$", regex_pattern);
+        
+        if let Ok(re) = regex::Regex::new(&regex_pattern) {
+            re.is_match(filename)
+        } else {
+            // If regex compilation fails, fall back to exact match
+            filename == pattern
+        }
     }
 
     // Option-specific parsers (representative subset)
@@ -867,10 +1052,79 @@ impl ConfigParser {
     }
 
     fn parse_server_option(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        use std::net::{IpAddr, SocketAddr};
+        
         if let Some(server_str) = value {
-            // Simple parsing - full implementation would parse domain/server/source spec
-            info!(server = %server_str, "Would add upstream server");
-            // self.config.dns.upstream_servers.push(...)
+            // Parse server directive in format:
+            // - server=8.8.8.8 (simple IP, default port 53)
+            // - server=8.8.8.8#5353 (IP with custom port)
+            // - server=/example.com/192.168.1.1 (domain-specific server)
+            // - server=/local/ (authoritative, no forwarding)
+            
+            if server_str.starts_with('/') {
+                // Domain-specific server: /domain/server or /domain/
+                let parts: Vec<&str> = server_str.split('/').collect();
+                if parts.len() >= 3 {
+                    let domain = parts[1].to_string();
+                    let server_addr = parts[2];
+                    
+                    if server_addr.is_empty() {
+                        // Authoritative domain (no forwarding)
+                        let server = crate::types::ServerDetails::new_authoritative(domain.clone())
+                            .map_err(|e| self.make_parse_error(format!("Invalid domain: {}", e)))?;
+                        
+                        info!(domain = %domain, "Authoritative domain (no forwarding)");
+                        // Add to servers list but NOT to upstream_servers (no forwarding)
+                        self.config.dns.servers.push(server);
+                    } else {
+                        // Parse server address
+                        let (ip_str, port) = if let Some(hash_pos) = server_addr.find('#') {
+                            let ip = &server_addr[..hash_pos];
+                            let port_str = &server_addr[hash_pos + 1..];
+                            let port = port_str.parse::<u16>()
+                                .map_err(|_| self.make_parse_error(format!("Invalid port: {}", port_str)))?;
+                            (ip, port)
+                        } else {
+                            (server_addr, 53)
+                        };
+                        
+                        let ip: IpAddr = ip_str.parse()
+                            .map_err(|_| self.make_parse_error(format!("Invalid IP address: {}", ip_str)))?;
+                        let socket_addr = SocketAddr::new(ip, port);
+                        
+                        // Create ServerDetails with domain restriction
+                        let server = crate::types::ServerDetails::new(socket_addr, Some(domain.clone()), 0)
+                            .map_err(|e| self.make_parse_error(format!("Invalid server: {}", e)))?;
+                        
+                        self.config.dns.upstream_servers.push(server.clone());
+                        self.config.dns.servers.push(server);
+                    }
+                } else {
+                    return Err(self.make_parse_error(format!("Invalid server format: {}", server_str)));
+                }
+            } else {
+                // Simple server IP address
+                let (ip_str, port) = if let Some(hash_pos) = server_str.find('#') {
+                    let ip = &server_str[..hash_pos];
+                    let port_str = &server_str[hash_pos + 1..];
+                    let port = port_str.parse::<u16>()
+                        .map_err(|_| self.make_parse_error(format!("Invalid port: {}", port_str)))?;
+                    (ip, port)
+                } else {
+                    (server_str, 53)
+                };
+                
+                let ip: IpAddr = ip_str.parse()
+                    .map_err(|_| self.make_parse_error(format!("Invalid IP address: {}", ip_str)))?;
+                let socket_addr = SocketAddr::new(ip, port);
+                
+                // Create ServerDetails without domain restriction
+                let server = crate::types::ServerDetails::new(socket_addr, None::<String>, 0)
+                    .map_err(|e| self.make_parse_error(format!("Invalid server: {}", e)))?;
+                
+                self.config.dns.upstream_servers.push(server.clone());
+                self.config.dns.servers.push(server);
+            }
         } else {
             return Err(self.make_parse_error("Missing server address".to_string()));
         }
@@ -878,14 +1132,111 @@ impl ConfigParser {
     }
 
     fn parse_dhcp_range(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
-        if let Some(range_str) = value {
-            // Simple parsing - full implementation would parse start,end,lease_time
-            info!(range = %range_str, "Would add DHCP range");
-            // self.config.dhcp.v4_ranges.push(...)
+        use std::time::Duration;
+        
+        let range_str = value.ok_or_else(|| self.make_parse_error("Missing DHCP range".to_string()))?;
+        
+        let parts: Vec<&str> = range_str.split(',').collect();
+        if parts.len() < 2 {
+            return Err(self.make_parse_error(format!("Invalid DHCP range format: {}", range_str)));
+        }
+        
+        // Parse start and end IPs
+        let start: IpAddr = parts[0].trim().parse()
+            .map_err(|_| self.make_parse_error(format!("Invalid start IP: {}", parts[0])))?;
+        let end: IpAddr = parts[1].trim().parse()
+            .map_err(|_| self.make_parse_error(format!("Invalid end IP: {}", parts[1])))?;
+        
+        // Parse optional parameters (netmask, constructor, flags, lease time)
+        // IPv4 formats:
+        // - start,end,lease_time
+        // - start,end,netmask,lease_time
+        // IPv6 formats:
+        // - start,end,constructor:interface,flags,lease_time
+        // - start,end,lease_time
+        let mut netmask = None;
+        let mut lease_time_override = None;
+        let mut lease_time = None;
+        let mut interface = None;
+        
+        // Process remaining parameters
+        for i in 2..parts.len() {
+            let param = parts[i].trim();
+            
+            // Skip IPv6-specific flags
+            if param.starts_with("ra-") || param == "slaac" || param == "off-link" {
+                continue;
+            }
+            
+            // Handle constructor:interface syntax for IPv6
+            if param.starts_with("constructor:") {
+                interface = Some(param.strip_prefix("constructor:").unwrap().to_string());
+                continue;
+            }
+            
+            // Try to parse as IP address (netmask)
+            if let Ok(ip) = param.parse::<IpAddr>() {
+                netmask = Some(ip);
+                continue;
+            }
+            
+            // Try to parse as lease time
+            if param != "infinite" {
+                if let Ok(seconds) = Self::parse_time_duration(param) {
+                    lease_time_override = Some(Duration::from_secs(seconds));
+                    lease_time = Some(seconds);
+                }
+            }
+        }
+        
+        // Log before moving interface
+        info!(start = %start, end = %end, netmask = ?netmask, lease_time = ?lease_time, interface = ?interface, "Added DHCP range");
+        
+        let is_ipv6 = start.is_ipv6();
+        let range = crate::config::types::DhcpRange {
+            start,
+            end,
+            lease_time_override,
+            netmask,
+            interface,
+            lease_time,
+            is_ipv6,
+        };
+        
+        // Push to correct vector based on IP version
+        if is_ipv6 {
+            self.config.dhcp.v6_ranges.push(range);
         } else {
-            return Err(self.make_parse_error("Missing DHCP range".to_string()));
+            self.config.dhcp.v4_ranges.push(range);
         }
         Ok(())
+    }
+    
+    /// Parse time duration with suffix (e.g., "12h", "30m", "2d")
+    fn parse_time_duration(time_str: &str) -> Result<u64, String> {
+        let time_str = time_str.trim();
+        if time_str.is_empty() {
+            return Err("Empty time string".to_string());
+        }
+        
+        // Check if it ends with a unit suffix
+        let (num_str, multiplier) = if time_str.ends_with('h') {
+            (&time_str[..time_str.len()-1], 3600) // hours
+        } else if time_str.ends_with('m') {
+            (&time_str[..time_str.len()-1], 60) // minutes
+        } else if time_str.ends_with('d') {
+            (&time_str[..time_str.len()-1], 86400) // days
+        } else if time_str.ends_with('s') {
+            (&time_str[..time_str.len()-1], 1) // seconds
+        } else {
+            // No suffix, assume seconds
+            (time_str, 1)
+        };
+        
+        let num: u64 = num_str.parse()
+            .map_err(|_| format!("Invalid number: {}", num_str))?;
+        
+        Ok(num * multiplier)
     }
 
     fn parse_dhcp_host(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
@@ -899,12 +1250,72 @@ impl ConfigParser {
     }
 
     fn parse_dhcp_option(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
-        if let Some(opt_str) = value {
-            info!(option = %opt_str, "Would add DHCP option");
-            // Parse option code and value
-        } else {
-            return Err(self.make_parse_error("Missing DHCP option".to_string()));
+        let opt_str = value.ok_or_else(|| self.make_parse_error("Missing DHCP option".to_string()))?;
+        
+        let parts: Vec<&str> = opt_str.split(',').collect();
+        if parts.is_empty() {
+            return Err(self.make_parse_error(format!("Invalid DHCP option format: {}", opt_str)));
         }
+        
+        // Check for DHCPv6 option prefix (option6:)
+        let first_part = parts[0].trim();
+        let is_v6 = first_part.starts_with("option6:");
+        
+        // Parse option code
+        let code_str = if is_v6 {
+            // Remove "option6:" prefix
+            &first_part[8..]
+        } else {
+            first_part
+        };
+        
+        // Try to parse as numeric code first, if that fails, treat as named option
+        let code: u8 = if let Ok(num) = code_str.parse::<u8>() {
+            num
+        } else {
+            // Named option - map to option code
+            // For DHCPv6, "dns-server" maps to option 23
+            // For DHCPv4, we'd map standard names to their codes
+            match code_str {
+                "dns-server" if is_v6 => 23,  // DHCPv6 DNS_SERVERS option
+                "ntp-server" if is_v6 => 56,  // DHCPv6 NTP_SERVER option
+                "domain-search" if is_v6 => 24, // DHCPv6 DOMAIN_LIST option
+                // Add more mappings as needed
+                _ => {
+                    // If we can't parse the named option, just log and use a placeholder
+                    // In production, we'd want a complete mapping table
+                    warn!(option = code_str, "Unknown named DHCP option, storing as-is");
+                    0
+                }
+            }
+        };
+        
+        // Parse option values
+        let mut value_bytes = Vec::new();
+        for part in parts.iter().skip(1) {
+            let part = part.trim();
+            
+            // Handle IPv6 addresses in brackets
+            let part = part.trim_matches(|c| c == '[' || c == ']');
+            
+            // Try to parse as IP address first
+            if let Ok(ip) = part.parse::<IpAddr>() {
+                match ip {
+                    IpAddr::V4(ipv4) => {
+                        value_bytes.extend_from_slice(&ipv4.octets());
+                    }
+                    IpAddr::V6(ipv6) => {
+                        value_bytes.extend_from_slice(&ipv6.octets());
+                    }
+                }
+            } else {
+                // Otherwise, treat as string or hex
+                value_bytes.extend_from_slice(part.as_bytes());
+            }
+        }
+        
+        info!(code = code, is_v6 = is_v6, value_len = value_bytes.len(), "Added DHCP option");
+        self.config.dhcp.options.push((code, value_bytes));
         Ok(())
     }
 
@@ -918,12 +1329,23 @@ impl ConfigParser {
     }
 
     fn parse_log_facility(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
-        if let Some(facility_str) = value {
-            info!(facility = %facility_str, "Would set log facility");
-            // Parse syslog facility name
+        let facility_str = value.ok_or_else(|| self.make_parse_error("Missing log facility".to_string()))?;
+        
+        // log-facility can be either:
+        // 1. A syslog facility name (daemon, local0-local7, user, etc.)
+        // 2. A file path (starts with /)
+        
+        if facility_str.starts_with('/') {
+            // It's a file path
+            self.config.logging.log_file = Some(PathBuf::from(facility_str));
+            self.config.logging.log_facility = facility_str.to_string();
+            info!(log_file = %facility_str, "Set log file");
         } else {
-            return Err(self.make_parse_error("Missing log facility".to_string()));
+            // It's a syslog facility name
+            self.config.logging.log_facility = facility_str.to_string();
+            info!(facility = %facility_str, "Set syslog facility");
         }
+        
         Ok(())
     }
 
@@ -951,6 +1373,283 @@ impl ConfigParser {
         } else {
             return Err(self.make_parse_error("Missing PID file path".to_string()));
         }
+        Ok(())
+    }
+
+    fn parse_local_domain(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        let domain = value.ok_or_else(|| self.make_parse_error("Missing local domain".to_string()))?;
+        self.config.dns.local_domains.push(domain.to_string());
+        Ok(())
+    }
+
+    fn parse_except_interface(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(iface) = value {
+            self.config.network.except_interfaces.push(iface.to_string());
+        } else {
+            return Err(self.make_parse_error("Missing interface name".to_string()));
+        }
+        Ok(())
+    }
+
+    fn parse_trust_anchor(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(anchor) = value {
+            self.config.dns.trust_anchors.push(anchor.to_string());
+        } else {
+            return Err(self.make_parse_error("Missing trust anchor".to_string()));
+        }
+        Ok(())
+    }
+
+    fn parse_dnssec_timestamp(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(_timestamp_str) = value {
+            // Parse DNSSEC timestamp file path
+            // For now, just log it
+            info!(timestamp = %_timestamp_str, "Would set DNSSEC timestamp file");
+        } else {
+            return Err(self.make_parse_error("Missing timestamp file path".to_string()));
+        }
+        Ok(())
+    }
+
+    fn parse_address_record(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(record_str) = value {
+            // Parse address=/domain/ip format
+            let parts: Vec<&str> = record_str.split('/').collect();
+            if parts.len() >= 2 {
+                let domain = parts[0].to_string();
+                if parts.len() >= 3 && !parts[2].is_empty() {
+                    // address=/domain/ip
+                    let ip = parts[2]
+                        .parse()
+                        .map_err(|_| self.make_parse_error(format!("Invalid IP address: {}", parts[2])))?;
+                    self.config.dns.address_records.push((domain, ip));
+                } else if parts.len() == 2 || (parts.len() >= 3 && parts[2].is_empty()) {
+                    // address=/domain/ means NXDOMAIN - represented as empty address list
+                    // We'll just skip these for now
+                }
+            } else {
+                return Err(self.make_parse_error(format!("Invalid address record format: {}", record_str)));
+            }
+        } else {
+            return Err(self.make_parse_error("Missing address record".to_string()));
+        }
+        Ok(())
+    }
+
+    fn parse_host_record(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(record_str) = value {
+            // Parse host-record=name,addr[,addr...] format
+            let parts: Vec<&str> = record_str.split(',').collect();
+            if parts.len() >= 2 {
+                let hostname = parts[0].to_string();
+                let mut addresses = Vec::new();
+                for addr_str in &parts[1..] {
+                    let ip = addr_str
+                        .parse()
+                        .map_err(|_| self.make_parse_error(format!("Invalid IP address: {}", addr_str)))?;
+                    addresses.push(ip);
+                }
+                self.config.dns.host_records.push((hostname, addresses));
+            } else {
+                return Err(self.make_parse_error(format!("Invalid host record format: {}", record_str)));
+            }
+        } else {
+            return Err(self.make_parse_error("Missing host record".to_string()));
+        }
+        Ok(())
+    }
+
+    fn parse_cname_record(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(record_str) = value {
+            // Parse cname=alias,target format
+            let parts: Vec<&str> = record_str.split(',').collect();
+            if parts.len() == 2 {
+                let alias = parts[0].to_string();
+                let target = parts[1].to_string();
+                self.config.dns.cname_records.push((alias, target));
+            } else {
+                return Err(self.make_parse_error(format!("Invalid CNAME record format: {}", record_str)));
+            }
+        } else {
+            return Err(self.make_parse_error("Missing CNAME record".to_string()));
+        }
+        Ok(())
+    }
+
+    fn parse_mx_record(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(record_str) = value {
+            // Parse mx-host=domain,target[,priority] format
+            let parts: Vec<&str> = record_str.split(',').collect();
+            if parts.len() >= 2 {
+                let domain = parts[0].to_string();
+                let target = parts[1].to_string();
+                let priority = if parts.len() >= 3 {
+                    parts[2]
+                        .parse()
+                        .map_err(|_| self.make_parse_error(format!("Invalid MX priority: {}", parts[2])))?
+                } else {
+                    10 // Default priority
+                };
+                self.config.dns.mx_records.push((domain, target, priority));
+            } else {
+                return Err(self.make_parse_error(format!("Invalid MX record format: {}", record_str)));
+            }
+        } else {
+            return Err(self.make_parse_error("Missing MX record".to_string()));
+        }
+        Ok(())
+    }
+
+    fn parse_mx_target(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(target) = value {
+            self.config.dns.mx_target = Some(target.to_string());
+        } else {
+            return Err(self.make_parse_error("Missing MX target".to_string()));
+        }
+        Ok(())
+    }
+
+    fn parse_srv_record(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(record_str) = value {
+            // Parse srv-host=_service._proto.domain,target,port[,priority][,weight] format
+            let parts: Vec<&str> = record_str.split(',').collect();
+            if parts.len() >= 3 {
+                let service = parts[0].to_string();
+                let target = parts[1].to_string();
+                let port = parts[2]
+                    .parse()
+                    .map_err(|_| self.make_parse_error(format!("Invalid SRV port: {}", parts[2])))?;
+                let priority = if parts.len() >= 4 {
+                    parts[3]
+                        .parse()
+                        .map_err(|_| self.make_parse_error(format!("Invalid SRV priority: {}", parts[3])))?
+                } else {
+                    0 // Default priority
+                };
+                let weight = if parts.len() >= 5 {
+                    parts[4]
+                        .parse()
+                        .map_err(|_| self.make_parse_error(format!("Invalid SRV weight: {}", parts[4])))?
+                } else {
+                    0 // Default weight
+                };
+                self.config.dns.srv_records.push((service, target, port, priority, weight));
+            } else {
+                return Err(self.make_parse_error(format!("Invalid SRV record format: {}", record_str)));
+            }
+        } else {
+            return Err(self.make_parse_error("Missing SRV record".to_string()));
+        }
+        Ok(())
+    }
+
+    fn parse_txt_record(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(record_str) = value {
+            // Parse txt-record=name,text format
+            if let Some(comma_pos) = record_str.find(',') {
+                let name = record_str[..comma_pos].to_string();
+                let text = record_str[comma_pos + 1..].to_string();
+                self.config.dns.txt_records.push((name, text));
+            } else {
+                return Err(self.make_parse_error(format!("Invalid TXT record format: {}", record_str)));
+            }
+        } else {
+            return Err(self.make_parse_error("Missing TXT record".to_string()));
+        }
+        Ok(())
+    }
+
+    fn parse_ptr_record(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(record_str) = value {
+            // Parse ptr-record=name,target format
+            let parts: Vec<&str> = record_str.split(',').collect();
+            if parts.len() == 2 {
+                let name = parts[0].to_string();
+                let target = parts[1].to_string();
+                self.config.dns.ptr_records.push((name, target));
+            } else {
+                return Err(self.make_parse_error(format!("Invalid PTR record format: {}", record_str)));
+            }
+        } else {
+            return Err(self.make_parse_error("Missing PTR record".to_string()));
+        }
+        Ok(())
+    }
+
+    fn parse_dhcp_boot(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(boot_str) = value {
+            // Parse dhcp-boot format
+            info!(boot = %boot_str, "Would add DHCP boot option");
+            // Full implementation would parse boot filename, server name, next-server
+        } else {
+            return Err(self.make_parse_error("Missing DHCP boot specification".to_string()));
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "tftp")]
+    fn parse_tftp_root(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(path_str) = value {
+            self.config.tftp.tftp_prefix = Some(PathBuf::from(path_str));
+        } else {
+            return Err(self.make_parse_error("Missing TFTP root path".to_string()));
+        }
+        Ok(())
+    }
+
+    #[cfg(not(feature = "tftp"))]
+    fn parse_tftp_root(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if value.is_some() {
+            warn!("TFTP not enabled in this build, ignoring tftp-root option");
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "tftp")]
+    fn parse_enable_tftp(&mut self) -> Result<(), ConfigError> {
+        self.config.tftp.enabled = true;
+        Ok(())
+    }
+
+    #[cfg(not(feature = "tftp"))]
+    fn parse_enable_tftp(&mut self) -> Result<(), ConfigError> {
+        warn!("TFTP not enabled in this build, ignoring enable-tftp option");
+        Ok(())
+    }
+
+    #[cfg(feature = "tftp")]
+    fn parse_tftp_secure(&mut self) -> Result<(), ConfigError> {
+        self.config.tftp.tftp_secure = true;
+        Ok(())
+    }
+
+    #[cfg(not(feature = "tftp"))]
+    fn parse_tftp_secure(&mut self) -> Result<(), ConfigError> {
+        warn!("TFTP not enabled in this build, ignoring tftp-secure option");
+        Ok(())
+    }
+
+    #[cfg(feature = "tftp")]
+    fn parse_tftp_unique_root(&mut self) -> Result<(), ConfigError> {
+        self.config.tftp.tftp_unique_root = true;
+        Ok(())
+    }
+
+    #[cfg(not(feature = "tftp"))]
+    fn parse_tftp_unique_root(&mut self) -> Result<(), ConfigError> {
+        warn!("TFTP not enabled in this build, ignoring tftp-unique-root option");
+        Ok(())
+    }
+
+    #[cfg(feature = "tftp")]
+    fn parse_tftp_no_blocksize(&mut self) -> Result<(), ConfigError> {
+        self.config.tftp.tftp_no_blocksize = true;
+        Ok(())
+    }
+
+    #[cfg(not(feature = "tftp"))]
+    fn parse_tftp_no_blocksize(&mut self) -> Result<(), ConfigError> {
+        warn!("TFTP not enabled in this build, ignoring tftp-no-blocksize option");
         Ok(())
     }
 
@@ -1012,10 +1711,16 @@ mod tests {
 
     #[test]
     fn test_strip_comment() {
+        // Test hash comments
         assert_eq!(ConfigParser::strip_comment("# comment"), "");
         assert_eq!(ConfigParser::strip_comment("option=value # comment"), "option=value ");
         assert_eq!(ConfigParser::strip_comment("option=value#nocomment"), "option=value#nocomment");
         assert_eq!(ConfigParser::strip_comment("option=value"), "option=value");
+        
+        // Test semicolon comments
+        assert_eq!(ConfigParser::strip_comment("; comment"), "");
+        assert_eq!(ConfigParser::strip_comment("option=value ; comment"), "option=value ");
+        assert_eq!(ConfigParser::strip_comment("option=value;nocomment"), "option=value;nocomment");
     }
 
     #[test]

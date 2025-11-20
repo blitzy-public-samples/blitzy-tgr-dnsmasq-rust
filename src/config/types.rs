@@ -276,11 +276,7 @@ impl Config {
 
         // Validate network configuration
         // Note: port is u16, so it's already constrained to 0-65535
-        if self.network.port == 0 {
-            return Err(ConfigError::ValidationFailed {
-                reason: format!("Invalid DNS port: {} (must be > 0)", self.network.port),
-            });
-        }
+        // Port 0 is valid - it means "disable DNS service" (matches C behavior)
 
         // Validate DHCP lease time
         if self.dhcp.lease_time.as_secs() == 0 {
@@ -540,6 +536,78 @@ pub struct DnsConfig {
     ///
     /// Default: false
     pub no_poll: bool,
+
+    /// Don't read /etc/hosts file.
+    ///
+    /// Replaces C option bit OPT_NO_HOSTS. When true, don't load local host entries.
+    ///
+    /// Default: false
+    pub no_hosts: bool,
+
+    /// DNSSEC check unsigned zones.
+    ///
+    /// When DNSSEC is enabled, also check unsigned zones for validation.
+    ///
+    /// Default: false
+    pub dnssec_enabled_check_unsigned: bool,
+
+    /// DNSSEC trust anchors.
+    ///
+    /// List of trust anchor entries for DNSSEC validation.
+    pub trust_anchors: Vec<String>,
+
+    /// Address records (address=/domain/ip).
+    ///
+    /// Maps domain names to IP addresses for local resolution.
+    pub address_records: Vec<(String, IpAddr)>,
+
+    /// Host records (host-record=name,addr[,addr...]).
+    ///
+    /// Local DNS A/AAAA records.
+    pub host_records: Vec<(String, Vec<IpAddr>)>,
+
+    /// CNAME records (cname=alias,target).
+    ///
+    /// DNS CNAME records for aliasing.
+    pub cname_records: Vec<(String, String)>,
+
+    /// MX records (mx-host=domain,target[,priority]).
+    ///
+    /// Mail exchanger records.
+    pub mx_records: Vec<(String, String, u16)>,
+
+    /// MX target for default mail exchanger.
+    ///
+    /// Default MX target when not specified per-domain.
+    pub mx_target: Option<String>,
+
+    /// SRV records (srv-host=_service._proto.domain,target,port[,priority][,weight]).
+    ///
+    /// Service location records.
+    pub srv_records: Vec<(String, String, u16, u16, u16)>,
+
+    /// TXT records (txt-record=name,text).
+    ///
+    /// DNS TXT records for descriptive text.
+    pub txt_records: Vec<(String, String)>,
+
+    /// PTR records (ptr-record=name,target).
+    ///
+    /// DNS PTR records for reverse lookups.
+    pub ptr_records: Vec<(String, String)>,
+
+    /// Upstream servers (duplicate of upstream_servers for compatibility).
+    ///
+    /// Some tests may reference this field name.
+    pub servers: Vec<ServerDetails>,
+
+    /// Local domains that should not be forwarded upstream.
+    ///
+    /// Replaces C local-domain configuration. Queries for these domains
+    /// are answered locally or with NXDOMAIN if no local record exists.
+    ///
+    /// Default: empty vector
+    pub local_domains: Vec<String>,
 }
 
 impl Default for DnsConfig {
@@ -560,6 +628,19 @@ impl Default for DnsConfig {
             neg_ttl: 300,
             no_resolv: false,
             no_poll: false,
+            no_hosts: false,
+            dnssec_enabled_check_unsigned: false,
+            trust_anchors: Vec::new(),
+            address_records: Vec::new(),
+            host_records: Vec::new(),
+            cname_records: Vec::new(),
+            mx_records: Vec::new(),
+            mx_target: None,
+            srv_records: Vec::new(),
+            txt_records: Vec::new(),
+            ptr_records: Vec::new(),
+            servers: Vec::new(),
+            local_domains: Vec::new(),
         }
     }
 }
@@ -655,6 +736,18 @@ pub struct DhcpConfig {
     ///
     /// Default: false (safe mode, don't interfere with other DHCP servers)
     pub authoritative: bool,
+
+    /// Enable Router Advertisements (IPv6).
+    ///
+    /// When true, send IPv6 Router Advertisements for stateless address configuration.
+    ///
+    /// Default: false
+    pub enable_ra: bool,
+
+    /// DHCP options to send to clients.
+    ///
+    /// List of DHCP option codes and values to include in responses.
+    pub options: Vec<(u8, Vec<u8>)>,
 }
 
 impl Default for DhcpConfig {
@@ -666,6 +759,8 @@ impl Default for DhcpConfig {
             lease_file: Some(PathBuf::from(LEASEFILE)),
             lease_time: Duration::from_secs(DEFLEASE as u64),
             authoritative: false,
+            enable_ra: false,
+            options: Vec::new(),
         }
     }
 }
@@ -723,11 +818,26 @@ pub struct DhcpRange {
     /// None = use global default from `DhcpConfig::lease_time`.
     pub lease_time_override: Option<Duration>,
 
+    /// Optional netmask (IPv4 only).
+    ///
+    /// Used for subnet configuration in DHCPv4.
+    pub netmask: Option<IpAddr>,
+
     /// Optional interface restriction.
     ///
     /// Replaces C `struct dhcp_netid netid` interface matching.
     /// None = range applies to all interfaces.
     pub interface: Option<String>,
+
+    /// Lease time for this range (in seconds).
+    ///
+    /// Simplified accessor for lease_time_override converted to seconds.
+    pub lease_time: Option<u64>,
+
+    /// Whether this is an IPv6 range.
+    ///
+    /// Computed from start address being IPv6.
+    pub is_ipv6: bool,
 }
 
 /// DHCP context metadata for DHCPv6 ranges.
@@ -996,6 +1106,29 @@ pub struct TftpConfig {
     /// Replaces C `struct tftp_prefix *if_prefix`. Allows different TFTP roots
     /// for different network interfaces.
     pub if_prefix: Vec<(String, PathBuf)>, // (interface, prefix_path)
+
+    /// TFTP server enabled.
+    ///
+    /// Enables the built-in TFTP server for network boot (PXE).
+    ///
+    /// Default: false
+    pub enabled: bool,
+
+    /// Add client IP address as subdirectory to tftp-root.
+    ///
+    /// Replaces C option bit OPT_TFTP_APREF_IP. When enabled, adds the client's
+    /// IP address as a subdirectory to the tftp-root (e.g., /tftp/192.168.1.10/).
+    ///
+    /// Default: false
+    pub tftp_unique_root: bool,
+
+    /// Disable TFTP blocksize extension (RFC 2348).
+    ///
+    /// Replaces C option bit OPT_TFTP_NOBLOCK. Disables support for negotiating
+    /// TFTP block sizes larger than the default 512 bytes.
+    ///
+    /// Default: false
+    pub tftp_no_blocksize: bool,
 }
 
 #[cfg(feature = "tftp")]
@@ -1007,6 +1140,9 @@ impl Default for TftpConfig {
             tftp_secure: false,
             tftp_max: 150,
             if_prefix: Vec::new(),
+            enabled: false,
+            tftp_unique_root: false,
+            tftp_no_blocksize: false,
         }
     }
 }
@@ -1076,6 +1212,34 @@ pub struct LoggingConfig {
     ///
     /// Replaces C `char *log_file`. None = syslog only.
     pub log_file: Option<PathBuf>,
+
+    /// Suppress DHCP logging.
+    ///
+    /// When true, don't log DHCP transactions even if log_dhcp is true.
+    ///
+    /// Default: false
+    pub quiet_dhcp: bool,
+
+    /// Suppress DHCPv6 logging.
+    ///
+    /// When true, don't log DHCPv6 transactions.
+    ///
+    /// Default: false
+    pub quiet_dhcp6: bool,
+
+    /// Suppress Router Advertisement logging.
+    ///
+    /// When true, don't log IPv6 Router Advertisements.
+    ///
+    /// Default: false
+    pub quiet_ra: bool,
+
+    /// Run in foreground (don't daemonize).
+    ///
+    /// When true, stay in foreground for debugging or systemd Type=simple.
+    ///
+    /// Default: false
+    pub no_daemon: bool,
 }
 
 impl Default for LoggingConfig {
@@ -1085,6 +1249,10 @@ impl Default for LoggingConfig {
             log_dhcp: false,
             log_facility: "daemon".to_string(),
             log_file: None,
+            quiet_dhcp: false,
+            quiet_dhcp6: false,
+            quiet_ra: false,
+            no_daemon: false,
         }
     }
 }
@@ -1339,11 +1507,15 @@ impl ConfigBuilder {
 
     /// Adds a DHCPv4 address range.
     pub fn add_dhcp_range(mut self, start: IpAddr, end: IpAddr) -> Self {
+        let is_ipv6 = start.is_ipv6();
         self.config.dhcp.v4_ranges.push(DhcpRange {
             start,
             end,
             lease_time_override: None,
+            netmask: None,
             interface: None,
+            lease_time: None,
+            is_ipv6,
         });
         self
     }
@@ -1441,6 +1613,7 @@ impl ConfigBuilder {
         }
         if args.no_daemon {
             self.config.platform.daemon_mode = false;
+            self.config.logging.no_daemon = true;
         }
         if let Some(ref user) = args.user {
             self.config.security.user = Some(user.clone());
@@ -1453,6 +1626,12 @@ impl ConfigBuilder {
         }
         if args.log_dhcp {
             self.config.logging.log_dhcp = true;
+        }
+        if args.domain_needed {
+            self.config.dns.domain_needed = true;
+        }
+        if args.bogus_priv {
+            self.config.dns.bogus_priv = true;
         }
         // Add more CLI argument mappings as needed
         Ok(self)

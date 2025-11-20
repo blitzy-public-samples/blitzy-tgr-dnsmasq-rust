@@ -301,13 +301,16 @@ impl DhcpMessage {
 
         // Verify and consume magic cookie (0x63825363)
         let (remaining, _cookie) = verify(be_u32, |&cookie| cookie == MAGIC_COOKIE)(remaining)
-            .map_err(|_| DhcpError::InvalidMagicCookie {
-                expected: MAGIC_COOKIE,
-                found: if remaining.len() >= 4 {
-                    u32::from_be_bytes([remaining[0], remaining[1], remaining[2], remaining[3]])
-                } else {
-                    0
-                },
+            .map_err(|_: nom::Err<nom::error::Error<&[u8]>>| DhcpError::ParseFailed {
+                reason: format!(
+                    "Invalid magic cookie: expected 0x{:08X}, found 0x{:08X}",
+                    MAGIC_COOKIE,
+                    if remaining.len() >= 4 {
+                        u32::from_be_bytes([remaining[0], remaining[1], remaining[2], remaining[3]])
+                    } else {
+                        0
+                    }
+                ),
             })?;
 
         // Parse options from the options field
@@ -523,10 +526,19 @@ impl DhcpMessage {
     /// Returns `Ok(MacAddress)` if hlen is valid, or `Err(DhcpError)` if the
     /// hardware address length is invalid.
     pub fn client_hardware_addr(&self) -> Result<MacAddress, DhcpError> {
-        MacAddress::from_bytes(&self.chaddr[..self.hlen as usize])
-            .ok_or(DhcpError::InvalidHardwareAddress {
-                reason: format!("Invalid hardware address length: {}", self.hlen),
-            })
+        if self.hlen != 6 {
+            return Err(DhcpError::ParseFailed {
+                reason: format!("Invalid hardware address length: expected 6, found {}", self.hlen),
+            });
+        }
+        
+        let mac_bytes: [u8; 6] = self.chaddr[..6]
+            .try_into()
+            .map_err(|_| DhcpError::ParseFailed {
+                reason: "Failed to convert hardware address to MAC format".to_string(),
+            })?;
+        
+        Ok(MacAddress::from_bytes(mac_bytes))
     }
 
     /// Get the server name field as a slice
@@ -702,7 +714,7 @@ impl DhcpMessage {
     /// use dnsmasq::types::MacAddress;
     ///
     /// let mut msg = DhcpMessage::new();
-    /// let mac = MacAddress::from_bytes(&[0x00, 0x11, 0x22, 0x33, 0x44, 0x55]).unwrap();
+    /// let mac = MacAddress::from_bytes([0x00, 0x11, 0x22, 0x33, 0x44, 0x55]);
     /// msg.set_chaddr(&mac);
     /// ```
     pub fn set_chaddr(&mut self, mac: &MacAddress) {
@@ -881,7 +893,13 @@ mod tests {
 
         let result = DhcpMessage::parse_dhcp_message(&packet);
         assert!(result.is_err());
-        assert!(matches!(result, Err(DhcpError::InvalidMagicCookie { .. })));
+        // Should fail with ParseFailed containing "Invalid magic cookie" message
+        match result {
+            Err(DhcpError::ParseFailed { reason }) => {
+                assert!(reason.contains("Invalid magic cookie"), "Expected magic cookie error, got: {}", reason);
+            }
+            other => panic!("Expected ParseFailed with magic cookie error, got: {:?}", other),
+        }
     }
 
     #[test]

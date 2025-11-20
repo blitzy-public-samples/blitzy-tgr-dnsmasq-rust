@@ -912,13 +912,16 @@ bitflags! {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerDetails {
     /// Socket address of the upstream DNS server
-    addr: SocketAddr,
+    pub addr: SocketAddr,
 
     /// Optional domain restriction (None = forward all domains)
-    domain: Option<DomainName>,
+    pub domain: Option<DomainName>,
 
     /// Server configuration flags
-    flags: u16,
+    pub flags: u16,
+
+    /// IP address of the server (None = authoritative domain, no forwarding)
+    pub address: Option<IpAddr>,
 }
 
 impl ServerDetails {
@@ -939,7 +942,12 @@ impl ServerDetails {
             None => None,
         };
 
-        Ok(Self { addr, domain, flags })
+        Ok(Self {
+            addr,
+            domain,
+            flags,
+            address: Some(addr.ip()),
+        })
     }
 
     /// Returns the server socket address.
@@ -955,6 +963,30 @@ impl ServerDetails {
     /// Returns the server configuration flags.
     pub fn flags(&self) -> u16 {
         self.flags
+    }
+
+    /// Creates an authoritative domain entry (no forwarding).
+    ///
+    /// For domains marked as authoritative with server=/domain/, queries
+    /// are answered authoritatively without forwarding to upstream servers.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain` - Domain name to answer authoritatively
+    pub fn new_authoritative(
+        domain: impl Into<String>,
+    ) -> Result<Self, DnsmasqError> {
+        use std::net::{IpAddr, Ipv4Addr};
+        
+        // Use dummy address for authoritative entries (0.0.0.0:0)
+        let dummy_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
+        
+        Ok(Self {
+            addr: dummy_addr,
+            domain: Some(DomainName::new(domain)?),
+            flags: 0,
+            address: None,  // None indicates authoritative (no forwarding)
+        })
     }
 }
 

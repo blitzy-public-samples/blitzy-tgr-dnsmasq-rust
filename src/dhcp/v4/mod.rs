@@ -10,5 +10,11 @@
 /// DHCPv4 protocol constants
 pub mod constants;
 
+/// DHCPv4 message parsing and serialization
+pub mod message;
+
 /// DHCPv4 options encoding/decoding
 pub mod options;
+
+/// DHCPv4 protocol implementation (RFC 2131)
+pub mod protocol;
