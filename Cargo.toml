@@ -58,6 +58,9 @@ bitflags = { version = "2.6", features = ["serde"] }
 hex = "0.4"
 regex = "1.11"
 
+# Low-level socket control - for setting socket options before binding
+socket2 = "0.5"
+
 # Cache implementation - fast hashing and LRU eviction
 ahash = "0.8"
 lru = "0.12"
