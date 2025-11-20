@@ -419,6 +419,13 @@ pub enum DhcpError {
         /// The reason for the DHCPv6 protocol error
         reason: String,
     },
+
+    /// Lease not found in database.
+    #[error("Lease not found for IP address '{ip}'")]
+    LeaseNotFound {
+        /// The IP address of the lease that was not found
+        ip: String,
+    },
 }
 
 /// DNSSEC validation errors with detailed failure diagnostics.
