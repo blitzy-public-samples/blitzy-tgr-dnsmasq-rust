@@ -101,13 +101,14 @@ use crate::dns::protocol::constants::{
 };
 use crate::dns::protocol::message::DnsMessage;
 use crate::dns::protocol::name::DomainName;
-use crate::dns::protocol::record::ResourceRecord;
-use crate::error::{DnsError, Result};
+use crate::dns::protocol::record::{ResourceRecord, RData};
+use crate::error::{DnsError, DnsmasqError, Result};
 use crate::types::RecordType;
 use bytes::{BufMut, Bytes, BytesMut};
 use nom::bytes::complete::take;
 use nom::number::complete::be_u16;
 use nom::IResult;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::ops::Range;
 use tracing::{debug, error, instrument, trace, warn};
 
@@ -376,10 +377,10 @@ impl RrFilter {
         removed_ranges: &[Range<usize>],
     ) -> Result<()> {
         if packet.len() < 12 {
-            return Err(DnsError::ParseFailed {
+            return Err(DnsmasqError::Dns(DnsError::ParseFailed {
                 server: "packet".to_string(),
                 reason: "Packet too short for DNS header".to_string(),
-            });
+            }));
         }
 
         // Parse header counts
@@ -427,10 +428,10 @@ impl RrFilter {
 
             // Parse RDLENGTH
             if offset + 2 > packet.len() {
-                return Err(DnsError::ParseFailed {
+                return Err(DnsmasqError::Dns(DnsError::ParseFailed {
                     server: "packet".to_string(),
                     reason: "Incomplete RDLENGTH".to_string(),
-                });
+                }));
             }
             let rdlength = u16::from_be_bytes([packet[offset], packet[offset + 1]]) as usize;
             offset = offset.checked_add(2).ok_or_else(|| DnsError::ParseFailed {
@@ -518,7 +519,7 @@ impl RrFilter {
         let mut removed_in_additional = 0;
 
         // Determine section boundaries
-        let header = &message.header();
+        let header = &message.header;
         let answer_start = 12;
         let mut authority_start = answer_start;
         let mut additional_start = authority_start;
@@ -640,21 +641,21 @@ impl RrFilter {
                 // Calculate byte range for this record
                 // NOTE: Full implementation requires byte offset tracking in DnsMessage::from_bytes()
                 // Current design uses reparse-and-rebuild strategy in rewrite_packet()
-                trace!("Marking answer record {} for removal: type {:?}", idx, rr.rtype);
+                trace!("Marking answer record {} for removal: type {:?}", idx, rr.rtype());
             }
         }
 
         // Check authority section
         for (idx, rr) in message.authority.iter().enumerate() {
             if Self::should_remove_record(rr, filter_mode, config) {
-                trace!("Marking authority record {} for removal: type {:?}", idx, rr.rtype);
+                trace!("Marking authority record {} for removal: type {:?}", idx, rr.rtype());
             }
         }
 
         // Check additional section
         for (idx, rr) in message.additional.iter().enumerate() {
             if Self::should_remove_record(rr, filter_mode, config) {
-                trace!("Marking additional record {} for removal: type {:?}", idx, rr.rtype);
+                trace!("Marking additional record {} for removal: type {:?}", idx, rr.rtype());
             }
         }
 
@@ -680,18 +681,18 @@ impl RrFilter {
         match filter_mode {
             FilterMode::Edns0 => {
                 // Remove OPT pseudo-RRs (type 41)
-                rr.rtype == RecordType::OPT
+                rr.rtype() == RecordType::OPT
             }
             FilterMode::Dnssec => {
                 // Remove DNSSEC validation records
                 matches!(
-                    rr.rtype,
+                    rr.rtype(),
                     RecordType::RRSIG | RecordType::NSEC | RecordType::NSEC3 | RecordType::DNSKEY | RecordType::DS
                 )
             }
             FilterMode::AddressRecords => {
                 // Remove A and AAAA records
-                matches!(rr.rtype, RecordType::A | RecordType::AAAA)
+                matches!(rr.rtype(), RecordType::A | RecordType::AAAA)
             }
             FilterMode::PolicyBased => {
                 // Remove records in configuration filter list
@@ -734,10 +735,10 @@ impl RrFilter {
 
         loop {
             if offset >= packet.len() {
-                return Err(DnsError::ParseFailed {
+                return Err(DnsmasqError::Dns(DnsError::ParseFailed {
                     server: "packet".to_string(),
                     reason: format!("Name offset {} out of bounds", offset),
-                });
+                }));
             }
 
             let len = packet[offset] as usize;
@@ -750,10 +751,10 @@ impl RrFilter {
             // Compression pointer
             if len & 0xC0 == 0xC0 {
                 if offset + 1 >= packet.len() {
-                    return Err(DnsError::ParseFailed {
+                    return Err(DnsmasqError::Dns(DnsError::ParseFailed {
                         server: "packet".to_string(),
                         reason: "Incomplete compression pointer".to_string(),
-                    });
+                    }));
                 }
 
                 let pointer_offset = ((len & 0x3F) << 8) | (packet[offset + 1] as usize);
@@ -761,13 +762,13 @@ impl RrFilter {
                 // Check if pointer points into a removed range
                 for range in removed_ranges {
                     if range.contains(&pointer_offset) {
-                        return Err(DnsError::InvalidName {
+                        return Err(DnsmasqError::Dns(DnsError::InvalidName {
                             name: "compressed".to_string(),
                             reason: format!(
                                 "Compression pointer at {} points to removed range {:?}",
                                 offset, range
                             ),
-                        });
+                        }));
                     }
                 }
 
@@ -782,10 +783,10 @@ impl RrFilter {
                 // Prevent infinite loops
                 hops += 1;
                 if hops > 255 {
-                    return Err(DnsError::ParseFailed {
+                    return Err(DnsmasqError::Dns(DnsError::ParseFailed {
                         server: "packet".to_string(),
                         reason: "Too many compression pointer hops".to_string(),
-                    });
+                    }));
                 }
 
                 continue;
@@ -793,10 +794,10 @@ impl RrFilter {
 
             // Regular label
             if len > 63 {
-                return Err(DnsError::InvalidName {
+                return Err(DnsmasqError::Dns(DnsError::InvalidName {
                     name: "parsed".to_string(),
                     reason: format!("Label length {} exceeds maximum 63", len),
-                });
+                }));
             }
 
             // Skip label
@@ -806,10 +807,10 @@ impl RrFilter {
             })?;
 
             if offset > packet.len() {
-                return Err(DnsError::ParseFailed {
+                return Err(DnsmasqError::Dns(DnsError::ParseFailed {
                     server: "packet".to_string(),
                     reason: "Label extends beyond packet".to_string(),
-                });
+                }));
             }
         }
     }
@@ -834,72 +835,81 @@ mod tests {
 
     #[test]
     fn test_should_remove_record_edns0() {
-        let opt_record = ResourceRecord {
-            rtype: RecordType::OPT,
-            class: C_IN,
-            name: DomainName::new(".").unwrap(),
-            ttl: 0,
-            rdata: vec![],
-        };
+        let opt_record = ResourceRecord::new(
+            DomainName::new(".").unwrap(),
+            RecordType::OPT,
+            C_IN,
+            0,
+            RData::Opt(vec![]),
+        );
 
         assert!(RrFilter::should_remove_record(&opt_record, FilterMode::Edns0, None));
     }
 
     #[test]
     fn test_should_remove_record_dnssec() {
-        let rrsig_record = ResourceRecord {
-            rtype: RecordType::RRSIG,
-            class: C_IN,
-            name: DomainName::new("example.com").unwrap(),
-            ttl: 3600,
-            rdata: vec![],
-        };
+        let rrsig_record = ResourceRecord::new(
+            DomainName::new("example.com").unwrap(),
+            RecordType::RRSIG,
+            C_IN,
+            3600,
+            RData::Unknown {
+                rtype: T_RRSIG,
+                rdata: Bytes::new(),
+            },
+        );
 
         assert!(RrFilter::should_remove_record(&rrsig_record, FilterMode::Dnssec, None));
 
-        let nsec_record = ResourceRecord {
-            rtype: RecordType::NSEC,
-            class: C_IN,
-            name: DomainName::new("example.com").unwrap(),
-            ttl: 3600,
-            rdata: vec![],
-        };
+        let nsec_record = ResourceRecord::new(
+            DomainName::new("example.com").unwrap(),
+            RecordType::NSEC,
+            C_IN,
+            3600,
+            RData::Unknown {
+                rtype: T_NSEC,
+                rdata: Bytes::new(),
+            },
+        );
 
         assert!(RrFilter::should_remove_record(&nsec_record, FilterMode::Dnssec, None));
     }
 
     #[test]
     fn test_should_remove_record_address_records() {
-        let a_record = ResourceRecord {
-            rtype: RecordType::A,
-            class: C_IN,
-            name: DomainName::new("example.com").unwrap(),
-            ttl: 3600,
-            rdata: vec![192, 0, 2, 1],
-        };
+        let a_record = ResourceRecord::new(
+            DomainName::new("example.com").unwrap(),
+            RecordType::A,
+            C_IN,
+            3600,
+            RData::A(Ipv4Addr::new(192, 0, 2, 1)),
+        );
 
         assert!(RrFilter::should_remove_record(&a_record, FilterMode::AddressRecords, None));
 
-        let aaaa_record = ResourceRecord {
-            rtype: RecordType::AAAA,
-            class: C_IN,
-            name: DomainName::new("example.com").unwrap(),
-            ttl: 3600,
-            rdata: vec![0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-        };
+        let aaaa_record = ResourceRecord::new(
+            DomainName::new("example.com").unwrap(),
+            RecordType::AAAA,
+            C_IN,
+            3600,
+            RData::AAAA(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 1)),
+        );
 
         assert!(RrFilter::should_remove_record(&aaaa_record, FilterMode::AddressRecords, None));
     }
 
     #[test]
     fn test_should_not_remove_unmatched_records() {
-        let mx_record = ResourceRecord {
-            rtype: RecordType::MX,
-            class: C_IN,
-            name: DomainName::new("example.com").unwrap(),
-            ttl: 3600,
-            rdata: vec![],
-        };
+        let mx_record = ResourceRecord::new(
+            DomainName::new("example.com").unwrap(),
+            RecordType::MX,
+            C_IN,
+            3600,
+            RData::Mx {
+                preference: 10,
+                exchange: DomainName::new("mail.example.com").unwrap(),
+            },
+        );
 
         assert!(!RrFilter::should_remove_record(&mx_record, FilterMode::Edns0, None));
         assert!(!RrFilter::should_remove_record(&mx_record, FilterMode::Dnssec, None));

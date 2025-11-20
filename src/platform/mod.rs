@@ -631,8 +631,8 @@ pub use ubus::UbusDaemon;
 ///
 /// # Platform Target
 ///
-/// Only available on Linux (`target_os = "linux"`).
-#[cfg(target_os = "linux")]
+/// Available on all platforms but fully functional only on Linux with the `inotify` feature enabled.
+/// On other platforms or when the feature is disabled, returns a stub that errors on creation.
 pub use inotify::InotifyWatcher;
 
 /// Notify systemd of service readiness or status updates.

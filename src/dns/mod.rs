@@ -19,9 +19,11 @@
 //! This module provides the complete DNS functionality for dnsmasq, replacing
 //! the C implementation with memory-safe Rust code.
 
+pub mod auth;
 pub mod cache;
 pub mod dnssec;
 pub mod edns0;
+pub mod filter;
 pub mod matcher;
 pub mod protocol;
 pub mod upstream;

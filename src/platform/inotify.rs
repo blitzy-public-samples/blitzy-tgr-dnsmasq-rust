@@ -755,12 +755,41 @@ impl InotifyWatcher {
     }
 }
 
+// Stub implementation for Linux when inotify feature is disabled
+/// Stub implementation of InotifyWatcher when the `inotify` feature is disabled on Linux.
+///
+/// This stub always returns an error when attempting to create a new instance.
+#[cfg(all(target_os = "linux", not(feature = "inotify")))]
+pub struct InotifyWatcher;
+
+#[cfg(all(target_os = "linux", not(feature = "inotify")))]
+impl InotifyWatcher {
+    /// Attempts to create a new InotifyWatcher, but always fails since the feature is disabled.
+    ///
+    /// # Errors
+    ///
+    /// Always returns `PlatformError::FileMonitoring` indicating the feature is not enabled.
+    pub fn new() -> Result<Self, crate::error::PlatformError> {
+        Err(crate::error::PlatformError::FileMonitoring(
+            "Inotify feature is not enabled".to_string(),
+        ))
+    }
+}
+
 // Stub implementation for non-Linux platforms
+/// Stub implementation of InotifyWatcher for non-Linux platforms.
+///
+/// This stub always returns an error when attempting to create a new instance.
 #[cfg(not(target_os = "linux"))]
 pub struct InotifyWatcher;
 
 #[cfg(not(target_os = "linux"))]
 impl InotifyWatcher {
+    /// Attempts to create a new InotifyWatcher, but always fails since inotify is Linux-only.
+    ///
+    /// # Errors
+    ///
+    /// Always returns `PlatformError::FileMonitoring` indicating inotify is only available on Linux.
     pub fn new() -> Result<Self, crate::error::PlatformError> {
         Err(crate::error::PlatformError::FileMonitoring(
             "Inotify is only available on Linux".to_string(),
@@ -772,9 +801,10 @@ impl InotifyWatcher {
 // TESTS
 // ============================================================================
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_os = "linux", feature = "inotify"))]
 mod tests {
     use super::*;
+    use crate::error::PlatformError;
     use std::fs;
     use std::io::Write;
     use tempfile::TempDir;

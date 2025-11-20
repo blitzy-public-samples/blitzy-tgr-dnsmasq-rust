@@ -684,6 +684,8 @@ pub enum RecordType {
     ANY = 255,
     /// Certification Authority Authorization (RFC 8659)
     CAA = 257,
+    /// Zone transfer (AXFR) (RFC 5936)
+    AXFR = 252,
     /// Unknown or unsupported record type
     Unknown(u16),
 }
@@ -746,6 +748,7 @@ impl From<RecordType> for u16 {
             RecordType::NSEC3 => 50,
             RecordType::NSEC3PARAM => 51,
             RecordType::ANY => 255,
+            RecordType::AXFR => 252,
             RecordType::CAA => 257,
             RecordType::Unknown(code) => code,
         }
