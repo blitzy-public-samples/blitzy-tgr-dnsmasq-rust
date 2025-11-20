@@ -105,7 +105,7 @@ use nom::{
     sequence::tuple,
     IResult,
 };
-use rand::random;
+use crate::util::random::rand32;
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::LazyLock;
@@ -775,11 +775,11 @@ pub static DHCPV6_OPTION_TABLE: LazyLock<HashMap<u16, OptionMetadata>> =
 ///
 /// # Security
 ///
-/// Uses `rand::random()` which provides cryptographically secure randomness
+/// Uses `crate::util::random::rand32()` which provides cryptographically secure randomness
 /// via platform CSPRNG (e.g., getrandom(2) on Linux, arc4random(3) on BSD).
 /// Far superior to C's random() which is predictable and unsuitable for security.
 pub fn generate_xid() -> u32 {
-    random()
+    rand32()
 }
 
 /// Parse a MAC address from string format.
@@ -1176,10 +1176,14 @@ pub async fn recv_dhcp_packet(
                         buf.truncate(len);
                         Ok((len, src_addr))
                     }
-                    Err(e) => Err(DhcpError::IoError(e)),
+                    Err(e) => Err(DhcpError::ParseFailed {
+                        reason: format!("Failed to receive DHCP packet: {}", e),
+                    }),
                 }
             } else {
-                Err(DhcpError::IoError(e))
+                Err(DhcpError::ParseFailed {
+                    reason: format!("Failed to receive DHCP packet: {}", e),
+                })
             }
         }
     }
@@ -1205,25 +1209,25 @@ mod tests {
     #[test]
     fn test_parse_mac_address_colon() {
         let mac = parse_mac_address("00:11:22:33:44:55").unwrap();
-        assert_eq!(mac, [0x00, 0x11, 0x22, 0x33, 0x44, 0x55]);
+        assert_eq!(mac.octets(), &[0x00, 0x11, 0x22, 0x33, 0x44, 0x55]);
     }
 
     #[test]
     fn test_parse_mac_address_hyphen() {
         let mac = parse_mac_address("AA-BB-CC-DD-EE-FF").unwrap();
-        assert_eq!(mac, [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]);
+        assert_eq!(mac.octets(), &[0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]);
     }
 
     #[test]
     fn test_parse_mac_address_dot() {
         let mac = parse_mac_address("aabb.ccdd.eeff").unwrap();
-        assert_eq!(mac, [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]);
+        assert_eq!(mac.octets(), &[0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]);
     }
 
     #[test]
     fn test_parse_mac_address_continuous() {
         let mac = parse_mac_address("112233445566").unwrap();
-        assert_eq!(mac, [0x11, 0x22, 0x33, 0x44, 0x55, 0x66]);
+        assert_eq!(mac.octets(), &[0x11, 0x22, 0x33, 0x44, 0x55, 0x66]);
     }
 
     #[test]
@@ -1295,7 +1299,7 @@ mod tests {
             len: 4,
             flags: DHOPT_MATCH,
             val: vec![0xAA, 0xBB, 0xCC, 0xDD],
-            wildcard_mask: Some(0x0110), // Bytes 1 and 2 are wildcards (bits 4 and 8)
+            wildcard_mask: Some(0x0006), // Bytes 1 and 2 are wildcards (bits 1 and 2)
         };
         
         // First and last bytes must match, middle two can be anything
