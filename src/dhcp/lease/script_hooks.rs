@@ -441,8 +441,6 @@ mod tests {
     use crate::types::MacAddress;
     use std::net::{IpAddr, Ipv4Addr};
     use std::time::Duration;
-    use tempfile::NamedTempFile;
-    use tokio::io::AsyncWriteExt;
 
     #[tokio::test]
     async fn test_script_execution_success() {

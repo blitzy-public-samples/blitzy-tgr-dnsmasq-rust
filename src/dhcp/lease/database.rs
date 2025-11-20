@@ -534,7 +534,7 @@ fn write_vendorclass_line(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::net::Ipv4Addr;
 
     #[test]
     fn test_parse_hex_string() {

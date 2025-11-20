@@ -801,6 +801,10 @@ impl RrFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dns::protocol::constants::{C_IN, T_NSEC, T_RRSIG};
+    use crate::dns::protocol::{DomainName, RData};
+    use bytes::Bytes;
+    use std::net::{Ipv4Addr, Ipv6Addr};
 
     #[test]
     fn test_filter_mode_variants() {

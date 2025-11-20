@@ -370,7 +370,7 @@ mod tests {
     use crate::dns::cache::DnsCache;
     use crate::dns::protocol::name::DomainName;
     use crate::types::RecordType;
-    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::net::Ipv4Addr;
     use std::time::Duration;
 
     #[tokio::test]
@@ -385,7 +385,7 @@ mod tests {
 
         // Verify it was added
         {
-            let mut cache_lock = cache.write().unwrap();
+            let mut cache_lock = cache.write().await;
             let domain_name = DomainName::new(hostname).unwrap();
             let record_type = match ip {
                 IpAddr::V4(_) => RecordType::A,
@@ -399,7 +399,7 @@ mod tests {
 
         // Verify it was removed
         {
-            let mut cache_lock = cache.write().unwrap();
+            let mut cache_lock = cache.write().await;
             let domain_name = DomainName::new(hostname).unwrap();
             let record_type = match ip {
                 IpAddr::V4(_) => RecordType::A,
@@ -422,7 +422,7 @@ mod tests {
 
         // Verify both were added
         {
-            let mut cache_lock = cache.write().unwrap();
+            let mut cache_lock = cache.write().await;
             let record_type = match ip {
                 IpAddr::V4(_) => RecordType::A,
                 IpAddr::V6(_) => RecordType::AAAA,
@@ -452,7 +452,7 @@ mod tests {
 
         // Verify it was not added
         {
-            let mut cache_lock = cache.write().unwrap();
+            let mut cache_lock = cache.write().await;
             let domain_name = DomainName::new(hostname).unwrap();
             let record_type = match ip {
                 IpAddr::V4(_) => RecordType::A,
