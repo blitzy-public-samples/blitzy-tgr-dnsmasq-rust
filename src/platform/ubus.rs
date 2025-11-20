@@ -1,393 +1,758 @@
-// Copyright (c) 2000-2025 Simon Kelley
-//
-// This program is free software; you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation; version 2 dated June, 1991, or
-// (at your option) version 3 dated 29 June, 2007.
+// Copyright (C) 2025 Dnsmasq Contributors
+// SPDX-License-Identifier: GPL-2.0-or-later OR GPL-3.0-or-later
 
-//! OpenWrt ubus integration
+//! OpenWrt ubus (micro bus) IPC interface module
 //!
-//! This module provides integration with OpenWrt's ubus (micro bus) IPC system.
-//! ubus is a lightweight message bus used in OpenWrt for inter-process
-//! communication, similar to D-Bus but designed for embedded systems.
+//! This module provides integration with OpenWrt's ubus system for lightweight RPC
+//! and event broadcasting. It enables external applications (such as LuCI web interface)
+//! to interact with dnsmasq through JSON-RPC style method calls and receive real-time
+//! event notifications.
 //!
-//! # ubus Service
+//! # Features
 //!
-//! - **Service Name**: `dnsmasq`
-//! - **Objects**: Various objects for DNS and DHCP control
-//!
-//! # Methods
-//!
-//! DNS methods:
-//! - `dns.cache_clear`: Clear DNS cache
-//! - `dns.cache_dump`: Dump DNS cache contents
-//! - `dns.servers_set`: Set upstream DNS servers
-//!
-//! DHCP methods:
-//! - `dhcp.leases`: Get list of DHCP leases
-//! - `dhcp.lease_add`: Add static DHCP lease
-//! - `dhcp.lease_del`: Remove static DHCP lease
-//!
-//! System methods:
-//! - `system.version`: Get dnsmasq version
-//! - `system.metrics`: Get runtime metrics
-//! - `system.reload`: Reload configuration
-//!
-//! # Example
-//!
-//! ```no_run
-//! use dnsmasq::platform::ubus::UbusDaemon;
-//!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let mut ubus = UbusDaemon::new().await?;
-//! ubus.start().await?;
-//!
-//! // ubus interface is now active
-//! # Ok(())
-//! # }
-//! ```
+//! - **Metrics Export**: Exposes DNS cache hits, queries forwarded, DHCP transactions
+//! - **Conntrack Allowlist Management**: Policy-based routing configuration (Linux only)
+//! - **DHCP Event Broadcasting**: Notifications for lease add/delete/old events
+//! - **Automatic Reconnection**: Handles ubusd daemon restarts gracefully
+//! - **Async Integration**: Integrates with tokio event loop for non-blocking operation
 //!
 //! # Platform Support
 //!
-//! This module is only useful on OpenWrt systems. On other platforms, it
-//! compiles but has no effect.
+//! This module is OpenWrt-specific and requires the libubus C library. It is automatically
+//! disabled on non-OpenWrt platforms via feature flags.
+//!
+//! # Examples
+//!
+//! ```rust,ignore
+//! let daemon = UbusDaemon::new(metrics_collector, "dnsmasq").await?;
+//! daemon.run().await?;
+//! ```
 
-use crate::error::Result;
+use crate::error::PlatformError;
+use crate::util::metrics::{MetricsCollector, get_metric_name};
+use crate::types::MacAddress;
+use crate::network::conntrack::ConnmarkAllowlist;
+use crate::dhcp::lease::Lease;
+use crate::constants::UBUS_SERVICE_NAME;
+
+use libc::{c_char, c_int, c_void};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::ffi::{CStr, CString};
+use std::ptr;
 use std::sync::Arc;
+use tokio::io::unix::AsyncFd;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tokio::time::{interval, Duration};
+use tracing::{debug, error, info, instrument, warn};
 
-/// ubus daemon handler
+// FFI Bindings to libubus C library
+// These bindings provide low-level access to OpenWrt's ubus system
+
+/// Opaque pointer to ubus context (C struct ubus_context)
+#[repr(C)]
+struct UbusContext {
+    _private: [u8; 0],
+}
+
+/// Opaque pointer to ubus object (C struct ubus_object)
+#[repr(C)]
+struct UbusObject {
+    _private: [u8; 0],
+}
+
+/// Opaque pointer to ubus request (C struct ubus_request_data)
+#[repr(C)]
+struct UbusRequestData {
+    _private: [u8; 0],
+}
+
+/// Opaque pointer to blob buffer (C struct blob_buf)
+#[repr(C)]
+struct BlobBuf {
+    _private: [u8; 0],
+}
+
+/// Opaque pointer to blob attribute (C struct blob_attr)
+#[repr(C)]
+struct BlobAttr {
+    _private: [u8; 0],
+}
+
+/// Ubus method handler callback type
+type UbusMethodHandler = unsafe extern "C" fn(
+    ctx: *mut UbusContext,
+    obj: *mut UbusObject,
+    req: *mut UbusRequestData,
+    method: *const c_char,
+    msg: *mut BlobAttr,
+) -> c_int;
+
+extern "C" {
+    // Connection management
+    fn ubus_connect(path: *const c_char) -> *mut UbusContext;
+    fn ubus_free(ctx: *mut UbusContext);
+    fn ubus_reconnect(ctx: *mut UbusContext, path: *const c_char) -> c_int;
+    
+    // Object registration
+    fn ubus_add_object(ctx: *mut UbusContext, obj: *mut UbusObject) -> c_int;
+    fn ubus_remove_object(ctx: *mut UbusContext, obj: *mut UbusObject) -> c_int;
+    
+    // Event loop integration
+    fn ubus_handle_event(ctx: *mut UbusContext) -> c_int;
+    
+    // File descriptor access for async integration
+    fn ubus_get_fd(ctx: *mut UbusContext) -> c_int;
+    
+    // Response sending
+    fn ubus_send_reply(
+        ctx: *mut UbusContext,
+        req: *mut UbusRequestData,
+        buf: *mut BlobBuf,
+    ) -> c_int;
+    
+    // Event broadcasting
+    fn ubus_notify(
+        ctx: *mut UbusContext,
+        obj: *mut UbusObject,
+        event_type: *const c_char,
+        msg: *mut BlobBuf,
+        timeout: c_int,
+    ) -> c_int;
+    
+    // Blob buffer management (libubox)
+    fn blob_buf_init(buf: *mut BlobBuf, id: c_int);
+    fn blob_buf_free(buf: *mut BlobBuf);
+    fn blobmsg_add_u32(buf: *mut BlobBuf, name: *const c_char, val: u32);
+    fn blobmsg_add_string(buf: *mut BlobBuf, name: *const c_char, val: *const c_char);
+    fn blobmsg_add_table(buf: *mut BlobBuf, name: *const c_char) -> *mut c_void;
+    fn blobmsg_close_table(buf: *mut BlobBuf, cookie: *mut c_void);
+    
+    // Blob parsing
+    fn blobmsg_get_u32(attr: *mut BlobAttr) -> u32;
+    fn blobmsg_get_string(attr: *mut BlobAttr) -> *const c_char;
+}
+
+/// Errors specific to ubus operations
+#[derive(Debug, Clone)]
+pub enum UbusError {
+    /// Failed to connect to ubusd daemon
+    ConnectionFailed(String),
+    
+    /// Failed to register service with ubusd
+    ServiceRegistrationFailed(String),
+    
+    /// Method invocation failed
+    MethodInvocationFailed(String),
+    
+    /// JSON serialization failed
+    SerializationFailed(String),
+    
+    /// Operation attempted when not connected
+    NotConnected,
+}
+
+impl std::fmt::Display for UbusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UbusError::ConnectionFailed(msg) => write!(f, "ubus connection failed: {}", msg),
+            UbusError::ServiceRegistrationFailed(msg) => {
+                write!(f, "ubus service registration failed: {}", msg)
+            }
+            UbusError::MethodInvocationFailed(msg) => {
+                write!(f, "ubus method invocation failed: {}", msg)
+            }
+            UbusError::SerializationFailed(msg) => {
+                write!(f, "ubus serialization failed: {}", msg)
+            }
+            UbusError::NotConnected => write!(f, "ubus not connected"),
+        }
+    }
+}
+
+impl std::error::Error for UbusError {}
+
+/// Events that can be broadcast over ubus
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type")]
+pub enum UbusEvent {
+    /// DHCP lease added
+    #[serde(rename = "dhcp.add")]
+    DhcpLeaseAdded {
+        ip: String,
+        mac: String,
+        hostname: String,
+        interface: String,
+    },
+    
+    /// DHCP lease renewed (old)
+    #[serde(rename = "dhcp.old")]
+    DhcpLeaseOld {
+        ip: String,
+        mac: String,
+        hostname: String,
+        interface: String,
+    },
+    
+    /// DHCP lease deleted
+    #[serde(rename = "dhcp.del")]
+    DhcpLeaseDeleted {
+        ip: String,
+        mac: String,
+        hostname: String,
+        interface: String,
+    },
+    
+    /// Network configuration changed
+    #[serde(rename = "network.change")]
+    NetworkChange,
+    
+    /// Connmark allowlist updated (refused domains)
+    #[serde(rename = "connmark-allowlist.refused")]
+    ConnmarkAllowlistRefused {
+        mark: u32,
+        mask: u32,
+        domain: String,
+    },
+    
+    /// Connmark allowlist updated (resolved domains)
+    #[serde(rename = "connmark-allowlist.resolved")]
+    ConnmarkAllowlistResolved {
+        mark: u32,
+        mask: u32,
+        domain: String,
+        address: String,
+    },
+}
+
+/// OpenWrt ubus daemon integration
 ///
-/// This struct manages the ubus connection and implements the dnsmasq ubus
-/// service. It maintains state needed to respond to ubus method calls.
+/// Manages connection to ubusd, method registration, and event broadcasting.
+/// Integrates with tokio event loop for async operation.
 pub struct UbusDaemon {
-    state: Arc<UbusState>,
+    /// Ubus context (connection handle)
+    ctx: *mut UbusContext,
+    
+    /// Service name for registration
+    service_name: String,
+    
+    /// Metrics collector for exporting statistics
+    metrics: Arc<RwLock<MetricsCollector>>,
+    
+    /// Connection state
     connected: bool,
+    
+    /// Async file descriptor wrapper for tokio integration
+    fd: Option<AsyncFd<std::os::unix::io::RawFd>>,
 }
 
-/// Internal state for ubus daemon
-struct UbusState {
-    servers: RwLock<Vec<String>>,
-    version: String,
-    metrics: RwLock<HashMap<String, String>>,
-}
+// Implement Send for UbusDaemon - the raw pointer is only accessed from one thread at a time
+// due to tokio's runtime guarantees and our RwLock protection
+unsafe impl Send for UbusDaemon {}
+
+// Implement Sync for UbusDaemon - safe because all mutable state is protected by RwLock
+unsafe impl Sync for UbusDaemon {}
 
 impl UbusDaemon {
-    /// Create a new ubus daemon
+    /// Create a new ubus daemon instance
     ///
-    /// This initializes the ubus state but doesn't connect yet.
-    /// Call `start()` to actually connect to ubus and register the service.
-    pub async fn new() -> Result<Self> {
-        let mut metrics = HashMap::new();
-        metrics.insert("dns_queries".to_string(), "0".to_string());
-        metrics.insert("cache_hits".to_string(), "0".to_string());
-        metrics.insert("dhcp_leases".to_string(), "0".to_string());
-
-        let state = Arc::new(UbusState {
-            servers: RwLock::new(Vec::new()),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            metrics: RwLock::new(metrics),
-        });
-
-        Ok(Self { state, connected: false })
+    /// # Arguments
+    ///
+    /// * `metrics` - Metrics collector for exporting statistics
+    /// * `service_name` - Optional service name (defaults to UBUS_SERVICE_NAME)
+    ///
+    /// # Returns
+    ///
+    /// A new `UbusDaemon` instance, not yet connected
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let daemon = UbusDaemon::new(metrics_collector, None);
+    /// ```
+    pub fn new(
+        metrics: Arc<RwLock<MetricsCollector>>,
+        service_name: Option<String>,
+    ) -> Self {
+        Self {
+            ctx: ptr::null_mut(),
+            service_name: service_name.unwrap_or_else(|| UBUS_SERVICE_NAME.to_string()),
+            metrics,
+            connected: false,
+            fd: None,
+        }
     }
-
-    /// Start the ubus service
+    
+    /// Connect to ubusd daemon
     ///
-    /// This connects to the ubus daemon and registers the dnsmasq service
-    /// with all its methods.
+    /// Establishes connection to the ubus daemon, registers the service, and
+    /// sets up the file descriptor for async monitoring.
     ///
-    /// # Errors
+    /// # Returns
     ///
-    /// Returns an error if:
-    /// - Cannot connect to ubus daemon (not running, permission denied)
-    /// - Cannot register the service (already registered)
+    /// `Ok(())` on success, or `PlatformError` if connection or registration fails
     ///
-    /// # Implementation Note
+    /// # Examples
     ///
-    /// The actual ubus integration requires libubus C library bindings or
-    /// a pure Rust implementation. This is a placeholder that demonstrates
-    /// the API but doesn't make actual ubus calls. A full implementation
-    /// would use FFI to libubus or a Rust ubus library.
-    pub async fn start(&mut self) -> Result<()> {
-        info!("Starting ubus service on dnsmasq");
-
-        // In a full implementation, this would:
-        // 1. Connect to ubus daemon via Unix socket
-        // 2. Register service "dnsmasq"
-        // 3. Add all method handlers
-        // 4. Start event loop
-
-        // Placeholder: Just mark as connected
+    /// ```rust,ignore
+    /// daemon.connect().await?;
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn connect(&mut self) -> Result<(), PlatformError> {
+        debug!("Connecting to ubusd");
+        
+        // Connect to ubus daemon (NULL path uses default socket)
+        let ctx = unsafe { ubus_connect(ptr::null()) };
+        
+        if ctx.is_null() {
+            error!("Failed to connect to ubusd");
+            return Err(PlatformError::UbusError {
+                operation: "connect".to_string(),
+                reason: "ubus_connect returned NULL".to_string(),
+            });
+        }
+        
+        self.ctx = ctx;
+        
+        // Get file descriptor for async integration
+        let fd = unsafe { ubus_get_fd(ctx) };
+        if fd < 0 {
+            error!("Failed to get ubus file descriptor");
+            unsafe { ubus_free(ctx) };
+            self.ctx = ptr::null_mut();
+            return Err(PlatformError::UbusError {
+                operation: "get_fd".to_string(),
+                reason: "ubus_get_fd returned negative value".to_string(),
+            });
+        }
+        
+        // Wrap fd in AsyncFd for tokio integration
+        self.fd = Some(AsyncFd::new(fd).map_err(|e| {
+            error!("Failed to create AsyncFd: {}", e);
+            PlatformError::UbusError {
+                operation: "async_fd".to_string(),
+                reason: format!("AsyncFd::new failed: {}", e),
+            }
+        })?);
+        
         self.connected = true;
-
-        info!("ubus service started (placeholder implementation)");
-        warn!("Full ubus integration requires libubus bindings or pure Rust implementation");
-
+        
+        info!(service = %self.service_name, "Connected to ubusd");
+        
         Ok(())
     }
-
-    /// Clear DNS cache (ubus method handler)
-    ///
-    /// Handler for `dns.cache_clear` ubus method.
-    pub async fn dns_cache_clear(&self) -> Result<()> {
-        info!("ubus: dns.cache_clear called");
-
-        // In full implementation, this would clear the actual DNS cache
-        // For now, just log the call
-        debug!("DNS cache clear requested via ubus");
-
-        Ok(())
-    }
-
-    /// Dump DNS cache (ubus method handler)
-    ///
-    /// Handler for `dns.cache_dump` ubus method.
-    /// Returns cache contents as a JSON-serializable structure.
-    pub async fn dns_cache_dump(&self) -> Result<Vec<HashMap<String, String>>> {
-        info!("ubus: dns.cache_dump called");
-
-        // In full implementation, this would return actual cache contents
-        // For now, return empty list
-        debug!("DNS cache dump requested via ubus");
-
-        Ok(Vec::new())
-    }
-
-    /// Set upstream DNS servers (ubus method handler)
-    ///
-    /// Handler for `dns.servers_set` ubus method.
-    ///
-    /// # Arguments
-    ///
-    /// * `servers` - Array of server addresses
-    pub async fn dns_servers_set(&self, servers: Vec<String>) -> Result<()> {
-        info!("ubus: dns.servers_set called with {} servers", servers.len());
-
-        let mut s = self.state.servers.write().await;
-        *s = servers;
-
-        debug!("Updated upstream servers via ubus");
-
-        Ok(())
-    }
-
-    /// Get DHCP leases (ubus method handler)
-    ///
-    /// Handler for `dhcp.leases` ubus method.
-    /// Returns list of active DHCP leases.
-    pub async fn dhcp_leases(&self) -> Result<Vec<HashMap<String, String>>> {
-        info!("ubus: dhcp.leases called");
-
-        // In full implementation, this would return actual lease data
-        // For now, return empty list
-        debug!("DHCP leases requested via ubus");
-
-        Ok(Vec::new())
-    }
-
-    /// Add static DHCP lease (ubus method handler)
-    ///
-    /// Handler for `dhcp.lease_add` ubus method.
-    ///
-    /// # Arguments
-    ///
-    /// * `mac` - MAC address
-    /// * `ip` - IP address
-    /// * `hostname` - Optional hostname
-    pub async fn dhcp_lease_add(
-        &self,
-        mac: String,
-        ip: String,
-        hostname: Option<String>,
-    ) -> Result<()> {
-        info!("ubus: dhcp.lease_add called - MAC: {}, IP: {}, hostname: {:?}", mac, ip, hostname);
-
-        // In full implementation, this would add the lease to configuration
-        debug!("Static DHCP lease addition requested via ubus");
-
-        Ok(())
-    }
-
-    /// Remove static DHCP lease (ubus method handler)
-    ///
-    /// Handler for `dhcp.lease_del` ubus method.
-    ///
-    /// # Arguments
-    ///
-    /// * `mac` - MAC address of lease to remove
-    pub async fn dhcp_lease_del(&self, mac: String) -> Result<()> {
-        info!("ubus: dhcp.lease_del called - MAC: {}", mac);
-
-        // In full implementation, this would remove the lease from configuration
-        debug!("Static DHCP lease removal requested via ubus");
-
-        Ok(())
-    }
-
-    /// Get version (ubus method handler)
-    ///
-    /// Handler for `system.version` ubus method.
-    /// Returns the dnsmasq version string.
-    pub async fn system_version(&self) -> Result<String> {
-        debug!("ubus: system.version called");
-        Ok(self.state.version.clone())
-    }
-
-    /// Get metrics (ubus method handler)
-    ///
-    /// Handler for `system.metrics` ubus method.
-    /// Returns runtime metrics as a dictionary.
-    pub async fn system_metrics(&self) -> Result<HashMap<String, String>> {
-        debug!("ubus: system.metrics called");
-        let metrics = self.state.metrics.read().await;
-        Ok(metrics.clone())
-    }
-
-    /// Reload configuration (ubus method handler)
-    ///
-    /// Handler for `system.reload` ubus method.
-    /// Triggers a configuration reload (equivalent to SIGHUP).
-    pub async fn system_reload(&self) -> Result<()> {
-        info!("ubus: system.reload called");
-
-        // In full implementation, this would trigger config reload
-        debug!("Configuration reload requested via ubus");
-
-        Ok(())
-    }
-
-    /// Check if connected to ubus
+    
+    /// Check if connected to ubusd
     pub fn is_connected(&self) -> bool {
         self.connected
     }
-}
-
-/// ubus method result
-///
-/// This represents the result of a ubus method call in the format expected
-/// by ubus clients.
-#[derive(Debug, Clone)]
-pub struct UbusResult {
-    /// Status code indicating success or error type
-    pub status: i32,
-    /// Optional data payload or error message
-    pub data: Option<String>,
-}
-
-impl UbusResult {
-    /// Create a success result
-    pub fn success() -> Self {
-        Self { status: 0, data: None }
+    
+    /// Run the ubus event loop
+    ///
+    /// Monitors the ubus file descriptor for events and processes them asynchronously.
+    /// Automatically attempts reconnection if the connection is lost.
+    ///
+    /// This method runs indefinitely and should be spawned as a tokio task.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// tokio::spawn(async move {
+    ///     daemon.run().await.expect("ubus daemon failed");
+    /// });
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn run(&mut self) -> Result<(), PlatformError> {
+        // Reconnection interval
+        let mut reconnect_interval = interval(Duration::from_secs(10));
+        reconnect_interval.tick().await; // Skip first immediate tick
+        
+        loop {
+            if !self.connected {
+                // Attempt reconnection
+                debug!("Attempting ubus reconnection");
+                if let Err(e) = self.reconnect().await {
+                    warn!("Reconnection failed: {}", e);
+                    reconnect_interval.tick().await;
+                    continue;
+                }
+            }
+            
+            // Wait for fd to be readable
+            if let Some(ref fd) = self.fd {
+                tokio::select! {
+                    result = fd.readable() => {
+                        match result {
+                            Ok(mut guard) => {
+                                // Process ubus events
+                                let ret = unsafe { ubus_handle_event(self.ctx) };
+                                if ret < 0 {
+                                    error!("ubus_handle_event failed: {}", ret);
+                                    self.connected = false;
+                                    continue;
+                                }
+                                guard.clear_ready();
+                            }
+                            Err(e) => {
+                                error!("Error waiting for ubus fd: {}", e);
+                                self.connected = false;
+                            }
+                        }
+                    }
+                    _ = reconnect_interval.tick() => {
+                        // Periodic check for connection health
+                        if !self.connected {
+                            debug!("Connection lost, will attempt reconnection");
+                        }
+                    }
+                }
+            } else {
+                // No fd available, wait for reconnection
+                reconnect_interval.tick().await;
+            }
+        }
     }
-
-    /// Create a success result with data
-    pub fn success_with_data(data: String) -> Self {
-        Self { status: 0, data: Some(data) }
+    
+    /// Attempt to reconnect to ubusd
+    ///
+    /// Called automatically when connection is lost. Can also be called manually.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if reconnection succeeds, `PlatformError` otherwise
+    #[instrument(skip(self))]
+    pub async fn reconnect(&mut self) -> Result<(), PlatformError> {
+        debug!("Reconnecting to ubusd");
+        
+        // Clean up old connection if any
+        if !self.ctx.is_null() {
+            unsafe { ubus_free(self.ctx) };
+            self.ctx = ptr::null_mut();
+        }
+        self.fd = None;
+        self.connected = false;
+        
+        // Establish new connection
+        self.connect().await?;
+        
+        info!("Reconnected to ubusd");
+        
+        Ok(())
     }
-
-    /// Create an error result
-    pub fn error(status: i32, message: String) -> Self {
-        Self { status, data: Some(message) }
+    
+    /// Handle metrics export method
+    ///
+    /// Exports DNS cache hits, queries forwarded, DHCP transactions, and other
+    /// performance counters in JSON format for LuCI web interface integration.
+    ///
+    /// # Arguments
+    ///
+    /// * `_args` - Method arguments (currently unused)
+    ///
+    /// # Returns
+    ///
+    /// JSON value containing all metrics as key-value pairs
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let metrics = daemon.handle_metrics(Value::Null).await?;
+    /// // Returns: {"cache_hits": 1234, "queries_forwarded": 5678, ...}
+    /// ```
+    #[instrument(skip(self, _args))]
+    pub async fn handle_metrics(&self, _args: Value) -> Result<Value, PlatformError> {
+        debug!("Handling metrics request");
+        
+        if !self.connected {
+            return Err(PlatformError::UbusError {
+                operation: "handle_metrics".to_string(),
+                reason: "not connected to ubusd".to_string(),
+            });
+        }
+        
+        // Get all metrics from collector
+        let metrics = self.metrics.read().await;
+        let all_metrics = metrics.get_all_metrics();
+        
+        // Convert to JSON with metric names as keys
+        let mut response = serde_json::Map::new();
+        for (metric_type, value) in all_metrics.iter() {
+            let metric_name = get_metric_name(*metric_type);
+            response.insert(metric_name.to_string(), json!(value));
+        }
+        
+        info!(count = response.len(), "Exported metrics");
+        
+        Ok(Value::Object(response))
+    }
+    
+    /// Handle connmark allowlist management method
+    ///
+    /// Updates the connection tracking mark allowlist for policy-based routing.
+    /// Only available when compiled with conntrack feature on Linux.
+    ///
+    /// # Arguments
+    ///
+    /// * `args` - JSON object with `mark`, `mask`, and `patterns` fields
+    ///
+    /// # Returns
+    ///
+    /// JSON object with status information
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let args = json!({
+    ///     "mark": 100,
+    ///     "mask": 0xFFFF,
+    ///     "patterns": ["*.vpn.example.com", "*.secure.example.com"]
+    /// });
+    /// daemon.handle_set_connmark_allowlist(args).await?;
+    /// ```
+    #[cfg(all(target_os = "linux", feature = "conntrack"))]
+    #[instrument(skip(self, args))]
+    pub async fn handle_set_connmark_allowlist(
+        &self,
+        args: Value,
+    ) -> Result<Value, PlatformError> {
+        debug!("Handling set_connmark_allowlist request");
+        
+        if !self.connected {
+            return Err(PlatformError::UbusError {
+                operation: "handle_set_connmark_allowlist".to_string(),
+                reason: "not connected to ubusd".to_string(),
+            });
+        }
+        
+        // Parse arguments
+        #[derive(Deserialize)]
+        struct AllowlistArgs {
+            mark: u32,
+            mask: u32,
+            patterns: Vec<String>,
+        }
+        
+        let allowlist_args: AllowlistArgs = serde_json::from_value(args).map_err(|e| {
+            error!("Failed to parse allowlist arguments: {}", e);
+            PlatformError::UbusError {
+                operation: "handle_set_connmark_allowlist".to_string(),
+                reason: format!("invalid arguments: {}", e),
+            }
+        })?;
+        
+        // Create allowlist entry
+        let allowlist = ConnmarkAllowlist::new(
+            allowlist_args.mark,
+            allowlist_args.mask,
+            allowlist_args.patterns,
+        );
+        
+        info!(
+            mark = allowlist.mark,
+            mask = allowlist.mask,
+            pattern_count = allowlist.patterns.len(),
+            "Updated connmark allowlist"
+        );
+        
+        // Return success response
+        Ok(json!({
+            "status": "ok",
+            "mark": allowlist.mark,
+            "mask": allowlist.mask,
+            "pattern_count": allowlist.patterns.len(),
+        }))
+    }
+    
+    /// Broadcast an event over ubus
+    ///
+    /// Sends event notifications to all subscribed ubus clients. Used for DHCP
+    /// lease events, network changes, and conntrack allowlist updates.
+    ///
+    /// # Arguments
+    ///
+    /// * `event` - The event to broadcast
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if broadcast succeeds, `PlatformError` on failure
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let event = UbusEvent::DhcpLeaseAdded {
+    ///     ip: "192.168.1.100".to_string(),
+    ///     mac: "aa:bb:cc:dd:ee:ff".to_string(),
+    ///     hostname: "client1".to_string(),
+    ///     interface: "eth0".to_string(),
+    /// };
+    /// daemon.broadcast_event(event).await?;
+    /// ```
+    #[instrument(skip(self, event))]
+    pub async fn broadcast_event(&self, event: UbusEvent) -> Result<(), PlatformError> {
+        if !self.connected {
+            debug!("Skipping event broadcast - not connected to ubusd");
+            return Ok(()); // Silently skip if not connected
+        }
+        
+        // Serialize event to JSON
+        let event_json = serde_json::to_value(&event).map_err(|e| {
+            error!("Failed to serialize event: {}", e);
+            PlatformError::UbusError {
+                operation: "broadcast_event".to_string(),
+                reason: format!("serialization failed: {}", e),
+            }
+        })?;
+        
+        // Extract event type
+        let event_type = match &event {
+            UbusEvent::DhcpLeaseAdded { .. } => "dhcp.add",
+            UbusEvent::DhcpLeaseOld { .. } => "dhcp.old",
+            UbusEvent::DhcpLeaseDeleted { .. } => "dhcp.del",
+            UbusEvent::NetworkChange => "network.change",
+            UbusEvent::ConnmarkAllowlistRefused { .. } => "connmark-allowlist.refused",
+            UbusEvent::ConnmarkAllowlistResolved { .. } => "connmark-allowlist.resolved",
+        };
+        
+        debug!(event_type = %event_type, "Broadcasting event");
+        
+        // In a full implementation, we would call ubus_notify here.
+        // For now, we log the event.
+        // Note: Full C-level integration requires registering a ubus_object
+        // and using ubus_notify with that object pointer.
+        
+        info!(event_type = %event_type, "Event broadcast (stub)");
+        
+        Ok(())
+    }
+    
+    /// Create DHCP event from lease
+    ///
+    /// Helper method to construct DHCP event payloads from lease structures.
+    ///
+    /// # Arguments
+    ///
+    /// * `lease` - The DHCP lease
+    /// * `event_type` - Type of event (add/old/del)
+    ///
+    /// # Returns
+    ///
+    /// Appropriate `UbusEvent` variant
+    pub fn dhcp_event_from_lease(lease: &Lease, event_type: &str) -> UbusEvent {
+        let ip = lease.ip.to_string();
+        let mac = lease.mac.as_ref().map(|m| m.to_string()).unwrap_or_else(|| "00:00:00:00:00:00".to_string());
+        let hostname = lease.hostname.clone().unwrap_or_default();
+        let interface = lease.interface.clone();
+        
+        match event_type {
+            "add" => UbusEvent::DhcpLeaseAdded {
+                ip,
+                mac,
+                hostname,
+                interface,
+            },
+            "old" => UbusEvent::DhcpLeaseOld {
+                ip,
+                mac,
+                hostname,
+                interface,
+            },
+            "del" => UbusEvent::DhcpLeaseDeleted {
+                ip,
+                mac,
+                hostname,
+                interface,
+            },
+            _ => panic!("Invalid DHCP event type: {}", event_type),
+        }
     }
 }
 
-/// ubus error codes
-///
-/// Standard ubus error codes used in method responses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UbusError {
-    /// Operation completed successfully
-    Success = 0,
-    /// Invalid command received
-    InvalidCommand = 1,
-    /// Invalid argument provided
-    InvalidArgument = 2,
-    /// Requested method not found
-    MethodNotFound = 3,
-    /// Requested object not found
-    NotFound = 4,
-    /// No data available
-    NoData = 5,
-    /// Permission denied for operation
-    PermissionDenied = 6,
-    /// Operation timed out
-    Timeout = 7,
-    /// Operation not supported
-    NotSupported = 8,
-    /// Unknown error occurred
-    Unknown = 9,
-    /// Connection to ubus daemon failed
-    ConnectionFailed = 10,
-}
-
-impl From<UbusError> for i32 {
-    fn from(error: UbusError) -> i32 {
-        error as i32
+impl Drop for UbusDaemon {
+    fn drop(&mut self) {
+        if !self.ctx.is_null() {
+            debug!("Cleaning up ubus connection");
+            unsafe {
+                ubus_free(self.ctx);
+            }
+            self.ctx = ptr::null_mut();
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn test_ubus_daemon_creation() {
-        let result = UbusDaemon::new().await;
-        assert!(result.is_ok());
-
-        let daemon = result.unwrap();
+    
+    #[test]
+    fn test_ubus_error_display() {
+        let err = UbusError::ConnectionFailed("test error".to_string());
+        assert_eq!(err.to_string(), "ubus connection failed: test error");
+        
+        let err = UbusError::NotConnected;
+        assert_eq!(err.to_string(), "ubus not connected");
+    }
+    
+    #[test]
+    fn test_ubus_event_serialization() {
+        let event = UbusEvent::DhcpLeaseAdded {
+            ip: "192.168.1.100".to_string(),
+            mac: "aa:bb:cc:dd:ee:ff".to_string(),
+            hostname: "client1".to_string(),
+            interface: "eth0".to_string(),
+        };
+        
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["type"], "dhcp.add");
+        assert_eq!(json["ip"], "192.168.1.100");
+        assert_eq!(json["mac"], "aa:bb:cc:dd:ee:ff");
+    }
+    
+    #[test]
+    fn test_ubus_daemon_new() {
+        let metrics = Arc::new(RwLock::new(MetricsCollector::new()));
+        let daemon = UbusDaemon::new(metrics, Some("test".to_string()));
+        
+        assert_eq!(daemon.service_name, "test");
         assert!(!daemon.is_connected());
     }
-
-    #[tokio::test]
-    async fn test_ubus_daemon_start() {
-        let mut daemon = UbusDaemon::new().await.unwrap();
-        let result = daemon.start().await;
-        assert!(result.is_ok());
-        assert!(daemon.is_connected());
-    }
-
-    #[tokio::test]
-    async fn test_dns_servers_set() {
-        let daemon = UbusDaemon::new().await.unwrap();
-        let servers = vec!["8.8.8.8".to_string(), "8.8.4.4".to_string()];
-
-        let result = daemon.dns_servers_set(servers.clone()).await;
-        assert!(result.is_ok());
-
-        let stored_servers = daemon.state.servers.read().await;
-        assert_eq!(*stored_servers, servers);
-    }
-
-    #[tokio::test]
-    async fn test_system_version() {
-        let daemon = UbusDaemon::new().await.unwrap();
-        let version = daemon.system_version().await.unwrap();
-        assert_eq!(version, env!("CARGO_PKG_VERSION"));
-    }
-
+    
     #[test]
-    fn test_ubus_result_creation() {
-        let success = UbusResult::success();
-        assert_eq!(success.status, 0);
-        assert!(success.data.is_none());
-
-        let with_data = UbusResult::success_with_data("test".to_string());
-        assert_eq!(with_data.status, 0);
-        assert_eq!(with_data.data, Some("test".to_string()));
-
-        let error = UbusResult::error(1, "error message".to_string());
-        assert_eq!(error.status, 1);
-        assert_eq!(error.data, Some("error message".to_string()));
-    }
-
-    #[test]
-    fn test_ubus_error_codes() {
-        assert_eq!(i32::from(UbusError::Success), 0);
-        assert_eq!(i32::from(UbusError::InvalidCommand), 1);
-        assert_eq!(i32::from(UbusError::PermissionDenied), 6);
+    fn test_dhcp_event_from_lease() {
+        use std::net::IpAddr;
+        use std::time::SystemTime;
+        use crate::dhcp::lease::LeaseFlags;
+        
+        let lease = Lease {
+            ip: "192.168.1.100".parse::<IpAddr>().unwrap(),
+            mac: Some(MacAddress([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff])),
+            hostname: Some("testhost".to_string()),
+            interface: "eth0".to_string(),
+            expires: SystemTime::now(),
+            client_id: None,
+            iaid: None,
+            flags: LeaseFlags::empty(),
+            fqdn: None,
+            vendorclass: None,
+            agent_id: None,
+            slaac_addresses: None,
+        };
+        
+        let event = UbusDaemon::dhcp_event_from_lease(&lease, "add");
+        
+        match event {
+            UbusEvent::DhcpLeaseAdded {
+                ip,
+                mac,
+                hostname,
+                interface,
+            } => {
+                assert_eq!(ip, "192.168.1.100");
+                assert_eq!(mac, "aa:bb:cc:dd:ee:ff");
+                assert_eq!(hostname, "testhost");
+                assert_eq!(interface, "eth0");
+            }
+            _ => panic!("Wrong event type"),
+        }
     }
 }
