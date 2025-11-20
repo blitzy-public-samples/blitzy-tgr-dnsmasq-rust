@@ -109,7 +109,7 @@
 
 // Feature gate for Linux only - matches C #ifdef HAVE_INOTIFY
 #[cfg(target_os = "linux")]
-use anyhow::{Context, Result};
+use anyhow::Result;
 #[cfg(target_os = "linux")]
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 #[cfg(target_os = "linux")]
@@ -136,7 +136,7 @@ const MAX_SYMLINK_DEPTH: u32 = 20;
 /// Maps to C's resolvc/dyndir distinction for determining reload action.
 #[cfg(target_os = "linux")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WatchType {
+pub enum WatchType {
     /// Upstream DNS resolver configuration file (e.g., /etc/resolv.conf).
     ///
     /// Triggers `reload_config()` when modified to update forwarding servers.
@@ -354,7 +354,7 @@ impl InotifyWatcher {
 
         // Track this path as resolv.conf type (default for file watches)
         self.watched_paths
-            .insert(target_path, WatchType::ResolvConf);
+            .insert(target_path.clone(), WatchType::ResolvConf);
 
         info!(
             "Successfully watching {} (directory: {})",
