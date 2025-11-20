@@ -569,6 +569,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unused_imports)]
     fn test_re_exported_types_accessible() {
         // Verify all re-exported types from submodules are accessible
         // This ensures the public API surface is correctly exposed
