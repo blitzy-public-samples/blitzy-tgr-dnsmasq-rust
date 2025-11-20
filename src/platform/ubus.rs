@@ -30,7 +30,6 @@
 
 use crate::error::PlatformError;
 use crate::util::metrics::{MetricsCollector, get_metric_name};
-use crate::types::MacAddress;
 #[cfg(feature = "conntrack")]
 use crate::network::conntrack::ConnmarkAllowlist;
 use crate::dhcp::lease::Lease;
@@ -725,6 +724,7 @@ mod tests {
         use std::net::IpAddr;
         use std::time::SystemTime;
         use crate::dhcp::lease::LeaseFlags;
+        use crate::types::MacAddress;
         
         let lease = Lease {
             ip: "192.168.1.100".parse::<IpAddr>().unwrap(),

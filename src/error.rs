@@ -1002,6 +1002,10 @@ pub enum PlatformError {
         reason: String,
     },
 
+    /// Pipe communication error for IPC.
+    #[error("Pipe communication error: {0}")]
+    PipeError(String),
+
     /// User lookup or switching failed (EVENT_USER_ERR).
     #[error("User '{user}' not found or cannot switch: {reason}")]
     UserNotFound {
@@ -1162,4 +1166,8 @@ pub enum PlatformError {
         /// The reason for the PF tables operation failure
         reason: String,
     },
+
+    /// Process or task handling error.
+    #[error("Process error: {0}")]
+    ProcessError(String),
 }

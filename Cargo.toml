@@ -113,7 +113,7 @@ optional = true
 [dependencies.mlua]
 version = "0.10"
 optional = true
-features = ["lua54", "vendored"]
+features = ["lua54", "vendored", "send"]
 
 [dependencies.idna]
 version = "1.0"

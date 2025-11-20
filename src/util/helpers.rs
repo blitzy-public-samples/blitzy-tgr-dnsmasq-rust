@@ -120,33 +120,26 @@ use crate::error::PlatformError;
 use crate::types::MacAddress;
 
 // External imports - async runtime
-use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
-use tokio::signal::unix::{signal, SignalKind};
 
-// External imports - system calls
-use nix::unistd::{setgid, setuid, Gid, Group, Uid, User};
+// External imports - system calls (removed unused imports)
 
 // External imports - logging
 use tracing::{debug, error, info, instrument, warn};
 
 // External imports - data handling
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use hex;
 
 // External imports - Lua integration (conditional)
 #[cfg(feature = "lua-scripts")]
-use mlua::{Lua, Table, Value};
+use mlua::{Lua, Table};
 
 // Standard library imports
 use std::collections::HashMap;
-use std::env;
-use std::io::Write;
 use std::net::IpAddr;
-use std::os::unix::io::RawFd;
-use std::path::{Path, PathBuf};
-use std::process::ExitStatus;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
@@ -492,11 +485,14 @@ impl ScriptData {
         offset += 16;
         
         // Parse hardware address (16 bytes)
-        let hwaddr = bytes[offset..offset + 16]
-            .iter()
-            .take_while(|&&b| b != 0)
-            .copied()
-            .collect();
+        // Read all 16 bytes, then trim trailing zeros (not leading zeros!)
+        // MAC addresses can start with 0x00, so we can't use take_while
+        let hwaddr_slice = &bytes[offset..offset + 16];
+        let hwaddr_end = hwaddr_slice.iter()
+            .rposition(|&b| b != 0)
+            .map(|pos| pos + 1)
+            .unwrap_or(0);
+        let hwaddr = hwaddr_slice[..hwaddr_end].to_vec();
         offset += 16;
         
         // Parse hostname (MAXDNAME bytes, null-terminated)
@@ -820,16 +816,17 @@ impl HelperProcess {
             }
             Ok(Err(e)) => {
                 error!("Failed to spawn script: {}", e);
-                Err(PlatformError::ScriptExecutionFailed(format!(
-                    "Spawn error: {}",
-                    e
-                )))
+                Err(PlatformError::ScriptExecutionFailed {
+                    script: script_path.display().to_string(),
+                    reason: format!("Spawn error: {}", e),
+                })
             }
             Err(_) => {
                 error!("Script execution timeout ({}s)", SCRIPT_TIMEOUT_SECS);
-                Err(PlatformError::ScriptExecutionFailed(
-                    "Script timeout".to_string()
-                ))
+                Err(PlatformError::ScriptExecutionFailed {
+                    script: script_path.display().to_string(),
+                    reason: "Script timeout".to_string(),
+                })
             }
         }
     }
@@ -851,12 +848,18 @@ impl HelperProcess {
         
         // Load script file
         let script_content = std::fs::read_to_string(script_path).map_err(|e| {
-            PlatformError::LuaScriptError(format!("Failed to read Lua script: {}", e))
+            PlatformError::LuaScriptError {
+                script: script_path.display().to_string(),
+                reason: format!("Failed to read Lua script: {}", e),
+            }
         })?;
         
         // Compile script
         lua.load(&script_content).exec().map_err(|e| {
-            PlatformError::LuaScriptError(format!("Failed to load Lua script: {}", e))
+            PlatformError::LuaScriptError {
+                script: script_path.display().to_string(),
+                reason: format!("Failed to load Lua script: {}", e),
+            }
         })?;
         
         Ok(lua)
@@ -890,12 +893,18 @@ impl HelperProcess {
         
         // Create event table
         let event_table = lua_guard.create_table().map_err(|e| {
-            PlatformError::LuaScriptError(format!("Failed to create table: {}", e))
+            PlatformError::LuaScriptError {
+                script: "lua script".to_string(),
+                reason: format!("Failed to create table: {}", e),
+            }
         })?;
         
         // Populate table based on event type
         Self::populate_lua_table(&lua_guard, &event_table, event).map_err(|e| {
-            PlatformError::LuaScriptError(format!("Failed to populate table: {}", e))
+            PlatformError::LuaScriptError {
+                script: "lua script".to_string(),
+                reason: format!("Failed to populate table: {}", e),
+            }
         })?;
         
         // Call event handler function
@@ -903,11 +912,17 @@ impl HelperProcess {
             .globals()
             .get("lease_event")
             .map_err(|e| {
-                PlatformError::LuaScriptError(format!("Event handler not found: {}", e))
+                PlatformError::LuaScriptError {
+                    script: "lua script".to_string(),
+                    reason: format!("Event handler not found: {}", e),
+                }
             })?;
         
-        handler.call::<_, ()>(event_table).map_err(|e| {
-            PlatformError::LuaScriptError(format!("Handler call failed: {}", e))
+        handler.call::<()>(event_table).map_err(|e| {
+            PlatformError::LuaScriptError {
+                script: "lua script".to_string(),
+                reason: format!("Handler call failed: {}", e),
+            }
         })?;
         
         debug!("Lua script executed successfully");
@@ -917,7 +932,7 @@ impl HelperProcess {
     /// Populates Lua table with event data.
     #[cfg(feature = "lua-scripts")]
     fn populate_lua_table(
-        lua: &Lua,
+        _lua: &Lua,
         table: &Table,
         event: &ScriptEvent,
     ) -> Result<(), mlua::Error> {
@@ -1163,7 +1178,7 @@ impl HelperProcess {
 /// queue_script(
 ///     helper,
 ///     LeaseAction::Add,
-///     MacAddress::from_bytes(&[0x00, 0x11, 0x22, 0x33, 0x44, 0x55]).unwrap(),
+///     MacAddress::from_bytes([0x00, 0x11, 0x22, 0x33, 0x44, 0x55]),
 ///     "192.168.1.100".parse()?,
 ///     Some("client1".to_string()),
 ///     "eth0".to_string(),
@@ -1181,7 +1196,7 @@ pub fn queue_script(
     interface: String,
     lease_expires: u64,
 ) -> Result<(), PlatformError> {
-    let event = ScriptEvent::DhcpLease(DhcpLeaseEvent {
+    let event = ScriptEvent::DhcpLease(Box::new(DhcpLeaseEvent {
         action,
         mac,
         addr,
@@ -1202,7 +1217,7 @@ pub fn queue_script(
         circuit_id: None,
         subscriber_id: None,
         remote_id: None,
-    });
+    }));
     
     helper.send_event(event)
 }
@@ -1246,12 +1261,12 @@ pub fn queue_tftp(
     file_size: u64,
     interface: String,
 ) -> Result<(), PlatformError> {
-    let event = ScriptEvent::Tftp(TftpEvent {
+    let event = ScriptEvent::Tftp(Box::new(TftpEvent {
         file_path,
         client_addr,
         file_size,
         interface,
-    });
+    }));
     
     helper.send_event(event)
 }
@@ -1280,7 +1295,7 @@ pub fn queue_tftp(
 /// # async fn example(helper: &HelperProcess) -> Result<(), Box<dyn std::error::Error>> {
 /// queue_arp(
 ///     helper,
-///     MacAddress::from_bytes(&[0x00, 0x11, 0x22, 0x33, 0x44, 0x55]).unwrap(),
+///     MacAddress::from_bytes([0x00, 0x11, 0x22, 0x33, 0x44, 0x55]),
 ///     "192.168.1.100".parse()?,
 ///     true,
 /// )?;
@@ -1293,7 +1308,7 @@ pub fn queue_arp(
     addr: IpAddr,
     is_add: bool,
 ) -> Result<(), PlatformError> {
-    let event = ScriptEvent::Arp(ArpEvent { mac, addr, is_add });
+    let event = ScriptEvent::Arp(Box::new(ArpEvent { mac, addr, is_add }));
     
     helper.send_event(event)
 }
@@ -1337,12 +1352,12 @@ pub fn queue_relay_snoop(
     relay_addr: IpAddr,
     interface: String,
 ) -> Result<(), PlatformError> {
-    let event = ScriptEvent::RelaySnoop(RelaySnoopEvent {
+    let event = ScriptEvent::RelaySnoop(Box::new(RelaySnoopEvent {
         duid,
         client_addr,
         relay_addr,
         interface,
-    });
+    }));
     
     helper.send_event(event)
 }
@@ -1358,10 +1373,16 @@ mod tests {
     #[test]
     fn test_script_data_serialization() {
         let data = ScriptData {
+            flags: EVENT_LEASE,
             action: ACTION_ADD,
-            hwaddr: [0x00, 0x11, 0x22, 0x33, 0x44, 0x55],
-            addr: [192, 168, 1, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            hostname: [0u8; 256],
+            expires: 1234567890,
+            addr: "192.168.1.100".parse().unwrap(),
+            hwaddr: vec![0x00, 0x11, 0x22, 0x33, 0x44, 0x55],
+            hostname: "testhost".to_string(),
+            domain: Some("example.com".to_string()),
+            interface: "eth0".to_string(),
+            file_size: None,
+            file_path: None,
         };
         
         let serialized = data.serialize();
@@ -1391,10 +1412,10 @@ mod tests {
     
     #[test]
     fn test_build_arguments() {
-        let mac = MacAddress::from_bytes(&[0x00, 0x11, 0x22, 0x33, 0x44, 0x55]).unwrap();
+        let mac = MacAddress::from_bytes([0x00, 0x11, 0x22, 0x33, 0x44, 0x55]);
         let addr: IpAddr = "192.168.1.100".parse().unwrap();
         
-        let event = ScriptEvent::DhcpLease(DhcpLeaseEvent {
+        let event = ScriptEvent::DhcpLease(Box::new(DhcpLeaseEvent {
             action: LeaseAction::Add,
             mac,
             addr,
@@ -1415,7 +1436,7 @@ mod tests {
             circuit_id: None,
             subscriber_id: None,
             remote_id: None,
-        });
+        }));
         
         let args = HelperProcess::build_arguments(&event);
         assert_eq!(args.len(), 4);
@@ -1426,10 +1447,10 @@ mod tests {
     
     #[test]
     fn test_build_environment() {
-        let mac = MacAddress::from_bytes(&[0x00, 0x11, 0x22, 0x33, 0x44, 0x55]).unwrap();
+        let mac = MacAddress::from_bytes([0x00, 0x11, 0x22, 0x33, 0x44, 0x55]);
         let addr: IpAddr = "192.168.1.100".parse().unwrap();
         
-        let event = ScriptEvent::DhcpLease(DhcpLeaseEvent {
+        let event = ScriptEvent::DhcpLease(Box::new(DhcpLeaseEvent {
             action: LeaseAction::Add,
             mac,
             addr,
@@ -1450,7 +1471,7 @@ mod tests {
             circuit_id: None,
             subscriber_id: None,
             remote_id: None,
-        });
+        }));
         
         let env = HelperProcess::build_environment(&event);
         
