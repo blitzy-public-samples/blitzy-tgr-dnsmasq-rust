@@ -242,7 +242,7 @@ fn parse_standard_lease(
     if let Ok(ip) = parts[2].parse::<IpAddr>() {
         let mac_str = parts[1];
         let mac = if mac_str != "*" {
-            Some(MacAddress::from_str(mac_str).map_err(|e| format!("Invalid MAC address: {}", e))?)
+            Some(MacAddress::parse(mac_str).map_err(|e| format!("Invalid MAC address: {}", e))?)
         } else {
             None
         };
@@ -318,20 +318,7 @@ fn parse_hex_string(hex_str: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-/// Parse a MAC address in colon-separated format
-///
-/// Handles formats like "01:23:45:67:89:ab" and validates length
-fn parse_mac_address(mac_str: &str) -> Result<[u8; 6], String> {
-    let bytes = parse_hex_string(mac_str)?;
 
-    if bytes.len() != 6 {
-        return Err(format!("MAC address must be 6 bytes, got {}", bytes.len()));
-    }
-
-    let mut mac = [0u8; 6];
-    mac.copy_from_slice(&bytes);
-    Ok(mac)
-}
 
 /// Write DHCP leases to a persistent lease file
 ///
@@ -586,12 +573,7 @@ mod tests {
         assert!(parse_hex_string("xyz").is_err());
     }
 
-    #[test]
-    fn test_parse_mac_address() {
-        let mac = parse_mac_address("01:23:45:67:89:ab").unwrap();
-        assert_eq!(mac, [0x01, 0x23, 0x45, 0x67, 0x89, 0xab]);
-        assert!(parse_mac_address("01:23:45").is_err()); // Too short
-    }
+
 
     #[tokio::test]
     async fn test_write_and_read_leases() {
