@@ -10,7 +10,7 @@
 //! This module replaces the C ipset.c implementation with safe Rust,
 //! providing integration with Linux ipset for firewall address sets.
 
-use crate::error::{DnsmasqError, Result};
+use crate::error::Result;
 use std::net::IpAddr;
 
 /// Linux ipset manager

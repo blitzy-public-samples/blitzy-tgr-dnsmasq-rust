@@ -647,6 +647,7 @@ impl PfBackend {
     /// # Errors
     ///
     /// Returns [`FirewallError::DeviceNotFound`] if `initialize()` has not been called.
+    #[allow(dead_code)]
     fn get_fd(&self) -> Result<libc::c_int> {
         let guard = self.pf_fd.lock().unwrap();
         match guard.as_ref() {
@@ -785,11 +786,9 @@ impl PfBackend {
                 addr.pfra_net = 0x80;  // /128 prefix for single IPv6 address
                 
                 // SAFETY: pfra_union discriminated by pfra_af = AF_INET6
-                unsafe {
-                    addr.pfra_u.pfra_ip6addr = libc::in6_addr {
-                        s6_addr: ipv6.octets(),
-                    };
-                }
+                addr.pfra_u.pfra_ip6addr = libc::in6_addr {
+                    s6_addr: ipv6.octets(),
+                };
             }
         }
 
@@ -869,11 +868,10 @@ impl PfBackend {
                 addr.pfra_af = libc::AF_INET6 as u8;
                 addr.pfra_net = 0x80;
                 
-                unsafe {
-                    addr.pfra_u.pfra_ip6addr = libc::in6_addr {
-                        s6_addr: ipv6.octets(),
-                    };
-                }
+                // SAFETY: pfra_union discriminated by pfra_af = AF_INET6
+                addr.pfra_u.pfra_ip6addr = libc::in6_addr {
+                    s6_addr: ipv6.octets(),
+                };
             }
         }
 

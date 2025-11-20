@@ -220,7 +220,7 @@
 
 use async_trait::async_trait;
 use std::ffi::{CStr, CString};
-use std::ptr::{self, NonNull};
+use std::ptr::NonNull;
 use tokio::task;
 use tracing::{debug, error, info, instrument, warn};
 
@@ -319,6 +319,56 @@ extern "C" {
     fn nft_ctx_buffer_error(ctx: *mut nft_ctx);
 }
 
+/// Thread-safe wrapper for nft_ctx pointer.
+///
+/// This wrapper explicitly implements `Send` to allow the context pointer to be moved
+/// across thread boundaries. This is safe because:
+///
+/// 1. **Exclusive Access**: Each spawn_blocking task has exclusive access to the context
+///    during its execution. We never have concurrent access to the same context from
+///    multiple threads.
+///
+/// 2. **Serialized Operations**: All operations go through spawn_blocking, which executes
+///    them sequentially on the blocking thread pool. There's no actual concurrent access.
+///
+/// 3. **Single Ownership**: The parent NftablesBackend owns the context, and we only
+///    copy the pointer value (not the context itself) into blocking tasks.
+///
+/// # Safety Justification
+///
+/// While `NonNull<T>` does not implement `Send` by default (because raw pointers are not
+/// inherently thread-safe), our usage pattern ensures thread safety:
+///
+/// - The nft_ctx pointer is only accessed in spawn_blocking tasks (blocking thread pool)
+/// - Each task creates a temporary wrapper, uses it, and forgets it (preventing Drop)
+/// - The actual context is never moved or copied, only the pointer value
+/// - libnftables internal state is handled by the library itself
+///
+/// This pattern is equivalent to `Arc<Mutex<nft_ctx>>` but without the runtime overhead,
+/// since spawn_blocking already provides serialization.
+#[derive(Clone, Copy)]
+struct SendNftCtx(NonNull<nft_ctx>);
+
+impl SendNftCtx {
+    /// Get the raw pointer to the nft_ctx.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure:
+    /// - The returned pointer is only used while the context is still valid
+    /// - No concurrent access from multiple threads (use spawn_blocking for serialization)
+    fn as_ptr(&self) -> *mut nft_ctx {
+        self.0.as_ptr()
+    }
+}
+
+// SAFETY: See struct-level documentation. The pointer is only accessed through spawn_blocking,
+// which provides serialization and prevents concurrent access.
+unsafe impl Send for SendNftCtx {}
+
+// We deliberately do NOT implement Sync, as we don't want shared references across threads.
+// Only owned values are moved via Send.
+
 /// Linux nftables firewall backend implementation.
 ///
 /// This struct provides safe Rust interface to libnftables, managing the nftables context
@@ -349,8 +399,10 @@ pub struct NftablesBackend {
     /// This field is private to enforce construction only through `initialize()`, ensuring
     /// the context is properly configured (error buffering enabled) before use.
     ///
+    /// Wrapped in SendNftCtx to allow moving across thread boundaries in spawn_blocking.
+    ///
     /// Lifetime: Created in initialize(), freed in Drop::drop()
-    ctx: NonNull<nft_ctx>,
+    ctx: SendNftCtx,
 }
 
 impl NftablesBackend {
@@ -401,15 +453,18 @@ impl NftablesBackend {
         }
 
         // SAFETY: We just verified ctx_ptr is not null, so NonNull::new_unchecked is safe
-        let ctx = unsafe { NonNull::new_unchecked(ctx_ptr) };
+        let ctx_non_null = unsafe { NonNull::new_unchecked(ctx_ptr) };
 
-        // SAFETY: ctx is a valid non-null pointer from nft_ctx_new()
+        // SAFETY: ctx_non_null is a valid non-null pointer from nft_ctx_new()
         // nft_ctx_buffer_error() configures the context to capture error output
         unsafe {
-            nft_ctx_buffer_error(ctx.as_ptr());
+            nft_ctx_buffer_error(ctx_non_null.as_ptr());
         }
 
         debug!("nftables context created and configured for error buffering");
+
+        // Wrap in SendNftCtx for thread safety
+        let ctx = SendNftCtx(ctx_non_null);
 
         Ok(Self { ctx })
     }

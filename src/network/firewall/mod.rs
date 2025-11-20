@@ -646,14 +646,14 @@ pub trait FirewallBackend: Send + Sync {
 /// The factory function is called once at daemon initialization. The returned backend is shared
 /// across all DNS resolution tasks via `Arc<dyn FirewallBackend>`.
 #[cfg(target_os = "linux")]
-pub fn create_firewall_backend(config: &Config) -> Option<Box<dyn FirewallBackend>> {
+pub fn create_firewall_backend(_config: &Config) -> Option<Box<dyn FirewallBackend>> {
     // Check for nftables configuration first (modern Linux preferred)
     // Configuration inspection would check for nftset directives in config
     // For now, returning None as backends are not yet implemented
-    // Implementation will inspect config.network.nftset_domains or similar field
+    // Implementation will inspect _config.network.nftset_domains or similar field
     
     // Check for ipset configuration (legacy Linux)
-    // Similar config field inspection: config.network.ipset_domains
+    // Similar config field inspection: _config.network.ipset_domains
     
     // Placeholder: Backend implementations in ipset.rs and nftables.rs will be created separately
     None
@@ -664,10 +664,10 @@ pub fn create_firewall_backend(config: &Config) -> Option<Box<dyn FirewallBacken
     target_os = "openbsd",
     target_os = "netbsd"
 ))]
-pub fn create_firewall_backend(config: &Config) -> Option<Box<dyn FirewallBackend>> {
+pub fn create_firewall_backend(_config: &Config) -> Option<Box<dyn FirewallBackend>> {
     // Check for PF table configuration
     // On BSD, the --ipset directive is reused for PF table names
-    // Configuration field: config.network.pf_tables or config.network.ipset_domains
+    // Configuration field: _config.network.pf_tables or _config.network.ipset_domains
     
     // Placeholder: Backend implementation in pf.rs will be created separately
     None
