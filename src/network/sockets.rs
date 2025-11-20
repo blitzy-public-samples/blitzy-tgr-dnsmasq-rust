@@ -86,7 +86,6 @@ use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 
 use bitflags::bitflags;
-use bytes::{Bytes, BytesMut};
 use socket2::{Domain, Protocol, Socket, Type};
 use tokio::net::{TcpListener, UdpSocket};
 use tracing::{debug, error, info, instrument, warn};
@@ -95,7 +94,6 @@ use crate::config::types::NetworkConfig;
 use crate::constants::EDNS_PKTSZ;
 use crate::error::{NetworkError, Result};
 use crate::network::interfaces::NetworkInterface;
-use crate::types::IpAddr as CrateIpAddr;
 
 bitflags! {
     /// Listener state flags for protocol-specific socket behavior
@@ -170,6 +168,7 @@ pub enum DnsSocketType {
 /// Wraps tokio::net::UdpSocket with methods for receiving packet metadata
 /// including source address, destination address, and interface information.
 /// Uses IP_PKTINFO (IPv4) and IPV6_RECVPKTINFO (IPv6) socket options.
+#[derive(Debug)]
 pub struct DnsSocket {
     inner: UdpSocket,
 }
@@ -217,25 +216,25 @@ impl DnsSocket {
             .map_err(|e| NetworkError::SocketFailed {
                 address: target.to_string(),
                 reason: format!("Failed to send packet: {}", e),
-            })
+            }.into())
     }
     
     /// Get local address
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        self.inner.local_addr()
+        Ok(self.inner.local_addr()
             .map_err(|e| NetworkError::SocketFailed {
                 address: "unknown".to_string(),
                 reason: format!("Failed to get local address: {}", e),
-            })
+            })?)
     }
     
     /// Get peer address if connected
     pub fn peer_addr(&self) -> Result<SocketAddr> {
-        self.inner.peer_addr()
+        Ok(self.inner.peer_addr()
             .map_err(|e| NetworkError::SocketFailed {
                 address: "unknown".to_string(),
                 reason: format!("Failed to get peer address: {}", e),
-            })
+            })?)
     }
 }
 
@@ -243,6 +242,7 @@ impl DnsSocket {
 ///
 /// Wraps UDP socket with DHCP-specific options including SO_BROADCAST
 /// for DHCPv4 broadcast messages and interface binding for DHCP relay.
+#[derive(Debug)]
 pub struct DhcpSocket {
     inner: UdpSocket,
 }
@@ -261,7 +261,7 @@ impl DhcpSocket {
                     .map(|a| a.to_string())
                     .unwrap_or_else(|| "unknown".to_string()),
                 reason: format!("Failed to receive DHCP packet: {}", e),
-            })
+            }.into())
     }
     
     /// Send DHCP packet to specific address
@@ -270,7 +270,7 @@ impl DhcpSocket {
             .map_err(|e| NetworkError::SocketFailed {
                 address: target.to_string(),
                 reason: format!("Failed to send DHCP packet: {}", e),
-            })
+            }.into())
     }
     
     /// Send broadcast DHCP packet
@@ -284,30 +284,67 @@ impl DhcpSocket {
     
     /// Get local address
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        self.inner.local_addr()
+        Ok(self.inner.local_addr()
             .map_err(|e| NetworkError::SocketFailed {
                 address: "unknown".to_string(),
                 reason: format!("Failed to get local address: {}", e),
-            })
+            })?)
     }
     
     /// Get peer address if available
     pub fn peer_addr(&self) -> Result<SocketAddr> {
-        self.inner.peer_addr()
+        Ok(self.inner.peer_addr()
             .map_err(|e| NetworkError::SocketFailed {
                 address: "unknown".to_string(),
                 reason: format!("Failed to get peer address: {}", e),
-            })
+            })?)
     }
 }
 
 /// TFTP socket type (UDP-based)
 pub type TftpSocket = UdpSocket;
 
+/// Result of privileged socket binding operation
+///
+/// Contains all privileged sockets created during initialization.
+/// Simplifies the return type for `bind_privileged_sockets()`.
+#[derive(Debug)]
+pub struct PrivilegedSockets {
+    /// DNS listeners (UDP port 53, TCP port 53)
+    pub dns_listeners: Vec<DnsListener>,
+    
+    /// DHCPv4 socket (UDP port 67)
+    pub dhcp_v4: Option<DhcpSocket>,
+    
+    /// DHCPv6 socket (UDP port 547)
+    pub dhcp_v6: Option<DhcpSocket>,
+    
+    /// TFTP socket (UDP port 69)
+    pub tftp: Option<TftpSocket>,
+}
+
+impl PrivilegedSockets {
+    /// Create new PrivilegedSockets container
+    pub fn new(
+        dns_listeners: Vec<DnsListener>,
+        dhcp_v4: Option<DhcpSocket>,
+        dhcp_v6: Option<DhcpSocket>,
+        tftp: Option<TftpSocket>,
+    ) -> Self {
+        Self {
+            dns_listeners,
+            dhcp_v4,
+            dhcp_v6,
+            tftp,
+        }
+    }
+}
+
 /// Router Advertisement ICMPv6 socket wrapper
 ///
 /// Wraps raw ICMPv6 socket for sending Router Advertisements.
 /// Requires IPV6_RECVHOPLIMIT socket option for hop limit validation.
+#[derive(Debug)]
 pub struct RaSocket {
     inner: UdpSocket,
 }
@@ -324,7 +361,7 @@ impl RaSocket {
             .map_err(|e| NetworkError::SocketFailed {
                 address: target.to_string(),
                 reason: format!("Failed to send RA: {}", e),
-            })
+            }.into())
     }
     
     /// Receive ICMPv6 packet
@@ -333,16 +370,16 @@ impl RaSocket {
             .map_err(|e| NetworkError::SocketFailed {
                 address: "unknown".to_string(),
                 reason: format!("Failed to receive ICMPv6: {}", e),
-            })
+            }.into())
     }
     
     /// Get local address
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        self.inner.local_addr()
+        Ok(self.inner.local_addr()
             .map_err(|e| NetworkError::SocketFailed {
                 address: "unknown".to_string(),
                 reason: format!("Failed to get local address: {}", e),
-            })
+            })?)
     }
 }
 
@@ -541,7 +578,7 @@ impl SocketManager {
             return Err(NetworkError::SocketFailed {
                 address: format!("port {}", port),
                 reason: "No DNS listeners could be created".to_string(),
-            });
+            }.into());
         }
         
         info!("Created {} DNS listeners", listeners.len());
@@ -708,11 +745,11 @@ impl SocketManager {
             })?;
         
         let std_socket: std::net::UdpSocket = socket.into();
-        UdpSocket::from_std(std_socket)
+        Ok(UdpSocket::from_std(std_socket)
             .map_err(|e| NetworkError::SocketFailed {
                 address: addr.to_string(),
                 reason: format!("Failed to convert to tokio socket: {}", e),
-            })
+            })?)
     }
     
     /// Create TCP listener with DNS-specific options
@@ -759,11 +796,11 @@ impl SocketManager {
             })?;
         
         let std_socket: std::net::TcpListener = socket.into();
-        TcpListener::from_std(std_socket)
+        Ok(TcpListener::from_std(std_socket)
             .map_err(|e| NetworkError::SocketFailed {
                 address: addr.to_string(),
                 reason: format!("Failed to convert to tokio TCP listener: {}", e),
-            })
+            })?)
     }
     
     /// Create DHCP socket with broadcast support
@@ -807,36 +844,38 @@ impl SocketManager {
             })?;
         
         let std_socket: std::net::UdpSocket = socket.into();
-        UdpSocket::from_std(std_socket)
+        Ok(UdpSocket::from_std(std_socket)
             .map_err(|e| NetworkError::SocketFailed {
                 address: addr.to_string(),
                 reason: format!("Failed to convert to tokio socket: {}", e),
-            })
+            })?)
     }
     
     /// Configure packet info socket options for metadata retrieval
     fn configure_packet_info(&self, socket: &Socket, is_ipv6: bool) -> Result<()> {
         use nix::sys::socket::{setsockopt, sockopt};
         
-        let fd = socket.as_raw_fd();
-        
         if is_ipv6 {
             // IPV6_RECVPKTINFO for destination address
-            setsockopt(fd, sockopt::Ipv6RecvPacketInfo, &true)
+            setsockopt(socket, sockopt::Ipv6RecvPacketInfo, &true)
                 .map_err(|e| NetworkError::SocketOptionFailed {
                     option: "IPV6_RECVPKTINFO".to_string(),
                     reason: format!("{}", e),
                 })?;
             
-            // IPV6_RECVHOPLIMIT for hop limit
-            setsockopt(fd, sockopt::Ipv6RecvHopLimit, &true)
-                .map_err(|e| NetworkError::SocketOptionFailed {
-                    option: "IPV6_RECVHOPLIMIT".to_string(),
-                    reason: format!("{}", e),
-                })?;
+            // IPV6_RECVHOPLIMIT for hop limit (only available on Linux/Android/FreeBSD)
+            // TODO: Re-enable when nix crate supports this on current platform
+            // #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
+            // {
+            //     setsockopt(fd, sockopt::Ipv6RecvHopLimit, &true)
+            //         .map_err(|e| NetworkError::SocketOptionFailed {
+            //             option: "IPV6_RECVHOPLIMIT".to_string(),
+            //             reason: format!("{}", e),
+            //         })?;
+            // }
         } else {
             // IP_PKTINFO for destination address
-            setsockopt(fd, sockopt::Ipv4PacketInfo, &true)
+            setsockopt(socket, sockopt::Ipv4PacketInfo, &true)
                 .map_err(|e| NetworkError::SocketOptionFailed {
                     option: "IP_PKTINFO".to_string(),
                     reason: format!("{}", e),
@@ -848,16 +887,20 @@ impl SocketManager {
     
     /// Configure ICMPv6-specific socket options
     fn configure_icmpv6_socket(&self, socket: &Socket) -> Result<()> {
-        use nix::sys::socket::{setsockopt, sockopt};
+        // Note: Using underscore prefix to suppress unused variable warning
+        let _fd = socket.as_raw_fd();
         
-        let fd = socket.as_raw_fd();
-        
-        // IPV6_RECVHOPLIMIT for validating hop limits
-        setsockopt(fd, sockopt::Ipv6RecvHopLimit, &true)
-            .map_err(|e| NetworkError::SocketOptionFailed {
-                option: "IPV6_RECVHOPLIMIT".to_string(),
-                reason: format!("{}", e),
-            })?;
+        // IPV6_RECVHOPLIMIT for validating hop limits (only available on Linux/Android/FreeBSD)
+        // TODO: Re-enable when nix crate supports this on current platform
+        // #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
+        // {
+        //     use nix::sys::socket::{setsockopt, sockopt};
+        //     setsockopt(_fd, sockopt::Ipv6RecvHopLimit, &true)
+        //         .map_err(|e| NetworkError::SocketOptionFailed {
+        //             option: "IPV6_RECVHOPLIMIT".to_string(),
+        //             reason: format!("{}", e),
+        //         })?;
+        // }
         
         Ok(())
     }
@@ -867,8 +910,9 @@ impl SocketManager {
         #[cfg(target_os = "linux")]
         {
             use nix::sys::socket::{setsockopt, sockopt};
-            let fd = socket.as_raw_fd();
-            setsockopt(fd, sockopt::BindToDevice, &std::ffi::OsStr::new(interface_name))
+            use std::ffi::OsString;
+            let device = OsString::from(interface_name);
+            setsockopt(socket, sockopt::BindToDevice, &device)
                 .map_err(|e| NetworkError::SocketOptionFailed {
                     option: "SO_BINDTODEVICE".to_string(),
                     reason: format!("{}", e),
@@ -912,7 +956,7 @@ impl SocketManager {
 ///
 /// # Returns
 ///
-/// Tuple of (DNS listeners, DHCP v4 socket, DHCP v6 socket, TFTP socket)
+/// PrivilegedSockets containing all successfully created privileged sockets
 ///
 /// # Errors
 ///
@@ -921,7 +965,7 @@ impl SocketManager {
 pub async fn bind_privileged_sockets(
     config: Arc<NetworkConfig>,
     interfaces: &[NetworkInterface],
-) -> Result<(Vec<DnsListener>, Option<DhcpSocket>, Option<DhcpSocket>, Option<TftpSocket>)> {
+) -> Result<PrivilegedSockets> {
     let manager = SocketManager::new(config);
     
     // Create DNS listeners (port 53 - privileged)
@@ -948,7 +992,7 @@ pub async fn bind_privileged_sockets(
     };
     
     info!("All privileged sockets bound successfully");
-    Ok((dns_listeners, dhcp_v4, dhcp_v6, tftp_socket))
+    Ok(PrivilegedSockets::new(dns_listeners, dhcp_v4, dhcp_v6, tftp_socket))
 }
 
 /// Create ICMPv6 socket for Router Advertisements
@@ -969,6 +1013,122 @@ pub async fn bind_privileged_sockets(
 pub async fn create_icmpv6_socket(config: Arc<NetworkConfig>) -> Result<RaSocket> {
     let manager = SocketManager::new(config);
     manager.create_icmpv6_socket().await
+}
+
+/// Create a DNS socket bound to the specified address
+///
+/// # Arguments
+///
+/// * `addr` - Socket address to bind to
+///
+/// # Returns
+///
+/// UDP socket configured for DNS traffic
+///
+/// # Errors
+///
+/// Returns NetworkError if socket creation or binding fails
+pub(crate) async fn create_dns_socket(addr: SocketAddr) -> Result<UdpSocket> {
+    let socket = Socket::new(
+        if addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 },
+        Type::DGRAM,
+        Some(Protocol::UDP)
+    ).map_err(|e| NetworkError::SocketFailed {
+        address: addr.to_string(),
+        reason: format!("Failed to create socket: {}", e),
+    })?;
+    
+    // Set socket options for DNS
+    socket.set_reuse_address(true).map_err(|e| NetworkError::SocketOptionFailed {
+        option: "SO_REUSEADDR".to_string(),
+        reason: format!("{}", e),
+    })?;
+    
+    // TODO: SO_REUSEPORT not available in socket2 crate, may need platform-specific implementation
+    // #[cfg(not(target_os = "windows"))]
+    // socket.set_reuse_port(true).map_err(|e| NetworkError::SocketOptionFailed {
+    //     option: "SO_REUSEPORT".to_string(),
+    //     reason: format!("{}", e),
+    // })?;
+    
+    // Bind the socket
+    socket.bind(&addr.into()).map_err(|e| NetworkError::PortBindFailed {
+        port: addr.port(),
+        reason: format!("{}", e),
+    })?;
+    
+    // Convert to tokio UdpSocket
+    socket.set_nonblocking(true).map_err(|e| NetworkError::SocketFailed {
+        address: addr.to_string(),
+        reason: format!("Failed to set nonblocking: {}", e),
+    })?;
+    
+    let std_socket: std::net::UdpSocket = socket.into();
+    UdpSocket::from_std(std_socket).map_err(|e| NetworkError::SocketFailed {
+        address: addr.to_string(),
+        reason: format!("Failed to convert to tokio socket: {}", e),
+    }.into())
+}
+
+/// Create a DHCP socket bound to the specified address
+///
+/// # Arguments
+///
+/// * `addr` - Socket address to bind to
+///
+/// # Returns
+///
+/// UDP socket configured for DHCP traffic
+///
+/// # Errors
+///
+/// Returns NetworkError if socket creation or binding fails
+pub(crate) async fn create_dhcp_socket(addr: SocketAddr) -> Result<UdpSocket> {
+    let socket = Socket::new(
+        if addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 },
+        Type::DGRAM,
+        Some(Protocol::UDP)
+    ).map_err(|e| NetworkError::SocketFailed {
+        address: addr.to_string(),
+        reason: format!("Failed to create socket: {}", e),
+    })?;
+    
+    // Set socket options for DHCP
+    socket.set_reuse_address(true).map_err(|e| NetworkError::SocketOptionFailed {
+        option: "SO_REUSEADDR".to_string(),
+        reason: format!("{}", e),
+    })?;
+    
+    // TODO: SO_REUSEPORT not available in socket2 crate, may need platform-specific implementation
+    // #[cfg(not(target_os = "windows"))]
+    // socket.set_reuse_port(true).map_err(|e| NetworkError::SocketOptionFailed {
+    //     option: "SO_REUSEPORT".to_string(),
+    //     reason: format!("{}", e),
+    // })?;
+    
+    // Enable broadcast for DHCP
+    socket.set_broadcast(true).map_err(|e| NetworkError::SocketOptionFailed {
+        option: "SO_BROADCAST".to_string(),
+        reason: format!("{}", e),
+    })?;
+    
+    // Bind the socket
+    socket.bind(&addr.into()).map_err(|e| NetworkError::PortBindFailed {
+        port: addr.port(),
+        reason: format!("{}", e),
+    })?;
+    
+    // Convert to tokio UdpSocket
+    socket.set_nonblocking(true).map_err(|e| NetworkError::SocketFailed {
+        address: addr.to_string(),
+        reason: format!("Failed to set nonblocking: {}", e),
+    })?;
+    
+    let std_socket: std::net::UdpSocket = socket.into();
+    Ok(UdpSocket::from_std(std_socket).map_err(|e| NetworkError::SocketFailed {
+        address: addr.to_string(),
+        reason: format!("Failed to convert to tokio socket: {}", e),
+    })?)
 }
 
 #[cfg(test)]
