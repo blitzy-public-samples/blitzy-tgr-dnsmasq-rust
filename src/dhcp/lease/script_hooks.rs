@@ -184,7 +184,7 @@ use crate::error::DhcpError;
 
 // External dependencies from crates.io
 use hex;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::process::Command;
@@ -695,11 +695,11 @@ async fn execute_lua_script(
         let _ = env_table.set("DNSMASQ_MAC", mac.to_string());
     }
 
-    if let Some(ref client_id) = lease.client_identifier {
-        let client_id_hex = client_id
+    if let Some(ref client_id) = lease.client_id {
+        let client_id_hex: String = client_id
             .iter()
             .map(|b| format!("{:02x}", b))
-            .collect::<Vec<_>>()
+            .collect::<Vec<String>>()
             .join(":");
         let _ = env_table.set("DNSMASQ_CLIENT_ID", client_id_hex);
     }
@@ -714,27 +714,27 @@ async fn execute_lua_script(
         let _ = env_table.set("DNSMASQ_SUPPLIED_HOSTNAME", hostname.as_str());
     }
 
-    if let Some(ref vendor) = lease.vendor_class {
-        let vendor_hex = vendor
+    if let Some(ref vendor) = lease.vendorclass {
+        let vendor_hex: String = vendor
             .iter()
             .map(|b| format!("{:02x}", b))
-            .collect::<Vec<_>>()
+            .collect::<Vec<String>>()
             .join(":");
         let _ = env_table.set("DNSMASQ_VENDOR_CLASS", vendor_hex);
     }
 
-    if let Some(ref relay) = lease.relay_address {
-        let relay_hex = relay
+    if let Some(ref agent) = lease.agent_id {
+        let agent_hex: String = agent
             .iter()
             .map(|b| format!("{:02x}", b))
-            .collect::<Vec<_>>()
+            .collect::<Vec<String>>()
             .join(":");
-        let _ = env_table.set("DNSMASQ_RELAY_ADDRESS", relay_hex);
+        let _ = env_table.set("DNSMASQ_RELAY_ADDRESS", agent_hex);
     }
 
-    if let Some(ref tags) = lease.tags {
-        let _ = env_table.set("DNSMASQ_TAGS", tags.join(" "));
-    }
+    // Note: Tags are computed from configuration matching rules, not stored in Lease struct
+    // In the Rust refactoring, tags handling would need to be passed as a separate parameter
+    // if required by the configuration. For now, DNSMASQ_TAGS is not set.
 
     if matches!(action, LeaseAction::OldHostname) {
         if let Some(old_name) = old_hostname {
@@ -772,7 +772,7 @@ async fn execute_lua_script(
 
     // Invoke Lua function: lease_event(action, identifier, ip, hostname, env_table)
     lease_fn
-        .call::<_, ()>((action_str, identifier, ip_str, hostname_str, env_table))
+        .call((action_str, identifier, ip_str, hostname_str, env_table))
         .map_err(|e| {
             error!(
                 script = %script_path.display(),
