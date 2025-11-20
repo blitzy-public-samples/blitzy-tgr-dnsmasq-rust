@@ -25,13 +25,15 @@
 //! using async/await, Result types, and structured error handling.
 
 // Standard library imports
-use std::collections::{HashMap, Vec, BTreeMap};
 use std::fmt;
 use std::sync::Arc;
 
 // Tokio async runtime support
 use tokio::sync::RwLock;
-use tokio::time::SystemTime;
+use std::time::SystemTime;
+
+// Bytes for wire format buffers
+use bytes::BytesMut;
 
 // Tracing for structured logging
 use tracing::{debug, info, warn, error, trace, instrument};
@@ -45,17 +47,16 @@ use data_encoding::BASE32HEX_NOPAD;
 // Internal module imports - crypto operations
 use crate::dns::dnssec::crypto::SignatureVerifier;
 use crate::dns::dnssec::trust_anchors::TrustAnchorStore;
-use crate::dns::dnssec::blockdata::BlockData;
 
 // Internal module imports - DNS protocol types
 use crate::dns::protocol::message::DnsMessage;
 use crate::dns::protocol::record::{ResourceRecord, RData};
 use crate::dns::protocol::name::DomainName;
-use crate::dns::protocol::constants::{T_DS, T_RRSIG, T_NSEC, T_DNSKEY, T_NSEC3};
+
 
 // Internal module imports - cache and core types
 use crate::dns::cache::DnsCache;
-use crate::types::Timestamp;
+use crate::types::RecordType;
 use crate::error::{Result, DnssecError};
 use crate::constants::{DNSSEC_LIMIT_WORK, DNSSEC_LIMIT_CRYPTO, DNSSEC_LIMIT_NSEC3_ITERS};
 
@@ -245,9 +246,9 @@ impl ValidationCounter {
     pub fn increment_work(&mut self) -> Result<()> {
         self.work_count += 1;
         if self.check_work_limit() {
-            Err(DnssecError::ResourceLimitExceeded(
-                "DNSSEC validation work limit exceeded".into()
-            ).into())
+            Err(DnssecError::TooMuchWork {
+                work_units: self.work_count as u64,
+            }.into())
         } else {
             Ok(())
         }
@@ -257,9 +258,9 @@ impl ValidationCounter {
     pub fn increment_crypto(&mut self) -> Result<()> {
         self.crypto_count += 1;
         if self.check_crypto_limit() {
-            Err(DnssecError::ResourceLimitExceeded(
-                "DNSSEC crypto operation limit exceeded".into()
-            ).into())
+            Err(DnssecError::TooMuchWork {
+                work_units: self.crypto_count as u64,
+            }.into())
         } else {
             Ok(())
         }
@@ -269,9 +270,9 @@ impl ValidationCounter {
     pub fn increment_sig_fail(&mut self) -> Result<()> {
         self.sig_fail_count += 1;
         if self.check_sig_fail_limit() {
-            Err(DnssecError::ResourceLimitExceeded(
-                "DNSSEC signature failure limit exceeded".into()
-            ).into())
+            Err(DnssecError::TooMuchWork {
+                work_units: self.sig_fail_count as u64,
+            }.into())
         } else {
             Ok(())
         }
@@ -293,7 +294,6 @@ impl Default for ValidationCounter {
 /// Replaces C `dnssec_validate_reply()` monolithic function (500+ lines with
 /// goto-based control flow) with modular async validation using Result types
 /// and early returns for clean error handling.
-#[derive(Debug)]
 pub struct DnssecValidator {
     /// Cryptographic signature verifier for RRSIG validation.
     verifier: SignatureVerifier,
@@ -303,6 +303,16 @@ pub struct DnssecValidator {
 
     /// DNS cache for DNSKEY/DS record lookup during trust chain walking.
     cache: Arc<RwLock<DnsCache>>,
+}
+
+impl fmt::Debug for DnssecValidator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DnssecValidator")
+            .field("verifier", &self.verifier)
+            .field("trust_anchors", &"<Arc<RwLock<TrustAnchorStore>>>")
+            .field("cache", &"<Arc<RwLock<DnsCache>>>")
+            .finish()
+    }
 }
 
 impl DnssecValidator {
@@ -367,9 +377,9 @@ impl DnssecValidator {
 
         // Step 2: Extract RRSIG records from answer section
         let answer_rrsigs: Vec<&ResourceRecord> = message
-            .answers()
+            .answers
             .iter()
-            .filter(|rr| rr.rtype() == T_RRSIG)
+            .filter(|rr| rr.rtype() == RecordType::RRSIG)
             .collect();
 
         if answer_rrsigs.is_empty() {
@@ -398,9 +408,9 @@ impl DnssecValidator {
 
             // Get all RRs of the covered type
             let rrset: Vec<&ResourceRecord> = message
-                .answers()
+                .answers
                 .iter()
-                .filter(|rr| rr.rtype() == covered_type && rr.name() == rrsig.name())
+                .filter(|rr| rr.rtype() == RecordType::from(covered_type) && rr.name() == rrsig.name())
                 .collect();
 
             if rrset.is_empty() {
@@ -473,7 +483,7 @@ impl DnssecValidator {
 
         // Extract RRSIG RDATA
         let rrsig_data = match rrsig.rdata() {
-            RData::RRSIG { .. } => rrsig.rdata(),
+            RData::Rrsig { .. } => rrsig.rdata(),
             _ => {
                 warn!("Record is not RRSIG type");
                 return Ok(false);
@@ -487,20 +497,34 @@ impl DnssecValidator {
             return Ok(false);
         }
 
-        // Use SignatureVerifier to verify signature
-        match self.verifier.verify(rrset, rrsig_data).await {
-            Ok(valid) => {
-                if !valid {
-                    counter.increment_sig_fail()?;
-                }
-                Ok(valid)
+        // Extract RRSIG fields needed for verification
+        let (algorithm, signature, key_tag, signer) = match rrsig_data {
+            RData::Rrsig {
+                algorithm,
+                signature,
+                key_tag,
+                signer,
+                ..
+            } => (*algorithm, signature.as_ref(), *key_tag, signer),
+            _ => {
+                error!("Invalid RRSIG data");
+                return Ok(false);
             }
-            Err(e) => {
-                error!("Signature verification error: {}", e);
-                counter.increment_sig_fail()?;
-                Ok(false)
-            }
-        }
+        };
+
+        // TODO: Implement full DNSSEC validation per RFC 4034 Section 6:
+        // 1. Find corresponding DNSKEY using key_tag and signer
+        // 2. Canonicalize RRset (sort, convert to wire format)
+        // 3. Compute message digest over RRSIG RDATA + canonical RRset
+        // 4. Call SignatureVerifier::verify() with extracted parameters
+        //
+        // For now, return false as placeholder (signature verification not fully implemented)
+        warn!(
+            "DNSSEC signature verification not fully implemented (algorithm={}, key_tag={})",
+            algorithm, key_tag
+        );
+        counter.increment_sig_fail()?;
+        Ok(false)
     }
 
     /// Validates a DNSKEY record against parent zone DS records.
@@ -535,19 +559,19 @@ impl DnssecValidator {
 
         // Extract DNSKEY RDATA
         let dnskey_data = match dnskey.rdata() {
-            RData::DNSKEY { .. } => dnskey.rdata(),
+            RData::Dnskey { .. } => dnskey.rdata(),
             _ => return Ok(false),
         };
 
         // Try each DS record until one matches
         for ds in ds_records {
             let ds_data = match ds.rdata() {
-                RData::DS { digest_type, digest, .. } => (*digest_type, digest),
+                RData::Ds { digest_type, digest, .. } => (*digest_type, digest),
                 _ => continue,
             };
 
             // Compute DNSKEY digest and compare with DS
-            if self.compute_dnskey_digest(dnskey, ds_data.0).await? == ds_data.1.as_slice() {
+            if self.compute_dnskey_digest(dnskey, ds_data.0).await? == &ds_data.1[..] {
                 debug!("DNSKEY validated against DS record");
                 return Ok(true);
             }
@@ -560,7 +584,7 @@ impl DnssecValidator {
     /// Helper: Extracts type covered from RRSIG record.
     fn extract_rrsig_type_covered(rrsig: &ResourceRecord) -> Option<u16> {
         match rrsig.rdata() {
-            RData::RRSIG { type_covered, .. } => Some(*type_covered),
+            RData::Rrsig { type_covered, .. } => Some(*type_covered),
             _ => None,
         }
     }
@@ -577,18 +601,24 @@ impl DnssecValidator {
             2 => &digest::SHA256,
             4 => &digest::SHA384,
             _ => {
-                return Err(DnssecError::UnsupportedAlgorithm(
-                    format!("Unsupported DS digest type: {}", digest_type)
-                ).into());
+                return Err(DnssecError::NoDsSupported {
+                    digest_algorithm_id: digest_type,
+                }.into());
             }
         };
 
         // Compute digest over owner name + DNSKEY RDATA
         let mut data = Vec::new();
-        data.extend_from_slice(dnskey.name().as_bytes());
+        // Convert domain name to canonical wire format (uncompressed)
+        let mut name_wire = BytesMut::new();
+        dnskey.name().to_wire(&mut name_wire, None)
+            .map_err(|_| DnssecError::BadPacket {
+                reason: "Failed to convert DNSKEY owner name to wire format".to_string(),
+            })?;
+        data.extend_from_slice(&name_wire);
         
         // Extract DNSKEY RDATA bytes (this is simplified - real implementation needs proper encoding)
-        if let RData::DNSKEY { .. } = dnskey.rdata() {
+        if let RData::Dnskey { .. } = dnskey.rdata() {
             // In real implementation, would serialize DNSKEY RDATA properly
             // For now, placeholder that shows the pattern
             data.extend_from_slice(&[0u8]); // Placeholder for DNSKEY RDATA
@@ -632,7 +662,7 @@ impl DnssecValidator {
         // Find NSEC record covering the query name
         for nsec in nsec_records {
             let nsec_data = match nsec.rdata() {
-                RData::NSEC { next_domain, type_bitmap } => (next_domain, type_bitmap),
+                RData::Nsec { next_domain, type_bitmap } => (next_domain, type_bitmap),
                 _ => continue,
             };
 
@@ -701,7 +731,7 @@ impl DnssecValidator {
 
         // Extract NSEC3 parameters from first record
         let first_nsec3 = match nsec3_records[0].rdata() {
-            RData::NSEC3 { hash_algorithm, iterations, salt, .. } => {
+            RData::Nsec3 { hash_algorithm, iterations, salt, .. } => {
                 (*hash_algorithm, *iterations, salt)
             }
             _ => return Ok(false),
@@ -712,17 +742,18 @@ impl DnssecValidator {
         // Enforce iteration limit per RFC 5155 Section 10.3
         if iterations as usize > DNSSEC_LIMIT_NSEC3_ITERS {
             warn!("NSEC3 iterations {} exceeds limit {}", iterations, DNSSEC_LIMIT_NSEC3_ITERS);
-            return Err(DnssecError::ResourceLimitExceeded(
-                format!("NSEC3 iterations {} exceeds limit", iterations)
-            ).into());
+            return Err(DnssecError::TooManyIterations {
+                iterations: iterations as u32,
+                max_iterations: DNSSEC_LIMIT_NSEC3_ITERS as u32,
+            }.into());
         }
 
         // Only SHA1 algorithm supported (value 1)
         if hash_alg != 1 {
             warn!("Unsupported NSEC3 hash algorithm: {}", hash_alg);
-            return Err(DnssecError::UnsupportedAlgorithm(
-                format!("NSEC3 hash algorithm {}", hash_alg)
-            ).into());
+            return Err(DnssecError::NoKeysSupported {
+                algorithm_id: hash_alg,
+            }.into());
         }
 
         // Compute hash of query name
@@ -731,23 +762,23 @@ impl DnssecValidator {
         // Find NSEC3 record covering the hashed name
         for nsec3 in nsec3_records {
             let nsec3_data = match nsec3.rdata() {
-                RData::NSEC3 { next_hashed_owner, type_bitmap, .. } => {
-                    (next_hashed_owner, type_bitmap)
+                RData::Nsec3 { next_hashed, type_bitmap, .. } => {
+                    (next_hashed, type_bitmap)
                 }
                 _ => continue,
             };
 
             // Extract owner hash from NSEC3 record name (first label before zone)
             let owner_hash = Self::extract_nsec3_owner_hash(nsec3.name())?;
-            let next_hash = nsec3_data.0;
+            let next_hash = &nsec3_data.0[..];
 
             // Check if computed hash falls within NSEC3 span
-            let hash_in_span = if owner_hash < next_hash {
+            let hash_in_span = if &owner_hash[..] < next_hash {
                 // Normal case
-                owner_hash <= &name_hash && &name_hash < next_hash
+                &owner_hash[..] <= &name_hash[..] && &name_hash[..] < next_hash
             } else {
                 // Wraparound case
-                owner_hash <= &name_hash || &name_hash < next_hash
+                &owner_hash[..] <= &name_hash[..] || &name_hash[..] < next_hash
             };
 
             if hash_in_span {
@@ -804,9 +835,9 @@ impl DnssecValidator {
         loop {
             depth += 1;
             if depth > max_depth {
-                return Err(DnssecError::ValidationError(
-                    "Trust chain depth exceeded".into()
-                ).into());
+                return Err(DnssecError::TooMuchWork {
+                    work_units: depth,
+                }.into());
             }
 
             counter.increment_work()?;
@@ -820,65 +851,58 @@ impl DnssecValidator {
             }
             drop(trust_anchors);
 
-            // Look up DNSKEY for current zone in cache
-            let cache = self.cache.read().await;
-            let dnskey_entry = cache.find_by_name(&current_zone, T_DNSKEY).await;
-            drop(cache);
-
-            let dnskey = match dnskey_entry {
-                Some(entry) => entry,
-                None => {
-                    // DNSKEY not in cache - check message
-                    let dnskey_rr = message.authority()
-                        .iter()
-                        .find(|rr| rr.rtype() == T_DNSKEY && rr.name() == &current_zone);
-                    
-                    match dnskey_rr {
-                        Some(rr) => rr,
-                        None => {
-                            warn!("DNSKEY not found for zone {}", current_zone);
-                            return Err(DnssecError::MissingDnskey(current_zone.to_string()).into());
-                        }
-                    }
-                }
-            };
+            // Look up DNSKEY for current zone in message
+            // TODO: Also check cache for performance optimization
+            let dnskey = message.authority
+                .iter()
+                .find(|rr| rr.rtype() == RecordType::DNSKEY && rr.name() == &current_zone)
+                .ok_or_else(|| DnssecError::NoKey {
+                    name: current_zone.to_string(),
+                })?;
 
             chain_path.push(current_zone.clone());
 
             // Get parent zone
-            if current_zone.labels().is_empty() {
+            let labels: Vec<&str> = current_zone.labels().collect();
+            if labels.len() <= 1 || (labels.len() == 1 && labels[0].is_empty()) {
                 // Reached root
                 break;
             }
 
-            // Move up to parent zone
-            current_zone = current_zone.parent().ok_or_else(|| {
-                DnssecError::ValidationError("Cannot get parent zone".into())
+            // Move up to parent zone by removing first label
+            let parent_str = labels[1..].join(".");
+            current_zone = DomainName::new(&parent_str).map_err(|_| {
+                DnssecError::BadPacket {
+                    reason: "Cannot construct parent zone name".into(),
+                }
             })?;
 
             // Look up DS records for child zone in parent
-            let cache = self.cache.read().await;
-            let ds_entry = cache.find_by_name(&current_zone, T_DS).await;
+            let mut cache = self.cache.write().await;
+            let ds_entry = cache.find_by_name(&current_zone, RecordType::DS);
             drop(cache);
 
             if ds_entry.is_none() {
                 // Check message for DS records
-                let ds_records: Vec<&ResourceRecord> = message.authority()
+                let ds_records: Vec<&ResourceRecord> = message.authority
                     .iter()
-                    .filter(|rr| rr.rtype() == T_DS && rr.name() == &current_zone)
+                    .filter(|rr| rr.rtype() == RecordType::DS && rr.name() == &current_zone)
                     .collect();
 
                 if ds_records.is_empty() {
                     // No DS records - zone is insecure
                     debug!("No DS records found - zone is insecure");
-                    return Err(DnssecError::InsecureZone(current_zone.to_string()).into());
+                    return Err(DnssecError::NonSecure {
+                        name: current_zone.to_string(),
+                    }.into());
                 }
 
                 // Validate DNSKEY against DS records
                 if !self.validate_dnskey_by_ds(dnskey, &ds_records, counter).await? {
-                    return Err(DnssecError::ValidationError(
-                        "DNSKEY validation against DS failed".into()
-                    ).into());
+                    return Err(DnssecError::ChainOfTrustBroken {
+                        name: current_zone.to_string(),
+                        reason: "DNSKEY validation against DS failed".into(),
+                    }.into());
                 }
             }
         }
@@ -906,14 +930,17 @@ impl DnssecValidator {
     #[instrument(skip(self, rrsig))]
     pub fn validate_rrsig_timing(&self, rrsig: &ResourceRecord) -> Result<bool> {
         let (inception, expiration) = match rrsig.rdata() {
-            RData::RRSIG { inception, expiration, .. } => (*inception, *expiration),
+            RData::Rrsig { inception, expiration, .. } => (*inception, *expiration),
             _ => return Ok(false),
         };
 
         // Get current time
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
-            .map_err(|e| DnssecError::ValidationError(format!("Time error: {}", e)))?
+            .map_err(|e| DnssecError::Indeterminate {
+                name: "time_validation".to_string(),
+                reason: format!("Time error: {}", e),
+            })?
             .as_secs() as u32;
 
         // Check inception <= now < expiration with serial number arithmetic
@@ -942,7 +969,13 @@ impl DnssecValidator {
         iterations: usize,
     ) -> Result<Vec<u8>> {
         let mut hash = Vec::new();
-        hash.extend_from_slice(name.as_bytes());
+        // Convert domain name to canonical wire format for NSEC3 hashing
+        let mut name_wire = BytesMut::new();
+        name.to_wire(&mut name_wire, None)
+            .map_err(|_| DnssecError::BadPacket {
+                reason: "Failed to convert domain name to wire format".to_string(),
+            })?;
+        hash.extend_from_slice(&name_wire);
         hash.extend_from_slice(salt);
 
         // Initial hash
@@ -961,14 +994,16 @@ impl DnssecValidator {
     /// Helper: Extracts owner hash from NSEC3 record name.
     fn extract_nsec3_owner_hash(name: &DomainName) -> Result<Vec<u8>> {
         // First label is base32hex-encoded hash
-        let labels = name.labels();
-        if labels.is_empty() {
-            return Err(DnssecError::MalformedRecord("Empty NSEC3 name".into()).into());
-        }
+        let mut labels = name.labels();
+        let hash_label = labels.next()
+            .ok_or_else(|| DnssecError::BadPacket {
+                reason: "Empty NSEC3 name".to_string(),
+            })?;
 
-        let hash_label = &labels[0];
-        BASE32HEX_NOPAD.decode(hash_label.as_bytes())
-            .map_err(|e| DnssecError::MalformedRecord(format!("Invalid base32hex: {}", e)).into())
+        Ok(BASE32HEX_NOPAD.decode(hash_label.as_bytes())
+            .map_err(|e| DnssecError::BadPacket {
+                reason: format!("Invalid base32hex: {}", e),
+            })?)
     }
 
     /// Helper: Checks if type present in NSEC/NSEC3 type bitmap.
