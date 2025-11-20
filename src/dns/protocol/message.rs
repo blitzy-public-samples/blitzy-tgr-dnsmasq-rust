@@ -64,15 +64,7 @@
 //! let packet_bytes = response.to_bytes()?;
 //! ```
 
-use bytes::{BufMut, Bytes, BytesMut};
-use nom::{
-    bytes::complete::take,
-    combinator::map,
-    multi::count,
-    number::complete::{be_u16, be_u32},
-    sequence::tuple,
-    IResult,
-};
+use bytes::{BufMut, BytesMut};
 
 use super::compression::{compress_name, decompress_name, CompressionMap};
 use super::constants::*;
@@ -258,11 +250,17 @@ impl Default for DnsFlags {
 /// - ARCOUNT: Number of resource records in additional section
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DnsHeader {
+    /// Message ID for matching queries with responses (16 bits)
     pub id: u16,
+    /// DNS flags including QR, opcode, AA, TC, RD, RA, AD, CD, and RCODE
     pub flags: DnsFlags,
+    /// Number of entries in question section
     pub qdcount: u16,
+    /// Number of resource records in answer section
     pub ancount: u16,
+    /// Number of resource records in authority section
     pub nscount: u16,
+    /// Number of resource records in additional section
     pub arcount: u16,
 }
 
@@ -284,9 +282,10 @@ impl DnsHeader {
     /// Returns the header or DnsError::ParseFailed if input is too short.
     pub fn from_bytes(input: &[u8]) -> Result<Self> {
         if input.len() < 12 {
-            return Err(DnsmasqError::Dns(DnsError::ParseFailed(
-                "DNS header too short (need 12 bytes)".to_string(),
-            )));
+            return Err(DnsmasqError::Dns(DnsError::ParseFailed {
+                server: "local".to_string(),
+                reason: "DNS header too short (need 12 bytes)".to_string(),
+            }));
         }
 
         let id = u16::from_be_bytes([input[0], input[1]]);
@@ -327,8 +326,11 @@ impl DnsHeader {
 /// - QCLASS: Query class (typically IN = 1 for Internet)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Question {
+    /// Domain name being queried (e.g., "example.com")
     pub qname: DomainName,
+    /// Query type (A, AAAA, CNAME, MX, etc.)
     pub qtype: RecordType,
+    /// Query class (1 = IN for Internet, typically always 1)
     pub qclass: u16,
 }
 
@@ -347,23 +349,31 @@ impl Question {
     /// Returns (Question, bytes_consumed) or error.
     /// packet parameter is the full packet for decompression.
     pub fn from_bytes(input: &[u8], packet: &[u8], offset: usize) -> Result<(Self, usize)> {
-        // Decompress domain name
-        let (name, name_len) = decompress_name(packet, offset)?;
-        let remaining = &input[name_len..];
+        // Decompress domain name - returns (absolute_offset_after_name, domain_name_string)
+        let (name_end_offset, name_string) = decompress_name(packet, offset)
+            .map_err(|e| DnsmasqError::Dns(e))?;
+        
+        // Calculate bytes consumed by the name (relative to input)
+        let name_bytes_consumed = name_end_offset - offset;
+        let remaining = &input[name_bytes_consumed..];
 
         // Parse QTYPE and QCLASS (4 bytes total)
         if remaining.len() < 4 {
-            return Err(DnsmasqError::Dns(DnsError::ParseFailed(
-                "Question section truncated (need QTYPE and QCLASS)".to_string(),
-            )));
+            return Err(DnsmasqError::Dns(DnsError::ParseFailed {
+                server: "local".to_string(),
+                reason: "Question section truncated (need QTYPE and QCLASS)".to_string(),
+            }));
         }
 
         let qtype_raw = u16::from_be_bytes([remaining[0], remaining[1]]);
         let qtype = RecordType::from(qtype_raw);
         let qclass = u16::from_be_bytes([remaining[2], remaining[3]]);
 
-        let total_len = name_len + 4;
-        Ok((Self::new(name, qtype, qclass), total_len))
+        // Create DomainName from the decompressed string
+        let qname = DomainName::new(&name_string)?;
+        
+        let total_len = name_bytes_consumed + 4;
+        Ok((Self::new(qname, qtype, qclass), total_len))
     }
 
     /// Serialize question to wire format with compression.
@@ -391,10 +401,15 @@ impl Question {
 /// - Additional: Vec of additional resource records
 #[derive(Debug, Clone, PartialEq)]
 pub struct DnsMessage {
+    /// DNS message header with ID, flags, and section counts
     pub header: DnsHeader,
+    /// Question section: domains being queried
     pub questions: Vec<Question>,
+    /// Answer section: resource records answering the questions
     pub answers: Vec<ResourceRecord>,
+    /// Authority section: authoritative nameserver records
     pub authority: Vec<ResourceRecord>,
+    /// Additional section: additional helpful records (e.g., glue records)
     pub additional: Vec<ResourceRecord>,
 }
 
@@ -429,9 +444,10 @@ impl DnsMessage {
         let mut questions = Vec::with_capacity(header.qdcount as usize);
         for _ in 0..header.qdcount {
             if offset >= packet.len() {
-                return Err(DnsmasqError::Dns(DnsError::ParseFailed(
-                    "Packet truncated in question section".to_string(),
-                )));
+                return Err(DnsmasqError::Dns(DnsError::ParseFailed {
+                    server: "local".to_string(),
+                    reason: "Packet truncated in question section".to_string(),
+                }));
             }
 
             let (question, consumed) = Question::from_bytes(&packet[offset..], packet, offset)?;
@@ -443,16 +459,18 @@ impl DnsMessage {
         let mut answers = Vec::with_capacity(header.ancount as usize);
         for _ in 0..header.ancount {
             if offset >= packet.len() {
-                return Err(DnsmasqError::Dns(DnsError::ParseFailed(
-                    "Packet truncated in answer section".to_string(),
-                )));
+                return Err(DnsmasqError::Dns(DnsError::ParseFailed {
+                    server: "local".to_string(),
+                    reason: "Packet truncated in answer section".to_string(),
+                }));
             }
 
             let input_before = &packet[offset..];
             let (remaining, rr) = ResourceRecord::from_wire(input_before, packet)
-                .map_err(|e| DnsmasqError::Dns(DnsError::ParseFailed(
-                    format!("Failed to parse answer RR: {:?}", e)
-                )))?;
+                .map_err(|e| DnsmasqError::Dns(DnsError::ParseFailed {
+                    server: "local".to_string(),
+                    reason: format!("Failed to parse answer RR: {:?}", e),
+                }))?;
             let consumed = input_before.len() - remaining.len();
             answers.push(rr);
             offset += consumed;
@@ -462,16 +480,18 @@ impl DnsMessage {
         let mut authority = Vec::with_capacity(header.nscount as usize);
         for _ in 0..header.nscount {
             if offset >= packet.len() {
-                return Err(DnsmasqError::Dns(DnsError::ParseFailed(
-                    "Packet truncated in authority section".to_string(),
-                )));
+                return Err(DnsmasqError::Dns(DnsError::ParseFailed {
+                    server: "local".to_string(),
+                    reason: "Packet truncated in authority section".to_string(),
+                }));
             }
 
             let input_before = &packet[offset..];
             let (remaining, rr) = ResourceRecord::from_wire(input_before, packet)
-                .map_err(|e| DnsmasqError::Dns(DnsError::ParseFailed(
-                    format!("Failed to parse authority RR: {:?}", e)
-                )))?;
+                .map_err(|e| DnsmasqError::Dns(DnsError::ParseFailed {
+                    server: "local".to_string(),
+                    reason: format!("Failed to parse authority RR: {:?}", e),
+                }))?;
             let consumed = input_before.len() - remaining.len();
             authority.push(rr);
             offset += consumed;
@@ -481,16 +501,18 @@ impl DnsMessage {
         let mut additional = Vec::with_capacity(header.arcount as usize);
         for _ in 0..header.arcount {
             if offset >= packet.len() {
-                return Err(DnsmasqError::Dns(DnsError::ParseFailed(
-                    "Packet truncated in additional section".to_string(),
-                )));
+                return Err(DnsmasqError::Dns(DnsError::ParseFailed {
+                    server: "local".to_string(),
+                    reason: "Packet truncated in additional section".to_string(),
+                }));
             }
 
             let input_before = &packet[offset..];
             let (remaining, rr) = ResourceRecord::from_wire(input_before, packet)
-                .map_err(|e| DnsmasqError::Dns(DnsError::ParseFailed(
-                    format!("Failed to parse additional RR: {:?}", e)
-                )))?;
+                .map_err(|e| DnsmasqError::Dns(DnsError::ParseFailed {
+                    server: "local".to_string(),
+                    reason: format!("Failed to parse additional RR: {:?}", e),
+                }))?;
             let consumed = input_before.len() - remaining.len();
             additional.push(rr);
             offset += consumed;
@@ -585,9 +607,10 @@ impl DnsMessage {
 
         // Write RDLENGTH (2 bytes)
         if rdata_bytes.len() > u16::MAX as usize {
-            return Err(DnsmasqError::Dns(DnsError::SerializeFailed(
-                "RDATA length exceeds maximum (65535 bytes)".to_string(),
-            )));
+            return Err(DnsmasqError::Dns(DnsError::ParseFailed {
+                server: "local".to_string(),
+                reason: "RDATA length exceeds maximum (65535 bytes)".to_string(),
+            }));
         }
         buf.put_u16(rdata_bytes.len() as u16);
 
@@ -710,6 +733,7 @@ impl DnsMessage {
 /// ```
 #[derive(Debug)]
 pub struct DnsMessageBuilder {
+    /// The DNS message being constructed
     message: DnsMessage,
 }
 
@@ -804,8 +828,11 @@ impl Default for DnsMessageBuilder {
 /// Contains the first question from the question section.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DnsQuery {
+    /// Domain name being queried
     pub name: DomainName,
+    /// Query type (A, AAAA, CNAME, etc.)
     pub qtype: RecordType,
+    /// Query class (1 = IN for Internet)
     pub qclass: u16,
 }
 
@@ -1030,7 +1057,7 @@ mod tests {
 
     #[test]
     fn test_question_new() {
-        let name = DomainName::from_str("example.com").unwrap();
+        let name = DomainName::new("example.com").unwrap();
         let question = Question::new(name.clone(), RecordType::A, C_IN);
         
         assert_eq!(question.qname, name);
@@ -1042,7 +1069,7 @@ mod tests {
     fn test_dns_message_add_sections() {
         let mut message = DnsMessage::new(1);
         
-        let name = DomainName::from_str("test.com").unwrap();
+        let name = DomainName::new("test.com").unwrap();
         let question = Question::new(name.clone(), RecordType::A, C_IN);
         message.add_question(question);
         
@@ -1052,7 +1079,7 @@ mod tests {
 
     #[test]
     fn test_dns_query_from_message() {
-        let name = DomainName::from_str("example.org").unwrap();
+        let name = DomainName::new("example.org").unwrap();
         let question = Question::new(name.clone(), RecordType::AAAA, C_IN);
         
         let mut message = DnsMessage::new(100);
@@ -1066,7 +1093,7 @@ mod tests {
 
     #[test]
     fn test_dns_response_from_query() {
-        let name = DomainName::from_str("test.net").unwrap();
+        let name = DomainName::new("test.net").unwrap();
         let question = Question::new(name.clone(), RecordType::A, C_IN);
         
         let mut query_msg = DnsMessage::new(555);

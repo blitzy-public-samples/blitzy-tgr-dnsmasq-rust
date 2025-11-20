@@ -137,10 +137,10 @@
 //! // Extract query information with type safety
 //! if query.is_query() && !query.questions.is_empty() {
 //!     let question = &query.questions[0];
-//!     let domain = &question.name;
+//!     let domain = &question.qname;
 //!     let qtype = question.qtype;
 //!     
-//!     println!("Query for {} type {}", domain, qtype);
+//!     println!("Query for {} type {:?}", domain, qtype);
 //! }
 //! # Ok(())
 //! # }
@@ -163,12 +163,14 @@
 //! # let query = DnsMessage::from_bytes(&packet_data)?;
 //! #
 //! // Create response matching query
-//! let mut response = DnsMessage::new_response(&query);
+//! let mut response = DnsMessage::new(query.id());
+//! response.set_response();
+//! response.questions = query.questions.clone();
 //!
 //! // Add A record answer with 300 second TTL
 //! let name = query.questions.get(0)
-//!     .map(|q| q.name.clone())
-//!     .unwrap_or_else(|| DomainName::from_str("example.com").unwrap());
+//!     .map(|q| q.qname.clone())
+//!     .unwrap_or_else(|| DomainName::new("example.com").unwrap());
 //! let answer = ResourceRecord::new(
 //!     name,
 //!     RecordType::A,
