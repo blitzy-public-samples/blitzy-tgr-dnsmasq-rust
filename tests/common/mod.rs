@@ -785,7 +785,7 @@ impl DnsQueryBuilder {
         }
         
         // QTYPE and QCLASS
-        buf.extend_from_slice(&(self.record_type as u16).to_be_bytes());
+        buf.extend_from_slice(&u16::from(self.record_type).to_be_bytes());
         buf.extend_from_slice(&[0x00, 0x01]);  // IN class
         
         buf
@@ -1617,6 +1617,3 @@ mod tests {
         // Ports might be the same if OS reuses quickly, so just check they're valid
     }
 }
-
-
-/// 

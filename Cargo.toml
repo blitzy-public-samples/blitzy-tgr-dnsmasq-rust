@@ -189,11 +189,11 @@ dot = ["rustls", "webpki"]
 # DNS-over-HTTPS support
 doh = ["rustls", "webpki"]
 
-# All optional features enabled
+# All optional features enabled (excluding platform-specific features like 'ubus')
+# Note: 'ubus' requires OpenWrt libubus library and should be explicitly enabled on OpenWrt
 all-features = [
     "dnssec",
     "dbus",
-    "ubus",
     "lua-scripts",
     "idn",
     "tftp",
