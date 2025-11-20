@@ -424,8 +424,7 @@ where
     if !cli_args.no_conf {
         let config_path = cli_args
             .conf_file
-            .as_ref()
-            .map(|p| p.as_path())
+            .as_deref()
             .unwrap_or_else(|| std::path::Path::new(DEFAULT_CONFIG_PATH));
 
         // Check if configuration file exists and is readable
