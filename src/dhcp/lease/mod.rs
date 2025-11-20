@@ -557,15 +557,9 @@ impl LeaseManager {
 
         // Execute lease script if configured
         if let Some(ref script_path) = self.config.scripts.script_path {
-            use crate::dhcp::lease::script_hooks::{
-                ScriptAction, ScriptConfig as ScriptHookConfig,
-            };
-            let action = if is_new { ScriptAction::Add } else { ScriptAction::Old };
+            let action = if is_new { LeaseAction::Add } else { LeaseAction::Old };
 
-            // Construct script_hooks::ScriptConfig from config data
-            let script_config = ScriptHookConfig::new(script_path.clone());
-
-            if let Err(e) = execute_lease_script(&script_config, action, &lease, None).await {
+            if let Err(e) = execute_lease_script(script_path, action, &lease, None).await {
                 warn!(ip = %ip, action = ?action, error = %e, "Failed to execute lease script");
             }
         }
@@ -617,15 +611,8 @@ impl LeaseManager {
 
         // Execute lease script if configured
         if let Some(ref script_path) = self.config.scripts.script_path {
-            use crate::dhcp::lease::script_hooks::{
-                ScriptAction, ScriptConfig as ScriptHookConfig,
-            };
-
-            // Construct script_hooks::ScriptConfig from config data
-            let script_config = ScriptHookConfig::new(script_path.clone());
-
             if let Err(e) =
-                execute_lease_script(&script_config, ScriptAction::Del, &lease, None).await
+                execute_lease_script(script_path, LeaseAction::Del, &lease, None).await
             {
                 warn!(ip = %ip, error = %e, "Failed to execute lease script for deletion");
             }
