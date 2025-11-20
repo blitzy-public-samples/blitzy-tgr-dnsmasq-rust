@@ -110,13 +110,13 @@ bitflags! {
     pub struct ListenerFlags: u32 {
         /// TCP listener (vs. UDP)
         const TCP = 0x01;
-        
+
         /// TFTP listener
         const TFTP = 0x02;
-        
+
         /// Wildcard listener (0.0.0.0 or ::)
         const WILDCARD = 0x04;
-        
+
         /// Interface-specific listener
         const INTERFACE_SPECIFIC = 0x08;
     }
@@ -142,13 +142,13 @@ bitflags! {
 pub struct DnsListener {
     /// UDP or TCP socket for DNS protocol
     pub socket: DnsSocketType,
-    
+
     /// Local address the socket is bound to
     pub local_addr: SocketAddr,
-    
+
     /// Interface name if bound to specific interface
     pub interface: Option<String>,
-    
+
     /// Listener type flags
     pub flags: ListenerFlags,
 }
@@ -158,7 +158,7 @@ pub struct DnsListener {
 pub enum DnsSocketType {
     /// UDP socket for standard DNS queries
     Udp(UdpSocket),
-    
+
     /// TCP socket for large DNS queries (DNSSEC, AXFR)
     Tcp(TcpListener),
 }
@@ -178,7 +178,7 @@ impl DnsSocket {
     pub fn new(socket: UdpSocket) -> Self {
         Self { inner: socket }
     }
-    
+
     /// Receive packet with source, destination, and interface metadata
     ///
     /// Uses recvmsg with ancillary data to extract packet metadata.
@@ -193,48 +193,50 @@ impl DnsSocket {
         buf: &mut [u8],
     ) -> Result<(usize, SocketAddr, SocketAddr)> {
         // Use standard recv_from for now - full metadata requires platform-specific code
-        let (len, peer_addr) = self.inner.recv_from(buf).await
-            .map_err(|e| NetworkError::SocketFailed {
-                address: self.inner.local_addr().ok()
+        let (len, peer_addr) =
+            self.inner.recv_from(buf).await.map_err(|e| NetworkError::SocketFailed {
+                address: self
+                    .inner
+                    .local_addr()
+                    .ok()
                     .map(|a| a.to_string())
                     .unwrap_or_else(|| "unknown".to_string()),
                 reason: format!("Failed to receive packet: {}", e),
             })?;
-        
-        let local_addr = self.inner.local_addr()
-            .map_err(|e| NetworkError::SocketFailed {
-                address: "unknown".to_string(),
-                reason: format!("Failed to get local address: {}", e),
-            })?;
-        
+
+        let local_addr = self.inner.local_addr().map_err(|e| NetworkError::SocketFailed {
+            address: "unknown".to_string(),
+            reason: format!("Failed to get local address: {}", e),
+        })?;
+
         Ok((len, peer_addr, local_addr))
     }
-    
+
     /// Send packet to specified address
     pub async fn send_to(&self, buf: &[u8], target: SocketAddr) -> Result<usize> {
-        self.inner.send_to(buf, target).await
-            .map_err(|e| NetworkError::SocketFailed {
+        self.inner.send_to(buf, target).await.map_err(|e| {
+            NetworkError::SocketFailed {
                 address: target.to_string(),
                 reason: format!("Failed to send packet: {}", e),
-            }.into())
+            }
+            .into()
+        })
     }
-    
+
     /// Get local address
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        Ok(self.inner.local_addr()
-            .map_err(|e| NetworkError::SocketFailed {
-                address: "unknown".to_string(),
-                reason: format!("Failed to get local address: {}", e),
-            })?)
+        Ok(self.inner.local_addr().map_err(|e| NetworkError::SocketFailed {
+            address: "unknown".to_string(),
+            reason: format!("Failed to get local address: {}", e),
+        })?)
     }
-    
+
     /// Get peer address if connected
     pub fn peer_addr(&self) -> Result<SocketAddr> {
-        Ok(self.inner.peer_addr()
-            .map_err(|e| NetworkError::SocketFailed {
-                address: "unknown".to_string(),
-                reason: format!("Failed to get peer address: {}", e),
-            })?)
+        Ok(self.inner.peer_addr().map_err(|e| NetworkError::SocketFailed {
+            address: "unknown".to_string(),
+            reason: format!("Failed to get peer address: {}", e),
+        })?)
     }
 }
 
@@ -252,52 +254,54 @@ impl DhcpSocket {
     pub fn new(socket: UdpSocket) -> Self {
         Self { inner: socket }
     }
-    
+
     /// Receive DHCP packet
     pub async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
-        self.inner.recv_from(buf).await
-            .map_err(|e| NetworkError::SocketFailed {
-                address: self.inner.local_addr().ok()
+        self.inner.recv_from(buf).await.map_err(|e| {
+            NetworkError::SocketFailed {
+                address: self
+                    .inner
+                    .local_addr()
+                    .ok()
                     .map(|a| a.to_string())
                     .unwrap_or_else(|| "unknown".to_string()),
                 reason: format!("Failed to receive DHCP packet: {}", e),
-            }.into())
+            }
+            .into()
+        })
     }
-    
+
     /// Send DHCP packet to specific address
     pub async fn send_to(&self, buf: &[u8], target: SocketAddr) -> Result<usize> {
-        self.inner.send_to(buf, target).await
-            .map_err(|e| NetworkError::SocketFailed {
+        self.inner.send_to(buf, target).await.map_err(|e| {
+            NetworkError::SocketFailed {
                 address: target.to_string(),
                 reason: format!("Failed to send DHCP packet: {}", e),
-            }.into())
+            }
+            .into()
+        })
     }
-    
+
     /// Send broadcast DHCP packet
     pub async fn send_broadcast(&self, buf: &[u8], port: u16) -> Result<usize> {
-        let broadcast_addr = SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::BROADCAST,
-            port,
-        ));
+        let broadcast_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::BROADCAST, port));
         self.send_to(buf, broadcast_addr).await
     }
-    
+
     /// Get local address
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        Ok(self.inner.local_addr()
-            .map_err(|e| NetworkError::SocketFailed {
-                address: "unknown".to_string(),
-                reason: format!("Failed to get local address: {}", e),
-            })?)
+        Ok(self.inner.local_addr().map_err(|e| NetworkError::SocketFailed {
+            address: "unknown".to_string(),
+            reason: format!("Failed to get local address: {}", e),
+        })?)
     }
-    
+
     /// Get peer address if available
     pub fn peer_addr(&self) -> Result<SocketAddr> {
-        Ok(self.inner.peer_addr()
-            .map_err(|e| NetworkError::SocketFailed {
-                address: "unknown".to_string(),
-                reason: format!("Failed to get peer address: {}", e),
-            })?)
+        Ok(self.inner.peer_addr().map_err(|e| NetworkError::SocketFailed {
+            address: "unknown".to_string(),
+            reason: format!("Failed to get peer address: {}", e),
+        })?)
     }
 }
 
@@ -312,13 +316,13 @@ pub type TftpSocket = UdpSocket;
 pub struct PrivilegedSockets {
     /// DNS listeners (UDP port 53, TCP port 53)
     pub dns_listeners: Vec<DnsListener>,
-    
+
     /// DHCPv4 socket (UDP port 67)
     pub dhcp_v4: Option<DhcpSocket>,
-    
+
     /// DHCPv6 socket (UDP port 547)
     pub dhcp_v6: Option<DhcpSocket>,
-    
+
     /// TFTP socket (UDP port 69)
     pub tftp: Option<TftpSocket>,
 }
@@ -331,12 +335,7 @@ impl PrivilegedSockets {
         dhcp_v6: Option<DhcpSocket>,
         tftp: Option<TftpSocket>,
     ) -> Self {
-        Self {
-            dns_listeners,
-            dhcp_v4,
-            dhcp_v6,
-            tftp,
-        }
+        Self { dns_listeners, dhcp_v4, dhcp_v6, tftp }
     }
 }
 
@@ -354,32 +353,35 @@ impl RaSocket {
     pub fn new(socket: UdpSocket) -> Self {
         Self { inner: socket }
     }
-    
+
     /// Send Router Advertisement
     pub async fn send_ra(&self, buf: &[u8], target: SocketAddr) -> Result<usize> {
-        self.inner.send_to(buf, target).await
-            .map_err(|e| NetworkError::SocketFailed {
+        self.inner.send_to(buf, target).await.map_err(|e| {
+            NetworkError::SocketFailed {
                 address: target.to_string(),
                 reason: format!("Failed to send RA: {}", e),
-            }.into())
+            }
+            .into()
+        })
     }
-    
+
     /// Receive ICMPv6 packet
     pub async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
-        self.inner.recv_from(buf).await
-            .map_err(|e| NetworkError::SocketFailed {
+        self.inner.recv_from(buf).await.map_err(|e| {
+            NetworkError::SocketFailed {
                 address: "unknown".to_string(),
                 reason: format!("Failed to receive ICMPv6: {}", e),
-            }.into())
+            }
+            .into()
+        })
     }
-    
+
     /// Get local address
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        Ok(self.inner.local_addr()
-            .map_err(|e| NetworkError::SocketFailed {
-                address: "unknown".to_string(),
-                reason: format!("Failed to get local address: {}", e),
-            })?)
+        Ok(self.inner.local_addr().map_err(|e| NetworkError::SocketFailed {
+            address: "unknown".to_string(),
+            reason: format!("Failed to get local address: {}", e),
+        })?)
     }
 }
 
@@ -396,7 +398,7 @@ impl SocketManager {
     pub fn new(config: Arc<NetworkConfig>) -> Self {
         Self { config }
     }
-    
+
     /// Create DNS listeners on port 53 with appropriate socket options
     ///
     /// Replaces C create_bound_listeners() and create_wildcard_listeners().
@@ -421,12 +423,12 @@ impl SocketManager {
     ) -> Result<Vec<DnsListener>> {
         let mut listeners = Vec::new();
         let port = self.config.port;
-        
+
         if port == 0 {
             info!("DNS port set to 0, DNS service disabled");
             return Ok(listeners);
         }
-        
+
         if self.config.bind_interfaces && !self.config.interfaces.is_empty() {
             // Interface-specific binding
             debug!("Creating interface-specific DNS listeners");
@@ -434,13 +436,13 @@ impl SocketManager {
                 if !self.should_bind_interface(&interface.name) {
                     continue;
                 }
-                
+
                 for addr in &interface.addresses {
                     let socket_addr = match addr {
                         IpAddr::V4(ipv4) => SocketAddr::V4(SocketAddrV4::new(*ipv4, port)),
                         IpAddr::V6(ipv6) => SocketAddr::V6(SocketAddrV6::new(*ipv6, port, 0, 0)),
                     };
-                    
+
                     // Create UDP listener
                     match self.create_udp_listener(socket_addr, Some(&interface.name)).await {
                         Ok(socket) => {
@@ -465,7 +467,7 @@ impl SocketManager {
                             );
                         }
                     }
-                    
+
                     // Create TCP listener
                     match self.create_tcp_listener(socket_addr, Some(&interface.name)).await {
                         Ok(socket) => {
@@ -500,7 +502,7 @@ impl SocketManager {
                     IpAddr::V4(ipv4) => SocketAddr::V4(SocketAddrV4::new(*ipv4, port)),
                     IpAddr::V6(ipv6) => SocketAddr::V6(SocketAddrV6::new(*ipv6, port, 0, 0)),
                 };
-                
+
                 // Create UDP listener
                 if let Ok(socket) = self.create_udp_listener(socket_addr, None).await {
                     info!(address = %socket_addr, "DNS UDP listener created");
@@ -511,7 +513,7 @@ impl SocketManager {
                         flags: ListenerFlags::empty(),
                     });
                 }
-                
+
                 // Create TCP listener
                 if let Ok(socket) = self.create_tcp_listener(socket_addr, None).await {
                     info!(address = %socket_addr, "DNS TCP listener created");
@@ -526,7 +528,7 @@ impl SocketManager {
         } else {
             // Wildcard binding (0.0.0.0 and ::)
             debug!("Creating wildcard DNS listeners");
-            
+
             // IPv4 wildcard
             let v4_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port));
             if let Ok(socket) = self.create_udp_listener(v4_addr, None).await {
@@ -538,7 +540,7 @@ impl SocketManager {
                     flags: ListenerFlags::WILDCARD,
                 });
             }
-            
+
             // IPv6 wildcard
             let v6_addr = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, port, 0, 0));
             if let Ok(socket) = self.create_udp_listener(v6_addr, None).await {
@@ -550,7 +552,7 @@ impl SocketManager {
                     flags: ListenerFlags::WILDCARD,
                 });
             }
-            
+
             // TCP listeners
             if let Ok(socket) = self.create_tcp_listener(v4_addr, None).await {
                 info!(address = %v4_addr, "DNS TCP wildcard listener created (IPv4)");
@@ -561,7 +563,7 @@ impl SocketManager {
                     flags: ListenerFlags::TCP | ListenerFlags::WILDCARD,
                 });
             }
-            
+
             if let Ok(socket) = self.create_tcp_listener(v6_addr, None).await {
                 info!(address = %v6_addr, "DNS TCP wildcard listener created (IPv6)");
                 listeners.push(DnsListener {
@@ -572,19 +574,20 @@ impl SocketManager {
                 });
             }
         }
-        
+
         if listeners.is_empty() {
             error!("Failed to create any DNS listeners");
             return Err(NetworkError::SocketFailed {
                 address: format!("port {}", port),
                 reason: "No DNS listeners could be created".to_string(),
-            }.into());
+            }
+            .into());
         }
-        
+
         info!("Created {} DNS listeners", listeners.len());
         Ok(listeners)
     }
-    
+
     /// Create DHCP listeners on ports 67 (v4) and 547 (v6)
     ///
     /// Creates UDP sockets for DHCPv4 and DHCPv6 with appropriate options
@@ -603,15 +606,15 @@ impl SocketManager {
         let v4_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 67));
         let v4_socket = self.create_dhcp_socket(v4_addr).await?;
         info!("DHCPv4 listener created on port 67");
-        
+
         // DHCPv6 on port 547
         let v6_addr = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 547, 0, 0));
         let v6_socket = self.create_dhcp_socket(v6_addr).await?;
         info!("DHCPv6 listener created on port 547");
-        
+
         Ok((DhcpSocket::new(v4_socket), DhcpSocket::new(v6_socket)))
     }
-    
+
     /// Create TFTP listener on port 69
     ///
     /// Creates UDP socket for TFTP file transfers.
@@ -630,7 +633,7 @@ impl SocketManager {
         info!("TFTP listener created on port 69");
         Ok(socket)
     }
-    
+
     /// Create ICMPv6 raw socket for Router Advertisements
     ///
     /// Creates raw ICMPv6 socket with IPV6_RECVHOPLIMIT option for
@@ -653,49 +656,50 @@ impl SocketManager {
             0,
             0,
         ));
-        
-        let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::ICMPV6))
-            .map_err(|e| NetworkError::SocketFailed {
-                address: addr.to_string(),
-                reason: format!("Failed to create ICMPv6 socket: {}", e),
+
+        let socket =
+            Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::ICMPV6)).map_err(|e| {
+                NetworkError::SocketFailed {
+                    address: addr.to_string(),
+                    reason: format!("Failed to create ICMPv6 socket: {}", e),
+                }
             })?;
-        
+
         // Configure ICMPv6-specific options
         self.configure_icmpv6_socket(&socket)?;
-        
-        socket.set_nonblocking(true)
-            .map_err(|e| NetworkError::SocketOptionFailed {
-                option: "nonblocking".to_string(),
-                reason: format!("{}", e),
-            })?;
-        
+
+        socket.set_nonblocking(true).map_err(|e| NetworkError::SocketOptionFailed {
+            option: "nonblocking".to_string(),
+            reason: format!("{}", e),
+        })?;
+
         let std_socket: std::net::UdpSocket = socket.into();
-        let tokio_socket = UdpSocket::from_std(std_socket)
-            .map_err(|e| NetworkError::SocketFailed {
+        let tokio_socket =
+            UdpSocket::from_std(std_socket).map_err(|e| NetworkError::SocketFailed {
                 address: addr.to_string(),
                 reason: format!("Failed to convert to tokio socket: {}", e),
             })?;
-        
+
         info!("ICMPv6 socket created for Router Advertisements");
         Ok(RaSocket::new(tokio_socket))
     }
-    
+
     /// Check if interface should be bound based on configuration
     fn should_bind_interface(&self, interface_name: &str) -> bool {
         // Check exclude list first
         if self.config.except_interfaces.contains(&interface_name.to_string()) {
             return false;
         }
-        
+
         // If interfaces specified, only bind those
         if !self.config.interfaces.is_empty() {
             return self.config.interfaces.contains(&interface_name.to_string());
         }
-        
+
         // Otherwise bind all interfaces
         true
     }
-    
+
     /// Create UDP listener with DNS-specific options
     async fn create_udp_listener(
         &self,
@@ -703,55 +707,51 @@ impl SocketManager {
         interface: Option<&str>,
     ) -> Result<UdpSocket> {
         let domain = if addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 };
-        
-        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))
-            .map_err(|e| NetworkError::SocketFailed {
+
+        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP)).map_err(|e| {
+            NetworkError::SocketFailed {
                 address: addr.to_string(),
                 reason: format!("Failed to create socket: {}", e),
-            })?;
-        
+            }
+        })?;
+
         // Set SO_REUSEADDR for binding to same port multiple times
-        socket.set_reuse_address(true)
-            .map_err(|e| NetworkError::SocketOptionFailed {
-                option: "SO_REUSEADDR".to_string(),
-                reason: format!("{}", e),
-            })?;
-        
+        socket.set_reuse_address(true).map_err(|e| NetworkError::SocketOptionFailed {
+            option: "SO_REUSEADDR".to_string(),
+            reason: format!("{}", e),
+        })?;
+
         // Set receive buffer size for large DNSSEC responses
-        socket.set_recv_buffer_size(EDNS_PKTSZ)
-            .map_err(|e| NetworkError::SocketOptionFailed {
-                option: "SO_RCVBUF".to_string(),
-                reason: format!("{}", e),
-            })?;
-        
+        socket.set_recv_buffer_size(EDNS_PKTSZ).map_err(|e| NetworkError::SocketOptionFailed {
+            option: "SO_RCVBUF".to_string(),
+            reason: format!("{}", e),
+        })?;
+
         // Configure packet info options for metadata retrieval
         self.configure_packet_info(&socket, addr.is_ipv6())?;
-        
+
         // Bind to interface if specified
         if let Some(iface_name) = interface {
             self.bind_to_interface(&socket, iface_name)?;
         }
-        
-        socket.bind(&addr.into())
-            .map_err(|e| NetworkError::PortBindFailed {
-                port: addr.port(),
-                reason: format!("{}", e),
-            })?;
-        
-        socket.set_nonblocking(true)
-            .map_err(|e| NetworkError::SocketOptionFailed {
-                option: "nonblocking".to_string(),
-                reason: format!("{}", e),
-            })?;
-        
+
+        socket.bind(&addr.into()).map_err(|e| NetworkError::PortBindFailed {
+            port: addr.port(),
+            reason: format!("{}", e),
+        })?;
+
+        socket.set_nonblocking(true).map_err(|e| NetworkError::SocketOptionFailed {
+            option: "nonblocking".to_string(),
+            reason: format!("{}", e),
+        })?;
+
         let std_socket: std::net::UdpSocket = socket.into();
-        Ok(UdpSocket::from_std(std_socket)
-            .map_err(|e| NetworkError::SocketFailed {
-                address: addr.to_string(),
-                reason: format!("Failed to convert to tokio socket: {}", e),
-            })?)
+        Ok(UdpSocket::from_std(std_socket).map_err(|e| NetworkError::SocketFailed {
+            address: addr.to_string(),
+            reason: format!("Failed to convert to tokio socket: {}", e),
+        })?)
     }
-    
+
     /// Create TCP listener with DNS-specific options
     async fn create_tcp_listener(
         &self,
@@ -759,110 +759,103 @@ impl SocketManager {
         interface: Option<&str>,
     ) -> Result<TcpListener> {
         let domain = if addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 };
-        
-        let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))
-            .map_err(|e| NetworkError::SocketFailed {
+
+        let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP)).map_err(|e| {
+            NetworkError::SocketFailed {
                 address: addr.to_string(),
                 reason: format!("Failed to create TCP socket: {}", e),
-            })?;
-        
-        socket.set_reuse_address(true)
-            .map_err(|e| NetworkError::SocketOptionFailed {
-                option: "SO_REUSEADDR".to_string(),
-                reason: format!("{}", e),
-            })?;
-        
+            }
+        })?;
+
+        socket.set_reuse_address(true).map_err(|e| NetworkError::SocketOptionFailed {
+            option: "SO_REUSEADDR".to_string(),
+            reason: format!("{}", e),
+        })?;
+
         // Bind to interface if specified
         if let Some(iface_name) = interface {
             self.bind_to_interface(&socket, iface_name)?;
         }
-        
-        socket.bind(&addr.into())
-            .map_err(|e| NetworkError::PortBindFailed {
-                port: addr.port(),
-                reason: format!("{}", e),
-            })?;
-        
-        socket.listen(128)
-            .map_err(|e| NetworkError::SocketFailed {
-                address: addr.to_string(),
-                reason: format!("Failed to listen: {}", e),
-            })?;
-        
-        socket.set_nonblocking(true)
-            .map_err(|e| NetworkError::SocketOptionFailed {
-                option: "nonblocking".to_string(),
-                reason: format!("{}", e),
-            })?;
-        
+
+        socket.bind(&addr.into()).map_err(|e| NetworkError::PortBindFailed {
+            port: addr.port(),
+            reason: format!("{}", e),
+        })?;
+
+        socket.listen(128).map_err(|e| NetworkError::SocketFailed {
+            address: addr.to_string(),
+            reason: format!("Failed to listen: {}", e),
+        })?;
+
+        socket.set_nonblocking(true).map_err(|e| NetworkError::SocketOptionFailed {
+            option: "nonblocking".to_string(),
+            reason: format!("{}", e),
+        })?;
+
         let std_socket: std::net::TcpListener = socket.into();
-        Ok(TcpListener::from_std(std_socket)
-            .map_err(|e| NetworkError::SocketFailed {
-                address: addr.to_string(),
-                reason: format!("Failed to convert to tokio TCP listener: {}", e),
-            })?)
+        Ok(TcpListener::from_std(std_socket).map_err(|e| NetworkError::SocketFailed {
+            address: addr.to_string(),
+            reason: format!("Failed to convert to tokio TCP listener: {}", e),
+        })?)
     }
-    
+
     /// Create DHCP socket with broadcast support
     async fn create_dhcp_socket(&self, addr: SocketAddr) -> Result<UdpSocket> {
         let domain = if addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 };
-        
-        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))
-            .map_err(|e| NetworkError::SocketFailed {
+
+        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP)).map_err(|e| {
+            NetworkError::SocketFailed {
                 address: addr.to_string(),
                 reason: format!("Failed to create DHCP socket: {}", e),
-            })?;
-        
-        socket.set_reuse_address(true)
-            .map_err(|e| NetworkError::SocketOptionFailed {
-                option: "SO_REUSEADDR".to_string(),
-                reason: format!("{}", e),
-            })?;
-        
+            }
+        })?;
+
+        socket.set_reuse_address(true).map_err(|e| NetworkError::SocketOptionFailed {
+            option: "SO_REUSEADDR".to_string(),
+            reason: format!("{}", e),
+        })?;
+
         // Enable broadcast for DHCPv4
         if addr.is_ipv4() {
-            socket.set_broadcast(true)
-                .map_err(|e| NetworkError::SocketOptionFailed {
-                    option: "SO_BROADCAST".to_string(),
-                    reason: format!("{}", e),
-                })?;
+            socket.set_broadcast(true).map_err(|e| NetworkError::SocketOptionFailed {
+                option: "SO_BROADCAST".to_string(),
+                reason: format!("{}", e),
+            })?;
         }
-        
+
         // Configure packet info for source address retrieval
         self.configure_packet_info(&socket, addr.is_ipv6())?;
-        
-        socket.bind(&addr.into())
-            .map_err(|e| NetworkError::PortBindFailed {
-                port: addr.port(),
-                reason: format!("{}", e),
-            })?;
-        
-        socket.set_nonblocking(true)
-            .map_err(|e| NetworkError::SocketOptionFailed {
-                option: "nonblocking".to_string(),
-                reason: format!("{}", e),
-            })?;
-        
+
+        socket.bind(&addr.into()).map_err(|e| NetworkError::PortBindFailed {
+            port: addr.port(),
+            reason: format!("{}", e),
+        })?;
+
+        socket.set_nonblocking(true).map_err(|e| NetworkError::SocketOptionFailed {
+            option: "nonblocking".to_string(),
+            reason: format!("{}", e),
+        })?;
+
         let std_socket: std::net::UdpSocket = socket.into();
-        Ok(UdpSocket::from_std(std_socket)
-            .map_err(|e| NetworkError::SocketFailed {
-                address: addr.to_string(),
-                reason: format!("Failed to convert to tokio socket: {}", e),
-            })?)
+        Ok(UdpSocket::from_std(std_socket).map_err(|e| NetworkError::SocketFailed {
+            address: addr.to_string(),
+            reason: format!("Failed to convert to tokio socket: {}", e),
+        })?)
     }
-    
+
     /// Configure packet info socket options for metadata retrieval
     fn configure_packet_info(&self, socket: &Socket, is_ipv6: bool) -> Result<()> {
         use nix::sys::socket::{setsockopt, sockopt};
-        
+
         if is_ipv6 {
             // IPV6_RECVPKTINFO for destination address
-            setsockopt(socket, sockopt::Ipv6RecvPacketInfo, &true)
-                .map_err(|e| NetworkError::SocketOptionFailed {
+            setsockopt(socket, sockopt::Ipv6RecvPacketInfo, &true).map_err(|e| {
+                NetworkError::SocketOptionFailed {
                     option: "IPV6_RECVPKTINFO".to_string(),
                     reason: format!("{}", e),
-                })?;
-            
+                }
+            })?;
+
             // IPV6_RECVHOPLIMIT for hop limit (only available on Linux/Android/FreeBSD)
             // TODO: Re-enable when nix crate supports this on current platform
             // #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
@@ -875,21 +868,22 @@ impl SocketManager {
             // }
         } else {
             // IP_PKTINFO for destination address
-            setsockopt(socket, sockopt::Ipv4PacketInfo, &true)
-                .map_err(|e| NetworkError::SocketOptionFailed {
+            setsockopt(socket, sockopt::Ipv4PacketInfo, &true).map_err(|e| {
+                NetworkError::SocketOptionFailed {
                     option: "IP_PKTINFO".to_string(),
                     reason: format!("{}", e),
-                })?;
+                }
+            })?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Configure ICMPv6-specific socket options
     fn configure_icmpv6_socket(&self, socket: &Socket) -> Result<()> {
         // Note: Using underscore prefix to suppress unused variable warning
         let _fd = socket.as_raw_fd();
-        
+
         // IPV6_RECVHOPLIMIT for validating hop limits (only available on Linux/Android/FreeBSD)
         // TODO: Re-enable when nix crate supports this on current platform
         // #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
@@ -901,10 +895,10 @@ impl SocketManager {
         //             reason: format!("{}", e),
         //         })?;
         // }
-        
+
         Ok(())
     }
-    
+
     /// Bind socket to specific network interface
     fn bind_to_interface(&self, socket: &Socket, interface_name: &str) -> Result<()> {
         #[cfg(target_os = "linux")]
@@ -912,14 +906,15 @@ impl SocketManager {
             use nix::sys::socket::{setsockopt, sockopt};
             use std::ffi::OsString;
             let device = OsString::from(interface_name);
-            setsockopt(socket, sockopt::BindToDevice, &device)
-                .map_err(|e| NetworkError::SocketOptionFailed {
+            setsockopt(socket, sockopt::BindToDevice, &device).map_err(|e| {
+                NetworkError::SocketOptionFailed {
                     option: "SO_BINDTODEVICE".to_string(),
                     reason: format!("{}", e),
-                })?;
+                }
+            })?;
             debug!(interface = %interface_name, "Bound socket to interface (Linux)");
         }
-        
+
         #[cfg(target_os = "macos")]
         {
             // macOS uses IP_BOUND_IF with interface index
@@ -929,7 +924,7 @@ impl SocketManager {
                 "Interface binding on macOS requires IP_BOUND_IF implementation"
             );
         }
-        
+
         #[cfg(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))]
         {
             // BSD uses IP_BOUND_IF similar to macOS
@@ -938,7 +933,7 @@ impl SocketManager {
                 "Interface binding on BSD requires IP_BOUND_IF implementation"
             );
         }
-        
+
         Ok(())
     }
 }
@@ -967,11 +962,11 @@ pub async fn bind_privileged_sockets(
     interfaces: &[NetworkInterface],
 ) -> Result<PrivilegedSockets> {
     let manager = SocketManager::new(config);
-    
+
     // Create DNS listeners (port 53 - privileged)
     let dns_listeners = manager.create_dns_listeners(interfaces).await?;
     info!("Created {} DNS listeners on privileged port", dns_listeners.len());
-    
+
     // Create DHCP listeners (ports 67, 547 - privileged)
     let dhcp_result = manager.create_dhcp_listeners().await;
     let (dhcp_v4, dhcp_v6) = match dhcp_result {
@@ -981,7 +976,7 @@ pub async fn bind_privileged_sockets(
             (None, None)
         }
     };
-    
+
     // Create TFTP listener (port 69 - privileged)
     let tftp_socket = match manager.create_tftp_listener().await {
         Ok(socket) => Some(socket),
@@ -990,7 +985,7 @@ pub async fn bind_privileged_sockets(
             None
         }
     };
-    
+
     info!("All privileged sockets bound successfully");
     Ok(PrivilegedSockets::new(dns_listeners, dhcp_v4, dhcp_v6, tftp_socket))
 }
@@ -1032,42 +1027,46 @@ pub(crate) async fn create_dns_socket(addr: SocketAddr) -> Result<UdpSocket> {
     let socket = Socket::new(
         if addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 },
         Type::DGRAM,
-        Some(Protocol::UDP)
-    ).map_err(|e| NetworkError::SocketFailed {
+        Some(Protocol::UDP),
+    )
+    .map_err(|e| NetworkError::SocketFailed {
         address: addr.to_string(),
         reason: format!("Failed to create socket: {}", e),
     })?;
-    
+
     // Set socket options for DNS
     socket.set_reuse_address(true).map_err(|e| NetworkError::SocketOptionFailed {
         option: "SO_REUSEADDR".to_string(),
         reason: format!("{}", e),
     })?;
-    
+
     // TODO: SO_REUSEPORT not available in socket2 crate, may need platform-specific implementation
     // #[cfg(not(target_os = "windows"))]
     // socket.set_reuse_port(true).map_err(|e| NetworkError::SocketOptionFailed {
     //     option: "SO_REUSEPORT".to_string(),
     //     reason: format!("{}", e),
     // })?;
-    
+
     // Bind the socket
     socket.bind(&addr.into()).map_err(|e| NetworkError::PortBindFailed {
         port: addr.port(),
         reason: format!("{}", e),
     })?;
-    
+
     // Convert to tokio UdpSocket
     socket.set_nonblocking(true).map_err(|e| NetworkError::SocketFailed {
         address: addr.to_string(),
         reason: format!("Failed to set nonblocking: {}", e),
     })?;
-    
+
     let std_socket: std::net::UdpSocket = socket.into();
-    UdpSocket::from_std(std_socket).map_err(|e| NetworkError::SocketFailed {
-        address: addr.to_string(),
-        reason: format!("Failed to convert to tokio socket: {}", e),
-    }.into())
+    UdpSocket::from_std(std_socket).map_err(|e| {
+        NetworkError::SocketFailed {
+            address: addr.to_string(),
+            reason: format!("Failed to convert to tokio socket: {}", e),
+        }
+        .into()
+    })
 }
 
 /// Create a DHCP socket bound to the specified address
@@ -1087,43 +1086,44 @@ pub(crate) async fn create_dhcp_socket(addr: SocketAddr) -> Result<UdpSocket> {
     let socket = Socket::new(
         if addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 },
         Type::DGRAM,
-        Some(Protocol::UDP)
-    ).map_err(|e| NetworkError::SocketFailed {
+        Some(Protocol::UDP),
+    )
+    .map_err(|e| NetworkError::SocketFailed {
         address: addr.to_string(),
         reason: format!("Failed to create socket: {}", e),
     })?;
-    
+
     // Set socket options for DHCP
     socket.set_reuse_address(true).map_err(|e| NetworkError::SocketOptionFailed {
         option: "SO_REUSEADDR".to_string(),
         reason: format!("{}", e),
     })?;
-    
+
     // TODO: SO_REUSEPORT not available in socket2 crate, may need platform-specific implementation
     // #[cfg(not(target_os = "windows"))]
     // socket.set_reuse_port(true).map_err(|e| NetworkError::SocketOptionFailed {
     //     option: "SO_REUSEPORT".to_string(),
     //     reason: format!("{}", e),
     // })?;
-    
+
     // Enable broadcast for DHCP
     socket.set_broadcast(true).map_err(|e| NetworkError::SocketOptionFailed {
         option: "SO_BROADCAST".to_string(),
         reason: format!("{}", e),
     })?;
-    
+
     // Bind the socket
     socket.bind(&addr.into()).map_err(|e| NetworkError::PortBindFailed {
         port: addr.port(),
         reason: format!("{}", e),
     })?;
-    
+
     // Convert to tokio UdpSocket
     socket.set_nonblocking(true).map_err(|e| NetworkError::SocketFailed {
         address: addr.to_string(),
         reason: format!("Failed to set nonblocking: {}", e),
     })?;
-    
+
     let std_socket: std::net::UdpSocket = socket.into();
     Ok(UdpSocket::from_std(std_socket).map_err(|e| NetworkError::SocketFailed {
         address: addr.to_string(),
@@ -1134,7 +1134,7 @@ pub(crate) async fn create_dhcp_socket(addr: SocketAddr) -> Result<UdpSocket> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_listener_flags() {
         let flags = ListenerFlags::TCP | ListenerFlags::WILDCARD;
@@ -1142,7 +1142,7 @@ mod tests {
         assert!(flags.contains(ListenerFlags::WILDCARD));
         assert!(!flags.contains(ListenerFlags::TFTP));
     }
-    
+
     #[test]
     fn test_listener_flags_empty() {
         let flags = ListenerFlags::empty();
@@ -1150,4 +1150,3 @@ mod tests {
         assert!(!flags.contains(ListenerFlags::WILDCARD));
     }
 }
-
