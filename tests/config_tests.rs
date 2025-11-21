@@ -24,6 +24,7 @@ use dnsmasq::config::ConfigBuilder;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+#[cfg(feature = "tftp")]
 use tempfile::TempDir;
 
 mod common;
