@@ -31,24 +31,37 @@
 use crate::constants::UBUS_SERVICE_NAME;
 use crate::dhcp::lease::Lease;
 use crate::error::PlatformError;
-#[cfg(feature = "conntrack")]
-use crate::network::conntrack::ConnmarkAllowlist;
-use crate::util::metrics::{get_metric_name, MetricsCollector};
+use crate::util::metrics::MetricsCollector;
 
+// Imports only used when libubus is available
+#[cfg(has_libubus)]
+use crate::util::metrics::get_metric_name;
+#[cfg(all(has_libubus, feature = "conntrack"))]
+use crate::network::conntrack::ConnmarkAllowlist;
+#[cfg(has_libubus)]
 use libc::{c_char, c_int, c_void};
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+#[cfg(has_libubus)]
+use serde::Deserialize;
+#[cfg(has_libubus)]
+use serde_json::json;
+#[cfg(has_libubus)]
+use tokio::time::{interval, Duration};
+#[cfg(has_libubus)]
+use tracing::{error, info};
+
+// Common imports used by both real and stub implementations
+use serde::Serialize;
+use serde_json::Value;
 use std::ptr;
 use std::sync::Arc;
 use tokio::io::unix::AsyncFd;
 use tokio::sync::RwLock;
-use tokio::time::{interval, Duration};
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, instrument, warn};
 
 // FFI Bindings to libubus C library
 // These bindings provide low-level access to OpenWrt's ubus system
 
-// Only compile FFI bindings when libubus is available
+// Only compile FFI bindings when libubus is actually available (not just feature enabled)
 #[cfg(has_libubus)]
 mod ffi {
     use super::*;
@@ -98,31 +111,31 @@ pub(super) type UbusMethodHandler = unsafe extern "C" fn(
 ) -> c_int;
 
 #[allow(dead_code)]
-pub(super) extern "C" {
+extern "C" {
     // Connection management
-    fn ubus_connect(path: *const c_char) -> *mut UbusContext;
-    fn ubus_free(ctx: *mut UbusContext);
-    fn ubus_reconnect(ctx: *mut UbusContext, path: *const c_char) -> c_int;
+    pub(super) fn ubus_connect(path: *const c_char) -> *mut UbusContext;
+    pub(super) fn ubus_free(ctx: *mut UbusContext);
+    pub(super) fn ubus_reconnect(ctx: *mut UbusContext, path: *const c_char) -> c_int;
 
     // Object registration
-    fn ubus_add_object(ctx: *mut UbusContext, obj: *mut UbusObject) -> c_int;
-    fn ubus_remove_object(ctx: *mut UbusContext, obj: *mut UbusObject) -> c_int;
+    pub(super) fn ubus_add_object(ctx: *mut UbusContext, obj: *mut UbusObject) -> c_int;
+    pub(super) fn ubus_remove_object(ctx: *mut UbusContext, obj: *mut UbusObject) -> c_int;
 
     // Event loop integration
-    fn ubus_handle_event(ctx: *mut UbusContext) -> c_int;
+    pub(super) fn ubus_handle_event(ctx: *mut UbusContext) -> c_int;
 
     // File descriptor access for async integration
-    fn ubus_get_fd(ctx: *mut UbusContext) -> c_int;
+    pub(super) fn ubus_get_fd(ctx: *mut UbusContext) -> c_int;
 
     // Response sending
-    fn ubus_send_reply(
+    pub(super) fn ubus_send_reply(
         ctx: *mut UbusContext,
         req: *mut UbusRequestData,
         buf: *mut BlobBuf,
     ) -> c_int;
 
     // Event broadcasting
-    fn ubus_notify(
+    pub(super) fn ubus_notify(
         ctx: *mut UbusContext,
         obj: *mut UbusObject,
         event_type: *const c_char,
@@ -131,16 +144,16 @@ pub(super) extern "C" {
     ) -> c_int;
 
     // Blob buffer management (libubox)
-    fn blob_buf_init(buf: *mut BlobBuf, id: c_int);
-    fn blob_buf_free(buf: *mut BlobBuf);
-    fn blobmsg_add_u32(buf: *mut BlobBuf, name: *const c_char, val: u32);
-    fn blobmsg_add_string(buf: *mut BlobBuf, name: *const c_char, val: *const c_char);
-    fn blobmsg_add_table(buf: *mut BlobBuf, name: *const c_char) -> *mut c_void;
-    fn blobmsg_close_table(buf: *mut BlobBuf, cookie: *mut c_void);
+    pub(super) fn blob_buf_init(buf: *mut BlobBuf, id: c_int);
+    pub(super) fn blob_buf_free(buf: *mut BlobBuf);
+    pub(super) fn blobmsg_add_u32(buf: *mut BlobBuf, name: *const c_char, val: u32);
+    pub(super) fn blobmsg_add_string(buf: *mut BlobBuf, name: *const c_char, val: *const c_char);
+    pub(super) fn blobmsg_add_table(buf: *mut BlobBuf, name: *const c_char) -> *mut c_void;
+    pub(super) fn blobmsg_close_table(buf: *mut BlobBuf, cookie: *mut c_void);
 
     // Blob parsing
-    fn blobmsg_get_u32(attr: *mut BlobAttr) -> u32;
-    fn blobmsg_get_string(attr: *mut BlobAttr) -> *const c_char;
+    pub(super) fn blobmsg_get_u32(attr: *mut BlobAttr) -> u32;
+    pub(super) fn blobmsg_get_string(attr: *mut BlobAttr) -> *const c_char;
 }
 
 } // end of cfg(has_libubus) ffi module
@@ -278,18 +291,23 @@ pub enum UbusEvent {
 /// Integrates with tokio event loop for async operation.
 pub struct UbusDaemon {
     /// Ubus context (connection handle)
+    #[allow(dead_code)]
     ctx: *mut UbusContext,
 
     /// Service name for registration
+    #[allow(dead_code)]
     service_name: String,
 
     /// Metrics collector for exporting statistics
+    #[allow(dead_code)]
     metrics: Arc<RwLock<MetricsCollector>>,
 
     /// Connection state
+    #[allow(dead_code)]
     connected: bool,
 
     /// Async file descriptor wrapper for tokio integration
+    #[allow(dead_code)]
     fd: Option<AsyncFd<std::os::unix::io::RawFd>>,
 }
 
@@ -300,7 +318,7 @@ unsafe impl Send for UbusDaemon {}
 // Implement Sync for UbusDaemon - safe because all mutable state is protected by RwLock
 unsafe impl Sync for UbusDaemon {}
 
-// Implementation when libubus is available
+// Implementation when libubus is actually available (library found at build time)
 #[cfg(has_libubus)]
 impl UbusDaemon {
     /// Create a new ubus daemon instance
@@ -743,7 +761,7 @@ impl Drop for UbusDaemon {
     }
 }
 
-// Stub implementation when libubus is not available
+// Stub implementation when libubus is not available (feature enabled but library not found)
 #[cfg(not(has_libubus))]
 impl UbusDaemon {
     /// Create a new ubus daemon instance (stub)

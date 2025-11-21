@@ -487,8 +487,7 @@ mod tests {
 
     #[test]
     fn test_default_config_path_constant() {
-        // Verify DEFAULT_CONFIG_PATH is defined and non-empty
-        assert!(!DEFAULT_CONFIG_PATH.is_empty());
+        // Verify DEFAULT_CONFIG_PATH is defined and references dnsmasq.conf
         assert!(
             DEFAULT_CONFIG_PATH.contains("dnsmasq.conf"),
             "Default config path should reference dnsmasq.conf"

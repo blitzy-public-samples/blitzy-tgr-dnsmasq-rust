@@ -64,53 +64,50 @@
 //! }
 //! ```
 
-use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::collections::HashMap;
 use std::future::Future;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tempfile::{NamedTempFile, TempDir};
-use tokio::fs;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UdpSocket;
 use tokio::process::{Child, Command};
-use tokio::sync::mpsc;
 use tokio::time::{sleep, timeout};
-use tracing::{debug, error, info, warn, Level};
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
+use tracing::{info, Level};
 
 // Random number generation for test IDs
 use std::sync::atomic::{AtomicU16, Ordering};
 
 // Internal imports from dnsmasq implementation
-use dnsmasq::config::Config;
 use dnsmasq::dns::protocol::message::DnsMessage;
-use dnsmasq::error::{ConfigError, DhcpError, DnsError, DnsmasqError};
-use dnsmasq::types::{
-    CacheFlags, DomainName, IpAddr as DnsmasqIpAddr, MacAddress, RecordType, Timestamp,
-};
+use dnsmasq::types::RecordType;
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
 /// Path to test fixtures directory containing sample data files, packet captures, and configurations.
+#[allow(dead_code)]
 pub const FIXTURES_DIR: &str = "tests/common/fixtures";
 
 /// Default timeout for test operations (10 seconds).
+#[allow(dead_code)]
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Default DNS port for test servers (avoid privileged port 53).
+#[allow(dead_code)]
 const DEFAULT_TEST_DNS_PORT: u16 = 5353;
 
 /// Default DHCP port for test servers.
+#[allow(dead_code)]
 const DEFAULT_TEST_DHCP_PORT: u16 = 6767;
 
 /// Port range for dynamic port allocation (ephemeral range).
+#[allow(dead_code)]
 const PORT_RANGE_START: u16 = 49152;
+#[allow(dead_code)]
 const PORT_RANGE_END: u16 = 65535;
 
 /// Counter for generating unique DNS query IDs.
@@ -194,24 +191,28 @@ impl TestConfigOptions {
     }
 
     /// Builder method: Add upstream server.
+    #[allow(dead_code)]
     pub fn with_upstream_server(mut self, server: impl Into<String>) -> Self {
         self.upstream_servers.push(server.into());
         self
     }
 
     /// Builder method: Add DHCP range.
+    #[allow(dead_code)]
     pub fn with_dhcp_range(mut self, range: impl Into<String>) -> Self {
         self.dhcp_ranges.push(range.into());
         self
     }
 
     /// Builder method: Add interface.
+    #[allow(dead_code)]
     pub fn with_interface(mut self, interface: impl Into<String>) -> Self {
         self.interfaces.push(interface.into());
         self
     }
 
     /// Builder method: Enable query logging.
+    #[allow(dead_code)]
     pub fn with_log_queries(mut self) -> Self {
         self.log_queries = true;
         self
@@ -295,6 +296,7 @@ pub fn generate_test_config(options: &TestConfigOptions) -> String {
 }
 
 /// Create a DNS-only configuration suitable for DNS forwarding and caching tests.
+#[allow(dead_code)]
 pub fn dns_only_config() -> TestConfigOptions {
     TestConfigOptions::new()
         .with_port(DEFAULT_TEST_DNS_PORT)
@@ -303,6 +305,7 @@ pub fn dns_only_config() -> TestConfigOptions {
 }
 
 /// Create a DHCP-only configuration suitable for DHCP allocation tests.
+#[allow(dead_code)]
 pub fn dhcp_only_config() -> TestConfigOptions {
     TestConfigOptions::new()
         .with_port(0) // Disable DNS
@@ -310,6 +313,7 @@ pub fn dhcp_only_config() -> TestConfigOptions {
 }
 
 /// Create a full configuration with both DNS and DHCP enabled.
+#[allow(dead_code)]
 pub fn full_config() -> TestConfigOptions {
     TestConfigOptions::new()
         .with_port(DEFAULT_TEST_DNS_PORT)
@@ -380,6 +384,7 @@ pub fn create_temp_config_file(contents: &str) -> std::io::Result<NamedTempFile>
 /// # Returns
 ///
 /// `NamedTempFile` handle for the lease file
+#[allow(dead_code)]
 pub fn create_temp_lease_file() -> std::io::Result<NamedTempFile> {
     NamedTempFile::new()
 }
@@ -431,6 +436,7 @@ pub fn find_available_port() -> std::io::Result<u16> {
 ///
 /// // Automatic shutdown via Drop
 /// ```
+#[allow(dead_code)]
 pub struct TestServer {
     process: Option<Child>,
     port: u16,
@@ -515,21 +521,25 @@ impl TestServer {
     }
 
     /// Get the DNS port the server is listening on.
+    #[allow(dead_code)]
     pub fn port(&self) -> u16 {
         self.port
     }
 
     /// Get the process ID of the running server.
+    #[allow(dead_code)]
     pub fn pid(&self) -> Option<u32> {
         self.process.as_ref().and_then(|p| p.id())
     }
 
     /// Get the path to the configuration file.
+    #[allow(dead_code)]
     pub fn config_path(&self) -> &Path {
         &self.config_path
     }
 
     /// Get the path to the lease file.
+    #[allow(dead_code)]
     pub fn lease_file_path(&self) -> &Path {
         &self.lease_file_path
     }
@@ -555,6 +565,7 @@ impl Drop for TestServer {
 /// # Returns
 ///
 /// Running `TestServer` instance
+#[allow(dead_code)]
 pub async fn setup_test_server(options: TestConfigOptions) -> std::io::Result<TestServer> {
     let mut server = TestServer::new();
     server.config_options = options;
@@ -568,6 +579,7 @@ pub async fn setup_test_server(options: TestConfigOptions) -> std::io::Result<Te
 /// # Arguments
 ///
 /// * `server` - Test server to shut down
+#[allow(dead_code)]
 pub async fn teardown_test_server(mut server: TestServer) -> std::io::Result<()> {
     server.stop().await
 }
@@ -592,6 +604,7 @@ pub async fn teardown_test_server(mut server: TestServer) -> std::io::Result<()>
 ///
 /// // Mock server responds to queries at mock.address()
 /// ```
+#[allow(dead_code)]
 pub struct MockDnsServer {
     socket: Option<UdpSocket>,
     address: SocketAddr,
@@ -601,6 +614,7 @@ pub struct MockDnsServer {
 
 impl MockDnsServer {
     /// Create a new mock DNS server.
+    #[allow(dead_code)]
     pub fn new() -> Self {
         let port = find_available_port().expect("No available ports");
         let address = SocketAddr::new("127.0.0.1".parse().unwrap(), port);
@@ -619,6 +633,7 @@ impl MockDnsServer {
     ///
     /// * `name` - Domain name to respond to
     /// * `ip` - IP address to return in A/AAAA record
+    #[allow(dead_code)]
     pub fn with_response(self, name: impl Into<String>, ip: impl Into<String>) -> Self {
         let responses = self.responses.clone();
         let name = name.into();
@@ -639,6 +654,7 @@ impl MockDnsServer {
     /// # Returns
     ///
     /// Self with running server task
+    #[allow(dead_code)]
     pub async fn start(mut self) -> std::io::Result<Self> {
         let socket = UdpSocket::bind(self.address).await?;
         self.socket = Some(socket);
@@ -649,7 +665,7 @@ impl MockDnsServer {
 
         // Spawn response handler task
         let socket_addr = self.address;
-        let responses = self.responses.clone();
+        let _responses = self.responses.clone();
         let running = self.running.clone();
 
         tokio::spawn(async move {
@@ -660,7 +676,7 @@ impl MockDnsServer {
                 match timeout(Duration::from_millis(100), socket.recv_from(&mut buf)).await {
                     Ok(Ok((len, peer))) => {
                         // Parse query and send response
-                        if let Ok(query) = DnsMessage::from_bytes(&buf[..len]) {
+                        if let Ok(_query) = DnsMessage::from_bytes(&buf[..len]) {
                             // Build simple response based on configured map
                             // (Simplified for test infrastructure)
                             let _ = socket.send_to(b"mock_response", peer).await;
@@ -675,12 +691,14 @@ impl MockDnsServer {
     }
 
     /// Stop the mock DNS server.
+    #[allow(dead_code)]
     pub async fn stop(&mut self) {
         *self.running.lock().await = false;
         self.socket = None;
     }
 
     /// Get the address the mock server is listening on.
+    #[allow(dead_code)]
     pub fn address(&self) -> SocketAddr {
         self.address
     }
@@ -717,7 +735,9 @@ impl Drop for MockDnsServer {
 pub struct DnsQueryBuilder {
     name: Option<String>,
     record_type: RecordType,
+    #[allow(dead_code)]
     edns0: bool,
+    #[allow(dead_code)]
     do_bit: bool,
     id: u16,
 }
@@ -747,12 +767,14 @@ impl DnsQueryBuilder {
     }
 
     /// Enable EDNS0 extension.
+    #[allow(dead_code)]
     pub fn with_edns0(mut self) -> Self {
         self.edns0 = true;
         self
     }
 
     /// Set DNSSEC OK (DO) bit.
+    #[allow(dead_code)]
     pub fn with_do_bit(mut self) -> Self {
         self.do_bit = true;
         self
@@ -794,11 +816,13 @@ impl DnsQueryBuilder {
 }
 
 /// Pre-built simple A record query for "example.com".
+#[allow(dead_code)]
 pub fn simple_a_query() -> Vec<u8> {
     DnsQueryBuilder::new().with_name("example.com").with_record_type(RecordType::A).build()
 }
 
 /// Pre-built DNSSEC-enabled query for "example.com".
+#[allow(dead_code)]
 pub fn dnssec_query() -> Vec<u8> {
     DnsQueryBuilder::new()
         .with_name("example.com")
@@ -809,6 +833,7 @@ pub fn dnssec_query() -> Vec<u8> {
 }
 
 /// Pre-built EDNS0 query for "example.com".
+#[allow(dead_code)]
 pub fn edns_query() -> Vec<u8> {
     DnsQueryBuilder::new()
         .with_name("example.com")
@@ -826,6 +851,7 @@ pub fn edns_query() -> Vec<u8> {
 /// # Returns
 ///
 /// Bound UDP socket ready for sending/receiving
+#[allow(dead_code)]
 pub async fn create_test_dns_socket() -> std::io::Result<UdpSocket> {
     UdpSocket::bind("127.0.0.1:0").await
 }
@@ -835,6 +861,7 @@ pub async fn create_test_dns_socket() -> std::io::Result<UdpSocket> {
 /// # Returns
 ///
 /// Bound UDP socket with reuse address option set
+#[allow(dead_code)]
 pub async fn create_test_dhcp_socket() -> std::io::Result<UdpSocket> {
     let socket = UdpSocket::bind("127.0.0.1:0").await?;
     socket.set_broadcast(true)?;
@@ -852,6 +879,7 @@ pub async fn create_test_dhcp_socket() -> std::io::Result<UdpSocket> {
 /// # Returns
 ///
 /// Number of bytes sent
+#[allow(dead_code)]
 pub async fn send_dns_query(
     socket: &UdpSocket,
     query: &[u8],
@@ -870,6 +898,7 @@ pub async fn send_dns_query(
 /// # Returns
 ///
 /// Response bytes if received within timeout
+#[allow(dead_code)]
 pub async fn recv_dns_response(
     socket: &UdpSocket,
     timeout_duration: Duration,
@@ -1025,18 +1054,21 @@ impl LogCapture {
     }
 
     /// Filter captured logs by level.
-    pub fn filter_by_level(&self, level: Level) -> Vec<String> {
+    #[allow(dead_code)]
+    pub fn filter_by_level(&self, _level: Level) -> Vec<String> {
         // Simplified filtering for test infrastructure
         Vec::new()
     }
 
     /// Filter captured logs by target module.
-    pub fn filter_by_target(&self, target: &str) -> Vec<String> {
+    #[allow(dead_code)]
+    pub fn filter_by_target(&self, _target: &str) -> Vec<String> {
         // Simplified filtering for test infrastructure
         Vec::new()
     }
 
     /// Get all captured logs.
+    #[allow(dead_code)]
     pub fn get_logs(&self) -> Vec<String> {
         // Simplified accessor for test infrastructure
         Vec::new()
@@ -1054,6 +1086,7 @@ impl LogCapture {
 /// # Returns
 ///
 /// Tuple of (test result, captured logs)
+#[allow(dead_code)]
 pub async fn capture_logs<F, T>(f: F) -> (T, Vec<String>)
 where
     F: Future<Output = T>,
@@ -1079,6 +1112,7 @@ where
 /// # Errors
 ///
 /// Returns error if file not found or cannot be read
+#[allow(dead_code)]
 pub fn load_fixture(name: &str) -> std::io::Result<String> {
     let path = PathBuf::from(FIXTURES_DIR).join(name);
     std::fs::read_to_string(path)
@@ -1093,6 +1127,7 @@ pub fn load_fixture(name: &str) -> std::io::Result<String> {
 /// # Returns
 ///
 /// File contents as byte vector
+#[allow(dead_code)]
 pub fn load_binary_fixture(name: &str) -> std::io::Result<Vec<u8>> {
     let path = PathBuf::from(FIXTURES_DIR).join(name);
     std::fs::read(path)
@@ -1124,6 +1159,7 @@ pub fn load_binary_fixture(name: &str) -> std::io::Result<Vec<u8>> {
 ///     server.send_query(query)
 /// ).await?;
 /// ```
+#[allow(dead_code)]
 pub async fn with_timeout<F, T>(duration: Duration, future: F) -> std::io::Result<T>
 where
     F: Future<Output = T>,
@@ -1143,6 +1179,7 @@ where
 /// # Returns
 ///
 /// Result of successful attempt or last error
+#[allow(dead_code)]
 pub async fn retry_until_success<F, T, E>(
     max_attempts: usize,
     mut f: impl FnMut() -> F,
@@ -1257,12 +1294,14 @@ impl DhcpDiscoverBuilder {
     }
 
     /// Set the client hostname.
+    #[allow(dead_code)]
     pub fn with_hostname(mut self, hostname: impl Into<String>) -> Self {
         self.hostname = Some(hostname.into());
         self
     }
 
     /// Set the requested IP address (option 50).
+    #[allow(dead_code)]
     pub fn with_requested_ip(mut self, ip: IpAddr) -> Self {
         self.requested_ip = Some(ip);
         self
@@ -1330,12 +1369,10 @@ impl DhcpDiscoverBuilder {
         }
 
         // Option 50: Requested IP (if provided)
-        if let Some(ip) = self.requested_ip {
-            if let IpAddr::V4(ipv4) = ip {
-                buf.push(50);
-                buf.push(4);
-                buf.extend_from_slice(&ipv4.octets());
-            }
+        if let Some(IpAddr::V4(ipv4)) = self.requested_ip {
+            buf.push(50);
+            buf.push(4);
+            buf.extend_from_slice(&ipv4.octets());
         }
 
         // End option
@@ -1356,6 +1393,7 @@ impl DhcpDiscoverBuilder {
 ///     .with_duid("00:01:00:01:2a:3b:4c:5d:00:11:22:33:44:55")
 ///     .build();
 /// ```
+#[allow(dead_code)]
 pub struct DhcpSolicitBuilder {
     duid: Vec<u8>,
     ia_na: bool,
@@ -1364,6 +1402,7 @@ pub struct DhcpSolicitBuilder {
 
 impl DhcpSolicitBuilder {
     /// Create a new DHCPv6 SOLICIT builder.
+    #[allow(dead_code)]
     pub fn new() -> Self {
         let counter = QUERY_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
         let xid = [(counter >> 8) as u8, (counter & 0xff) as u8, 0x01];
@@ -1378,6 +1417,7 @@ impl DhcpSolicitBuilder {
     }
 
     /// Set the client DUID (DHCP Unique Identifier).
+    #[allow(dead_code)]
     pub fn with_duid(mut self, duid: &str) -> Self {
         // Parse DUID from hex string
         let parts: Vec<&str> = duid.split(':').collect();
@@ -1386,6 +1426,7 @@ impl DhcpSolicitBuilder {
     }
 
     /// Enable IA_NA (Identity Association for Non-temporary Addresses).
+    #[allow(dead_code)]
     pub fn with_ia_na(mut self) -> Self {
         self.ia_na = true;
         self
@@ -1396,6 +1437,7 @@ impl DhcpSolicitBuilder {
     /// # Returns
     ///
     /// Serialized DHCPv6 packet as byte vector
+    #[allow(dead_code)]
     pub fn build(self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(256);
 
@@ -1434,12 +1476,14 @@ impl DhcpSolicitBuilder {
 // ============================================================================
 
 /// Assert that lease count matches expected value.
+#[allow(dead_code)]
 pub fn assert_lease_count(path: &Path, expected: usize) {
     let leases = parse_lease_file(path).expect("Failed to parse lease file");
     assert_eq!(leases.len(), expected, "Expected {} leases, found {}", expected, leases.len());
 }
 
 /// Assert that a lease exists for the given IP and MAC.
+#[allow(dead_code)]
 pub fn assert_lease_exists(path: &Path, ip: &str, mac: &str) {
     let leases = parse_lease_file(path).expect("Failed to parse lease file");
     assert!(
@@ -1451,6 +1495,7 @@ pub fn assert_lease_exists(path: &Path, ip: &str, mac: &str) {
 }
 
 /// Assert that a lease has expired (expiry timestamp in the past).
+#[allow(dead_code)]
 pub fn assert_lease_expired(lease: &LeaseEntry) {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
 

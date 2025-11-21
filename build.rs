@@ -11,6 +11,10 @@ use std::process::Command;
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
+    // Declare custom cfg name for libubus availability
+    // This tells the compiler that `cfg(has_libubus)` is a valid configuration
+    println!("cargo:rustc-check-cfg=cfg(has_libubus)");
+
     // Handle ubus feature - OpenWrt-specific C library
     #[cfg(feature = "ubus")]
     {

@@ -1356,7 +1356,7 @@ mod tests {
         };
 
         let serialized = data.serialize();
-        assert!(serialized.len() > 0);
+        assert!(!serialized.is_empty());
 
         let deserialized = ScriptData::deserialize(&serialized).unwrap();
         assert_eq!(deserialized.action, ACTION_ADD);

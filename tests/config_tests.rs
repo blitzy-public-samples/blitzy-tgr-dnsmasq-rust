@@ -19,26 +19,15 @@
 //! - Configuration validation (--test mode)
 //! - Configuration reload (SIGHUP)
 
-use dnsmasq::config::{
-    CliArgs, Config, ConfigBuilder, DhcpConfig, DnsConfig, LoggingConfig, NetworkConfig,
-    SecurityConfig, DEFAULT_CONFIG_PATH,
-};
+use dnsmasq::config::ConfigBuilder;
 
-#[cfg(feature = "tftp")]
-use dnsmasq::config::TftpConfig;
-use dnsmasq::error::{ConfigError, Result};
-use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use tempfile::{tempdir, NamedTempFile, TempDir};
-use tokio::time::{timeout, Duration};
+use std::path::PathBuf;
+use tempfile::TempDir;
 
 mod common;
-use common::{
-    create_temp_config_file, create_temp_dir, generate_test_config, with_timeout, TestConfigOptions,
-};
+use common::{create_temp_config_file, create_temp_dir};
 
 /// Test parsing empty configuration file with default values
 /// Validates that all defaults match C dnsmasq behavior
@@ -53,11 +42,11 @@ async fn test_parse_empty_config() {
     // Verify default values match C implementation
     assert_eq!(config.network.port, 53, "Default DNS port should be 53");
     assert_eq!(config.dns.cache_size, 150, "Default cache size should be 150");
-    assert_eq!(config.dns.domain_needed, false, "domain-needed should default to false");
-    assert_eq!(config.dns.bogus_priv, false, "bogus-priv should default to false");
-    assert_eq!(config.network.bind_interfaces, false, "bind-interfaces should default to false");
-    assert_eq!(config.dhcp.authoritative, false, "dhcp-authoritative should default to false");
-    assert_eq!(config.logging.log_queries, false, "log-queries should default to false");
+    assert!(!config.dns.domain_needed, "domain-needed should default to false");
+    assert!(!config.dns.bogus_priv, "bogus-priv should default to false");
+    assert!(!config.network.bind_interfaces, "bind-interfaces should default to false");
+    assert!(!config.dhcp.authoritative, "dhcp-authoritative should default to false");
+    assert!(!config.logging.log_queries, "log-queries should default to false");
     assert!(config.network.interfaces.is_empty(), "Should have no interfaces by default");
     assert!(config.dns.upstream_servers.is_empty(), "Should have no upstream servers by default");
 }
@@ -674,7 +663,7 @@ async fn test_option_precedence() {
 
     assert_eq!(config.network.port, 5353, "CLI should override config file");
     assert_eq!(config.dns.cache_size, 300, "Config file should override default (150)");
-    assert_eq!(config.dhcp.authoritative, false, "Should use default when not specified");
+    assert!(!config.dhcp.authoritative, "Should use default when not specified");
 }
 
 /// Test configuration validation with --test mode
@@ -701,7 +690,7 @@ dhcp-range=192.168.1.50,192.168.1.150,12h
 /// Test validation detects invalid configurations
 #[tokio::test]
 async fn test_config_validation_detects_errors() {
-    let mut builder = ConfigBuilder::new();
+    let builder = ConfigBuilder::new();
 
     // Create invalid configuration (e.g., negative cache size conceptually)
     // In practice, we test validation of DHCP range conflicts, invalid interfaces, etc.
@@ -881,7 +870,7 @@ async fn test_environment_variable_handling() {
 
     // Note: Actual implementation may or may not support DNSMASQ_OPTS
     // This tests the behavior if supported
-    let config =
+    let _config =
         dnsmasq::config::load_config(["dnsmasq", "--conf-file", config_path]).await.unwrap();
 
     env::remove_var("DNSMASQ_OPTS");
@@ -893,7 +882,7 @@ async fn test_environment_variable_handling() {
 /// Test --help output (should not parse config)
 #[tokio::test]
 async fn test_help_flag() {
-    let result = dnsmasq::config::load_config(["dnsmasq", "--help"]).await;
+    let _result = dnsmasq::config::load_config(["dnsmasq", "--help"]).await;
 
     // Help flag typically causes early exit, not config parsing
     // Exact behavior depends on implementation
@@ -902,7 +891,7 @@ async fn test_help_flag() {
 /// Test --version output
 #[tokio::test]
 async fn test_version_flag() {
-    let result = dnsmasq::config::load_config(["dnsmasq", "--version"]).await;
+    let _result = dnsmasq::config::load_config(["dnsmasq", "--version"]).await;
 
     // Version flag typically causes early exit
 }
@@ -1016,5 +1005,5 @@ async fn test_suite_completion() {
     // This test serves as a marker that the entire suite has been compiled
     // and is ready for execution. It validates that all imports and
     // dependencies are correctly resolved.
-    assert!(true, "Configuration test suite is complete");
+    // Configuration test suite is complete
 }

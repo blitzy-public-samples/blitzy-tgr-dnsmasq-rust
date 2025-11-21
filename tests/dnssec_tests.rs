@@ -120,22 +120,19 @@
 //!   signatures, modified RRsets, missing validation records) to ensure robust security.
 
 // External dependencies for async testing and cryptographic operations
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::Bytes;
 use data_encoding::BASE32HEX_NOPAD;
-use ring::{digest, signature};
-use tempfile::{NamedTempFile, TempDir};
-use tokio::fs;
-use tokio::test;
-use tokio::time::Duration;
+use ring::digest;
+use tempfile::NamedTempFile;
 use tracing::{debug, info, warn};
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::EnvFilter;
 
 // Internal imports from dnsmasq implementation
 use dnsmasq::dns::cache::DnsCache;
 use dnsmasq::dns::dnssec::blockdata::BlockData;
 use dnsmasq::dns::dnssec::trust_anchors::TrustAnchorStore;
 use dnsmasq::dns::dnssec::{
-    CryptoAlgorithm, DnssecValidator, SignatureVerifier, ValidationCounter, ValidationStatus,
+    CryptoAlgorithm, DnssecValidator, SignatureVerifier, ValidationCounter,
 };
 use dnsmasq::dns::protocol::constants::*;
 use dnsmasq::dns::protocol::message::DnsMessage;
@@ -143,12 +140,11 @@ use dnsmasq::dns::protocol::name::DomainName;
 use dnsmasq::dns::protocol::record::{RData, ResourceRecord};
 use dnsmasq::error::{DnsError, DnsmasqError};
 use dnsmasq::types::RecordType;
-use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 // Shared test utilities
-use common::{create_temp_config_file, load_fixture, setup_test_server, DnsQueryBuilder};
+use common::DnsQueryBuilder;
 
 // Test module for common utilities
 mod common;
@@ -267,6 +263,7 @@ fn build_dnskey_record(
 /// # Returns
 ///
 /// ResourceRecord containing the RRSIG ready for validation testing
+#[allow(clippy::too_many_arguments)]
 fn build_rrsig_record(
     name: &str,
     type_covered: u16,
@@ -745,7 +742,7 @@ async fn test_rrsig_verification() -> Result<(), DnsmasqError> {
     info!("Testing RRSIG signature verification");
 
     // Generate test key pair
-    let (public_key, private_key) = generate_test_rsa_keypair();
+    let (public_key, _private_key) = generate_test_rsa_keypair();
 
     // Build DNSKEY record
     let _dnskey_record = build_dnskey_record(
@@ -1151,7 +1148,7 @@ async fn test_bogus_response_handling() -> Result<(), DnsmasqError> {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
         as u32;
 
-    let rrsig_record = build_rrsig_record(
+    let _rrsig_record = build_rrsig_record(
         "example.com",
         T_A,
         8,
@@ -1222,7 +1219,7 @@ async fn test_dnssec_cd_bit() -> Result<(), DnsmasqError> {
     // 3. NOT filter BOGUS responses (client responsible)
 
     // Parse query and check for CD bit
-    let msg = DnsMessage::from_bytes(&query)?;
+    let _msg = DnsMessage::from_bytes(&query)?;
     // CD bit is in flags - checking disabled
 
     info!("CD bit handling test passed");
@@ -1339,7 +1336,7 @@ async fn test_algorithm_compatibility() -> Result<(), DnsmasqError> {
 
     // Attempt verification - we expect this to fail due to invalid signature,
     // but the important part is that it doesn't fail on key parsing
-    let ring_result = verifier.verify(8, &rsa_key_block, &rsa_signature, signed_data);
+    let _ring_result = verifier.verify(8, &rsa_key_block, &rsa_signature, signed_data);
 
     // The key point is that we can parse the key without errors
     // Actual signature verification requires valid signature data

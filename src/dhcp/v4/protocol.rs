@@ -1306,8 +1306,6 @@ impl DhcpRange {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     // Unit tests would go here
     // - Test context selection logic
     // - Test lease time calculation

@@ -1567,7 +1567,7 @@ mod tests {
         assert_eq!(ctx.interface, "eth0");
         assert_eq!(ctx.iaid, 0x12345678);
         assert_eq!(ctx.ia_type, OPTION_IA_NA);
-        assert_eq!(ctx.multicast_dest, true);
+        assert!(ctx.multicast_dest);
     }
 
     #[test]
@@ -1611,7 +1611,7 @@ mod tests {
 
         assert_eq!(ctx.client_hostname, Some("testhost.local".to_string()));
         assert_eq!(ctx.interface, "eth1");
-        assert_eq!(ctx.multicast_dest, false);
+        assert!(!ctx.multicast_dest);
     }
 
     #[test]

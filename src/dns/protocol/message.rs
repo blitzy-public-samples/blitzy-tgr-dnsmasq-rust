@@ -874,11 +874,11 @@ mod tests {
     #[test]
     fn test_dns_flags_qr() {
         let mut flags = DnsFlags::new();
-        assert_eq!(flags.qr(), false);
+        assert!(!flags.qr());
         flags.set_qr(true);
-        assert_eq!(flags.qr(), true);
+        assert!(flags.qr());
         flags.set_qr(false);
-        assert_eq!(flags.qr(), false);
+        assert!(!flags.qr());
     }
 
     #[test]
@@ -896,18 +896,18 @@ mod tests {
         let mut flags = DnsFlags::new();
 
         flags.set_aa(true);
-        assert_eq!(flags.aa(), true);
+        assert!(flags.aa());
 
         flags.set_tc(true);
-        assert_eq!(flags.tc(), true);
+        assert!(flags.tc());
 
         flags.set_rd(true);
-        assert_eq!(flags.rd(), true);
+        assert!(flags.rd());
 
         // Verify all stay set
-        assert_eq!(flags.aa(), true);
-        assert_eq!(flags.tc(), true);
-        assert_eq!(flags.rd(), true);
+        assert!(flags.aa());
+        assert!(flags.tc());
+        assert!(flags.rd());
     }
 
     #[test]
@@ -915,13 +915,13 @@ mod tests {
         let mut flags = DnsFlags::new();
 
         flags.set_ra(true);
-        assert_eq!(flags.ra(), true);
+        assert!(flags.ra());
 
         flags.set_ad(true);
-        assert_eq!(flags.ad(), true);
+        assert!(flags.ad());
 
         flags.set_cd(true);
-        assert_eq!(flags.cd(), true);
+        assert!(flags.cd());
     }
 
     #[test]
@@ -948,10 +948,10 @@ mod tests {
         let (hb3, hb4) = flags.to_bytes();
         let restored = DnsFlags::from_bytes(hb3, hb4);
 
-        assert_eq!(restored.qr(), true);
-        assert_eq!(restored.aa(), true);
-        assert_eq!(restored.rd(), true);
-        assert_eq!(restored.ra(), true);
+        assert!(restored.qr());
+        assert!(restored.aa());
+        assert!(restored.rd());
+        assert!(restored.ra());
         assert_eq!(restored.rcode(), 3);
     }
 
@@ -978,9 +978,9 @@ mod tests {
 
         let header = DnsHeader::from_bytes(&data).unwrap();
         assert_eq!(header.id, 0x1234);
-        assert_eq!(header.flags.qr(), true);
-        assert_eq!(header.flags.rd(), true);
-        assert_eq!(header.flags.ra(), true);
+        assert!(header.flags.qr());
+        assert!(header.flags.rd());
+        assert!(header.flags.ra());
         assert_eq!(header.qdcount, 1);
         assert_eq!(header.ancount, 2);
         assert_eq!(header.nscount, 0);
@@ -1011,8 +1011,8 @@ mod tests {
     fn test_dns_message_new() {
         let message = DnsMessage::new(999);
         assert_eq!(message.id(), 999);
-        assert_eq!(message.is_query(), true);
-        assert_eq!(message.is_response(), false);
+        assert!(message.is_query());
+        assert!(!message.is_response());
         assert_eq!(message.qdcount(), 0);
         assert_eq!(message.ancount(), 0);
     }
@@ -1027,9 +1027,9 @@ mod tests {
             .build();
 
         assert_eq!(message.id(), 12345);
-        assert_eq!(message.is_response(), true);
-        assert_eq!(message.flags().aa(), true);
-        assert_eq!(message.flags().ra(), true);
+        assert!(message.is_response());
+        assert!(message.flags().aa());
+        assert!(message.flags().ra());
     }
 
     #[test]
@@ -1078,7 +1078,7 @@ mod tests {
 
         let mut response = DnsResponse::from_query(&query_msg);
         assert_eq!(response.message_mut().id(), 555);
-        assert_eq!(response.message_mut().is_response(), true);
+        assert!(response.message_mut().is_response());
         assert_eq!(response.message_mut().qdcount(), 1);
 
         response.set_rcode(NOERROR);
@@ -1101,14 +1101,14 @@ mod tests {
         let raw = flags.raw();
         let restored = DnsFlags::from_raw(raw);
 
-        assert_eq!(restored.qr(), true);
+        assert!(restored.qr());
         assert_eq!(restored.opcode(), 4);
-        assert_eq!(restored.aa(), true);
-        assert_eq!(restored.tc(), false);
-        assert_eq!(restored.rd(), true);
-        assert_eq!(restored.ra(), true);
-        assert_eq!(restored.ad(), true);
-        assert_eq!(restored.cd(), false);
+        assert!(restored.aa());
+        assert!(!restored.tc());
+        assert!(restored.rd());
+        assert!(restored.ra());
+        assert!(restored.ad());
+        assert!(!restored.cd());
         assert_eq!(restored.rcode(), 0);
     }
 }

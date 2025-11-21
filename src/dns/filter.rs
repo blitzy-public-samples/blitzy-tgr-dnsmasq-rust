@@ -809,7 +809,7 @@ mod tests {
     #[test]
     fn test_filter_mode_variants() {
         // Verify all filter modes are correctly defined
-        let modes = vec![
+        let modes = [
             FilterMode::Edns0,
             FilterMode::Dnssec,
             FilterMode::AddressRecords,
