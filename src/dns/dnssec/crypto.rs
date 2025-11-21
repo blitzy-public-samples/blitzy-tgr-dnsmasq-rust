@@ -1147,7 +1147,7 @@ mod tests {
         key_bytes.extend_from_slice(&exponent);
         key_bytes.extend_from_slice(&modulus);
 
-        let result = DnssecVerifier::parse_rsa_key(&key_bytes, 8);
+        let result = SignatureVerifier::parse_rsa_key(&key_bytes, 8);
         assert!(result.is_ok());
         let (exp, mod_result) = result.unwrap();
         assert_eq!(exp, &exponent[..]);
@@ -1156,8 +1156,6 @@ mod tests {
 
     #[test]
     fn test_rsa_key_parsing_extended_exponent() {
-        let verifier = SignatureVerifier::new();
-
         // Create RSA key with extended exponent length
         let exponent = vec![0xFF; 300]; // Long exponent (> 255 bytes)
         let modulus = vec![0xFF; 256]; // 2048-bit modulus
@@ -1169,7 +1167,7 @@ mod tests {
         key_bytes.extend_from_slice(&exponent);
         key_bytes.extend_from_slice(&modulus);
 
-        let result = DnssecVerifier::parse_rsa_key(&key_bytes, 8);
+        let result = SignatureVerifier::parse_rsa_key(&key_bytes, 8);
         assert!(result.is_ok());
         let (exp, mod_result) = result.unwrap();
         assert_eq!(exp, &exponent[..]);
@@ -1180,7 +1178,7 @@ mod tests {
     fn test_rsa_key_parsing_too_short() {
         // Key too short (< 3 bytes)
         let key_bytes = vec![0x03, 0x01];
-        let result = DnssecVerifier::parse_rsa_key(&key_bytes, 8);
+        let result = SignatureVerifier::parse_rsa_key(&key_bytes, 8);
         assert!(matches!(result, Err(CryptoError::InvalidKeyFormat { .. })));
     }
 
@@ -1188,7 +1186,7 @@ mod tests {
     fn test_rsa_key_parsing_zero_exponent_length() {
         // Zero exponent length (invalid)
         let key_bytes = vec![0x00, 0x00, 0x00, 0xFF, 0xFF];
-        let result = DnssecVerifier::parse_rsa_key(&key_bytes, 8);
+        let result = SignatureVerifier::parse_rsa_key(&key_bytes, 8);
         assert!(matches!(result, Err(CryptoError::InvalidKeyFormat { .. })));
     }
 

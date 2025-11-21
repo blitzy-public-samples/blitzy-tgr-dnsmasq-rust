@@ -149,8 +149,8 @@
 //! use crate::platform::DbusDaemon;
 //!
 //! #[cfg(feature = "dbus")]
-//! let dbus = DbusDaemon::new().await?;
-//! dbus.run().await?;
+//! let mut dbus = DbusDaemon::new()?;
+//! dbus.start().await?;
 //! ```
 //!
 //! # Feature Flags
@@ -269,13 +269,12 @@
 //!
 //! #[cfg(feature = "dbus")]
 //! async fn start_dbus_interface() -> Result<(), Box<dyn std::error::Error>> {
-//!     let dbus = DbusDaemon::new().await?;
+//!     let mut dbus = DbusDaemon::new()?;
+//!     dbus.start().await?;
 //!     
-//!     // Spawn D-Bus task in background
+//!     // D-Bus now running in background
 //!     tokio::spawn(async move {
-//!         if let Err(e) = dbus.run().await {
-//!             eprintln!("D-Bus error: {}", e);
-//!         }
+//!         // Keep connection alive
 //!     });
 //!     
 //!     Ok(())
@@ -562,8 +561,8 @@ pub use privileges::PrivilegeManager;
 /// use crate::platform::DbusDaemon;
 ///
 /// #[cfg(feature = "dbus")]
-/// let dbus = DbusDaemon::new().await?;
-/// dbus.run().await?;
+/// let mut dbus = DbusDaemon::new()?;
+/// dbus.start().await?;
 /// ```
 ///
 /// # Feature Flag

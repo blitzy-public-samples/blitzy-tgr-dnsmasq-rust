@@ -923,6 +923,7 @@ impl DnsResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dns::protocol::{constants::C_IN, NOERROR};
 
     #[test]
     fn test_dns_flags_qr() {
