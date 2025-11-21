@@ -32,7 +32,7 @@
 //!
 //! This Rust implementation uses automatic memory management:
 //! - `Vec<[u8; BLOCK_SIZE]>` provides automatic allocation and growth
-//! - Drop trait ensures automatic cleanup when BlockData goes out of scope
+//! - `Drop` trait ensures automatic cleanup when `BlockData` goes out of scope
 //! - No manual free list management required
 //! - Memory safety guaranteed by Rust ownership system
 //!
@@ -48,7 +48,7 @@
 //! - Fixed 40-byte blocks enable predictable allocation patterns
 //! - Vec automatic reallocation strategy reduces allocation overhead
 //! - Typical overhead: 0-39 bytes per record (average ~20 bytes)
-//! - BLOCK_SIZE = 40 matches C KEYBLOCK_LEN for cache file compatibility
+//! - `BLOCK_SIZE` = 40 matches C `KEYBLOCK_LEN` for cache file compatibility
 //!
 //! # Usage Example
 //!
@@ -79,17 +79,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-/// Fixed block size matching C KEYBLOCK_LEN for cache file compatibility.
+/// Fixed block size matching C `KEYBLOCK_LEN` for cache file compatibility.
 ///
 /// This constant determines the payload size of each block in the chain. The value of 40 bytes
 /// was chosen to balance memory efficiency (minimize waste from partial blocks) with traversal
 /// performance (reduce number of blocks for large records).
 ///
-/// Compatibility: Must match C KEYBLOCK_LEN (40 bytes) to enable reading/writing cache files
+/// Compatibility: Must match C `KEYBLOCK_LEN` (40 bytes) to enable reading/writing cache files
 /// created by either C or Rust implementations.
 pub const BLOCK_SIZE: usize = 40;
 
-/// Error types for BlockData operations.
+/// Error types for `BlockData` operations.
 ///
 /// Provides detailed error information for allocation failures, I/O errors, and chain
 /// corruption detection. Uses thiserror for automatic Error trait implementation.
@@ -98,7 +98,7 @@ pub enum BlockDataError {
     /// Memory allocation failed during block chain creation or expansion.
     ///
     /// This error indicates the system is unable to allocate memory for additional blocks.
-    /// In the C implementation, this would manifest as NULL return from malloc().
+    /// In the C implementation, this would manifest as NULL return from `malloc()`.
     #[error("Block data allocation failed")]
     AllocationFailed,
 
@@ -112,7 +112,7 @@ pub enum BlockDataError {
     /// Block chain is shorter than expected length parameter.
     ///
     /// Indicates programming error where caller specified oldlen that exceeds actual
-    /// chain content in blockdata_expand() operation. The C implementation detects this
+    /// chain content in `blockdata_expand()` operation. The C implementation detects this
     /// as a sanity check to prevent chain corruption.
     #[error("Block chain too short for specified length")]
     ChainTooShort,
@@ -125,46 +125,46 @@ pub enum BlockDataError {
     InvalidLength(String),
 }
 
-/// Type alias for Result with BlockDataError.
+/// Type alias for Result with `BlockDataError`.
 pub type Result<T> = std::result::Result<T, BlockDataError>;
 
 /// Variable-length data storage using fixed-size block chains.
 ///
-/// BlockData stores arbitrary-length byte sequences using a vector of fixed-size blocks.
+/// `BlockData` stores arbitrary-length byte sequences using a vector of fixed-size blocks.
 /// This design prevents heap fragmentation from variable-size DNSSEC records while
 /// maintaining efficient allocation through Vec's exponential growth strategy.
 ///
 /// # Implementation Notes
 ///
 /// - Replaces C manual free list with Vec automatic memory management
-/// - Drop trait ensures automatic cleanup eliminating memory leaks
-/// - Each block stores exactly BLOCK_SIZE (40) bytes except potentially the last block
+/// - `Drop` trait ensures automatic cleanup eliminating memory leaks
+/// - Each block stores exactly `BLOCK_SIZE` (40) bytes except potentially the last block
 /// - Total data length tracked separately from block count for efficient queries
 ///
 /// # Thread Safety
 ///
-/// BlockData itself is not thread-safe (matches C single-threaded architecture).
-/// For concurrent access, wrap in Arc<RwLock<BlockData>> or similar synchronization.
+/// `BlockData` itself is not thread-safe (matches C single-threaded architecture).
+/// For concurrent access, wrap in `Arc<RwLock<BlockData>>` or similar synchronization.
 #[derive(Debug, Clone)]
 pub struct BlockData {
     /// Vector of fixed-size blocks storing the actual data.
     ///
-    /// Each block is exactly BLOCK_SIZE bytes. The last block may be partially filled
-    /// if total data length is not a multiple of BLOCK_SIZE.
+    /// Each block is exactly `BLOCK_SIZE` bytes. The last block may be partially filled
+    /// if total data length is not a multiple of `BLOCK_SIZE`.
     blocks: Vec<[u8; BLOCK_SIZE]>,
 
     /// Total number of data bytes stored across all blocks.
     ///
-    /// This may be less than blocks.len() * BLOCK_SIZE if the last block is partial.
-    /// Tracking length separately avoids recalculating during len() calls.
+    /// This may be less than `blocks.len()` * `BLOCK_SIZE` if the last block is partial.
+    /// Tracking length separately avoids recalculating during `len()` calls.
     total_len: usize,
 }
 
 impl BlockData {
-    /// Create a new BlockData from a byte slice.
+    /// Create a new `BlockData` from a byte slice.
     ///
     /// Allocates sufficient blocks to store all bytes from the input slice, chunking the
-    /// data into BLOCK_SIZE segments. This is the primary constructor for storing DNSSEC
+    /// data into `BLOCK_SIZE` segments. This is the primary constructor for storing DNSSEC
     /// record data (RRSIG signatures, DNSKEY public keys, DS digests).
     ///
     /// # Arguments
@@ -173,7 +173,7 @@ impl BlockData {
     ///
     /// # Returns
     ///
-    /// New BlockData instance containing a copy of the input data distributed across
+    /// New `BlockData` instance containing a copy of the input data distributed across
     /// fixed-size blocks.
     ///
     /// # Examples
@@ -189,9 +189,9 @@ impl BlockData {
     /// # Memory Efficiency
     ///
     /// For N bytes of input:
-    /// - Blocks allocated: ceil(N / BLOCK_SIZE)
-    /// - Memory used: ceil(N / BLOCK_SIZE) * BLOCK_SIZE
-    /// - Overhead: (ceil(N / BLOCK_SIZE) * BLOCK_SIZE) - N (0 to BLOCK_SIZE-1 bytes)
+    /// - Blocks allocated: ceil(N / `BLOCK_SIZE`)
+    /// - Memory used: ceil(N / `BLOCK_SIZE`) * `BLOCK_SIZE`
+    /// - Overhead: (ceil(N / `BLOCK_SIZE`) * `BLOCK_SIZE`) - N (0 to `BLOCK_SIZE`-1 bytes)
     pub fn new(data: &[u8]) -> Self {
         let total_len = data.len();
 
@@ -213,15 +213,15 @@ impl BlockData {
         Self { blocks, total_len }
     }
 
-    /// Read data from an async reader into a new BlockData.
+    /// Read data from an async reader into a new `BlockData`.
     ///
     /// Asynchronously reads exactly `len` bytes from the provided reader and stores them
-    /// in a newly allocated BlockData chain. This replaces the C blockdata_read() function
+    /// in a newly allocated `BlockData` chain. This replaces the C `blockdata_read()` function
     /// with async I/O to prevent event loop blocking during cache deserialization.
     ///
     /// # Arguments
     ///
-    /// * `reader` - Async reader implementing AsyncReadExt (e.g., tokio::fs::File, TcpStream)
+    /// * `reader` - Async reader implementing `AsyncReadExt` (e.g., `tokio::fs::File`, `TcpStream`)
     /// * `len` - Number of bytes to read from reader
     ///
     /// # Returns
@@ -231,7 +231,7 @@ impl BlockData {
     ///
     /// # Errors
     ///
-    /// Returns IoError if:
+    /// Returns `IoError` if:
     /// - Reader cannot provide `len` bytes (short read)
     /// - I/O error occurs during read (broken pipe, permission denied, disk error)
     ///
@@ -250,22 +250,22 @@ impl BlockData {
     ///
     /// # Implementation Notes
     ///
-    /// Uses tokio::io::AsyncReadExt::read_exact() to ensure exactly `len` bytes are read.
-    /// If EOF is reached before `len` bytes, read_exact() returns UnexpectedEof error.
+    /// Uses `tokio::io::AsyncReadExt::read_exact()` to ensure exactly `len` bytes are read.
+    /// If EOF is reached before `len` bytes, `read_exact()` returns `UnexpectedEof` error.
     pub async fn from_reader<R: AsyncReadExt + Unpin>(reader: &mut R, len: usize) -> Result<Self> {
         let mut buffer = vec![0u8; len];
         reader.read_exact(&mut buffer).await?;
         Ok(Self::new(&buffer))
     }
 
-    /// Write BlockData to an async writer.
+    /// Write `BlockData` to an async writer.
     ///
-    /// Asynchronously writes all data stored in the BlockData chain to the provided writer.
-    /// This replaces C blockdata_write() with async I/O for non-blocking cache serialization.
+    /// Asynchronously writes all data stored in the `BlockData` chain to the provided writer.
+    /// This replaces C `blockdata_write()` with async I/O for non-blocking cache serialization.
     ///
     /// # Arguments
     ///
-    /// * `writer` - Async writer implementing AsyncWriteExt (e.g., tokio::fs::File, TcpStream)
+    /// * `writer` - Async writer implementing `AsyncWriteExt` (e.g., `tokio::fs::File`, `TcpStream`)
     ///
     /// # Returns
     ///
@@ -274,7 +274,7 @@ impl BlockData {
     ///
     /// # Errors
     ///
-    /// Returns IoError if:
+    /// Returns `IoError` if:
     /// - Writer cannot accept data (disk full, quota exceeded)
     /// - I/O error occurs during write (broken pipe, permission denied)
     ///
@@ -295,8 +295,8 @@ impl BlockData {
     ///
     /// # Implementation Notes
     ///
-    /// Writes blocks sequentially, writing exactly total_len bytes. The last block may be
-    /// partially written if total_len is not a multiple of BLOCK_SIZE.
+    /// Writes blocks sequentially, writing exactly `total_len` bytes. The last block may be
+    /// partially written if `total_len` is not a multiple of `BLOCK_SIZE`.
     pub async fn to_writer<W: AsyncWriteExt + Unpin>(&self, writer: &mut W) -> Result<()> {
         let mut remaining = self.total_len;
 
@@ -313,15 +313,15 @@ impl BlockData {
         Ok(())
     }
 
-    /// Retrieve data from BlockData as a contiguous Vec<u8>.
+    /// Retrieve data from `BlockData` as a contiguous `Vec<u8>`.
     ///
     /// Copies all data from the block chain into a new contiguous vector, reversing the
-    /// chunking performed by new(). This is the inverse operation of new() and equivalent
-    /// to C blockdata_retrieve() with automatic buffer allocation.
+    /// chunking performed by `new()`. This is the inverse operation of `new()` and equivalent
+    /// to C `blockdata_retrieve()` with automatic buffer allocation.
     ///
     /// # Returns
     ///
-    /// New Vec<u8> containing all data from the block chain in contiguous memory.
+    /// New `Vec<u8>` containing all data from the block chain in contiguous memory.
     ///
     /// # Examples
     ///
@@ -335,9 +335,9 @@ impl BlockData {
     ///
     /// # Performance
     ///
-    /// - Time complexity: O(n) where n is total_len
+    /// - Time complexity: O(n) where n is `total_len`
     /// - Space complexity: O(n) for returned vector
-    /// - Uses Iterator::flatten() for efficient copying
+    /// - Uses `Iterator::flatten()` for efficient copying
     pub fn retrieve(&self) -> Vec<u8> {
         if self.total_len == 0 {
             return Vec::new();
@@ -359,11 +359,11 @@ impl BlockData {
         result
     }
 
-    /// Expand the BlockData by appending additional data.
+    /// Expand the `BlockData` by appending additional data.
     ///
     /// Extends an existing block chain by appending new data, potentially allocating additional
     /// blocks if the new data doesn't fit in the remaining space of the final block. This
-    /// function replicates C blockdata_expand() behavior with Rust memory safety.
+    /// function replicates C `blockdata_expand()` behavior with Rust memory safety.
     ///
     /// # Arguments
     ///
@@ -376,7 +376,7 @@ impl BlockData {
     ///
     /// # Errors
     ///
-    /// Currently does not fail in practice (Vec handles allocation), but returns Result
+    /// Currently does not fail in practice (`Vec` handles allocation), but returns `Result`
     /// for consistency with C API and future error handling.
     ///
     /// # Examples
@@ -453,7 +453,7 @@ impl BlockData {
     /// Get the total number of data bytes stored.
     ///
     /// Returns the total length of data stored in the block chain, which may be less than
-    /// blocks.len() * BLOCK_SIZE if the last block is partially filled.
+    /// `blocks.len()` * `BLOCK_SIZE` if the last block is partially filled.
     ///
     /// # Returns
     ///
@@ -472,11 +472,11 @@ impl BlockData {
         self.total_len
     }
 
-    /// Check if the BlockData is empty.
+    /// Check if the `BlockData` is empty.
     ///
     /// # Returns
     ///
-    /// `true` if no data is stored (total_len == 0), `false` otherwise.
+    /// `true` if no data is stored (`total_len` == 0), `false` otherwise.
     ///
     /// # Examples
     ///
@@ -497,12 +497,12 @@ impl BlockData {
     ///
     /// For efficiency, if the data fits within a single block, returns a slice directly
     /// to that block's data without allocation. For multi-block data, this would require
-    /// allocation (use retrieve() instead).
+    /// allocation (use `retrieve()` instead).
     ///
     /// # Returns
     ///
     /// - `Some(&[u8])` - Data fits in single block, returns slice to that data
-    /// - `None` - Data spans multiple blocks, caller should use retrieve()
+    /// - `None` - Data spans multiple blocks, caller should use `retrieve()`
     ///
     /// # Examples
     ///
@@ -526,16 +526,16 @@ impl BlockData {
     }
 }
 
-/// Automatic cleanup when BlockData is dropped.
+/// Automatic cleanup when `BlockData` is dropped.
 ///
-/// Implements Drop trait to update global statistics when BlockData goes out of scope.
-/// This replaces C blockdata_free() manual cleanup with Rust automatic resource management,
-/// eliminating memory leaks from forgotten free() calls.
+/// Implements `Drop` trait to update global statistics when `BlockData` goes out of scope.
+/// This replaces C `blockdata_free()` manual cleanup with Rust automatic resource management,
+/// eliminating memory leaks from forgotten `free()` calls.
 ///
-/// The Rust implementation does not need a free list pool because Vec handles memory
-/// management automatically. When BlockData is dropped:
-/// 1. Drop impl decrements global block count statistics
-/// 2. Vec's Drop impl automatically deallocates block memory
+/// The Rust implementation does not need a free list pool because `Vec` handles memory
+/// management automatically. When `BlockData` is dropped:
+/// 1. `Drop` impl decrements global block count statistics
+/// 2. `Vec`'s `Drop` impl automatically deallocates block memory
 /// 3. No manual cleanup required by caller
 impl Drop for BlockData {
     fn drop(&mut self) {
@@ -544,9 +544,9 @@ impl Drop for BlockData {
     }
 }
 
-/// Global statistics for BlockData memory usage.
+/// Global statistics for `BlockData` memory usage.
 ///
-/// Tracks allocation statistics across all BlockData instances for monitoring and debugging.
+/// Tracks allocation statistics across all `BlockData` instances for monitoring and debugging.
 /// Uses atomic operations for thread-safe updates without locking, matching C static counter
 /// pattern but with thread safety.
 ///
@@ -555,12 +555,12 @@ impl Drop for BlockData {
 /// - `high_water_mark`: Maximum blocks in use simultaneously since initialization
 /// - `total_allocated`: Cumulative blocks allocated (never decreases)
 ///
-/// The C implementation uses static variables (blockdata_count, blockdata_hwm, blockdata_alloced)
-/// which are not thread-safe. This Rust implementation uses AtomicUsize for lock-free concurrent
+/// The C implementation uses static variables (`blockdata_count`, `blockdata_hwm`, `blockdata_alloced`)
+/// which are not thread-safe. This Rust implementation uses `AtomicUsize` for lock-free concurrent
 /// access while maintaining equivalent functionality.
 #[derive(Debug)]
 pub struct BlockDataStats {
-    /// Current number of blocks in use across all BlockData instances.
+    /// Current number of blocks in use across all `BlockData` instances.
     current_count: AtomicUsize,
 
     /// High-water mark: maximum blocks in use simultaneously.
@@ -577,13 +577,13 @@ impl Default for BlockDataStats {
 }
 
 impl BlockDataStats {
-    /// Create a new BlockDataStats instance with zero counters.
+    /// Create a new `BlockDataStats` instance with zero counters.
     ///
-    /// This is typically only called once to initialize GLOBAL_STATS.
+    /// This is typically only called once to initialize `GLOBAL_STATS`.
     ///
     /// # Returns
     ///
-    /// New BlockDataStats with all counters initialized to zero.
+    /// New `BlockDataStats` with all counters initialized to zero.
     pub const fn new() -> Self {
         Self {
             current_count: AtomicUsize::new(0),
@@ -596,7 +596,7 @@ impl BlockDataStats {
     ///
     /// # Returns
     ///
-    /// Number of blocks currently allocated across all BlockData instances.
+    /// Number of blocks currently allocated across all `BlockData` instances.
     #[inline]
     pub fn current_count(&self) -> usize {
         self.current_count.load(Ordering::Relaxed)
@@ -626,7 +626,7 @@ impl BlockDataStats {
     ///
     /// # Returns
     ///
-    /// Total bytes currently in use (current_count * BLOCK_SIZE).
+    /// Total bytes currently in use (`current_count` * `BLOCK_SIZE`).
     #[inline]
     pub fn current_bytes(&self) -> usize {
         self.current_count() * BLOCK_SIZE
@@ -636,7 +636,7 @@ impl BlockDataStats {
     ///
     /// # Returns
     ///
-    /// Maximum bytes in use simultaneously (high_water_mark * BLOCK_SIZE).
+    /// Maximum bytes in use simultaneously (`high_water_mark` * `BLOCK_SIZE`).
     #[inline]
     pub fn hwm_bytes(&self) -> usize {
         self.high_water_mark() * BLOCK_SIZE
@@ -646,7 +646,7 @@ impl BlockDataStats {
     ///
     /// # Returns
     ///
-    /// Cumulative bytes allocated (total_allocated * BLOCK_SIZE).
+    /// Cumulative bytes allocated (`total_allocated` * `BLOCK_SIZE`).
     #[inline]
     pub fn allocated_bytes(&self) -> usize {
         self.total_allocated() * BLOCK_SIZE
@@ -654,8 +654,8 @@ impl BlockDataStats {
 
     /// Increment block count statistics (called when blocks allocated).
     ///
-    /// Updates current_count, high_water_mark, and total_allocated atomically.
-    /// This is called internally by BlockData::new() and BlockData::expand().
+    /// Updates `current_count`, `high_water_mark`, and `total_allocated` atomically.
+    /// This is called internally by `BlockData::new()` and `BlockData::expand()`.
     ///
     /// # Arguments
     ///
@@ -677,7 +677,7 @@ impl BlockDataStats {
 
     /// Decrement block count statistics (called when blocks freed).
     ///
-    /// Updates current_count atomically. Called by BlockData::drop().
+    /// Updates `current_count` atomically. Called by `BlockData::drop()`.
     ///
     /// # Arguments
     ///
@@ -692,7 +692,7 @@ impl BlockDataStats {
 
     /// Generate statistics report string for logging.
     ///
-    /// Creates a formatted string matching C blockdata_report() output for compatibility
+    /// Creates a formatted string matching C `blockdata_report()` output for compatibility
     /// with existing log parsing tools and monitoring systems.
     ///
     /// # Returns
@@ -717,10 +717,10 @@ impl BlockDataStats {
     }
 }
 
-/// Global statistics instance for tracking all BlockData allocations.
+/// Global statistics instance for tracking all `BlockData` allocations.
 ///
-/// This static variable provides process-wide visibility into BlockData memory usage,
-/// equivalent to C static variables (blockdata_count, blockdata_hwm, blockdata_alloced).
+/// This static variable provides process-wide visibility into `BlockData` memory usage,
+/// equivalent to C static variables (`blockdata_count`, `blockdata_hwm`, `blockdata_alloced`).
 ///
 /// Thread-safe through atomic operations, can be safely accessed from multiple threads
 /// or async tasks without locking.

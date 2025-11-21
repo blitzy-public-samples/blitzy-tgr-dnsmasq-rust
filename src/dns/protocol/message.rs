@@ -87,16 +87,19 @@ pub struct DnsFlags {
 
 impl DnsFlags {
     /// Create new flags with all bits cleared.
+    #[must_use]
     pub fn new() -> Self {
         Self { raw: 0 }
     }
 
     /// Create flags from raw 16-bit value.
+    #[must_use]
     pub fn from_raw(raw: u16) -> Self {
         Self { raw }
     }
 
     /// Create flags from two header bytes (byte 3 and byte 4).
+    #[must_use]
     pub fn from_bytes(hb3: u8, hb4: u8) -> Self {
         let raw = ((hb3 as u16) << 8) | (hb4 as u16);
         Self { raw }
@@ -266,6 +269,7 @@ pub struct DnsHeader {
 
 impl DnsHeader {
     /// Create new DNS header with given ID and all counts set to zero.
+    #[must_use]
     pub fn new(id: u16) -> Self {
         Self { id, flags: DnsFlags::new(), qdcount: 0, ancount: 0, nscount: 0, arcount: 0 }
     }
@@ -322,6 +326,7 @@ pub struct Question {
 
 impl Question {
     /// Create new question with given name, type, and class.
+    #[must_use]
     pub fn new(qname: DomainName, qtype: RecordType, qclass: u16) -> Self {
         Self { qname, qtype, qclass }
     }
@@ -396,6 +401,7 @@ pub struct DnsMessage {
 
 impl DnsMessage {
     /// Create new DNS message with given ID.
+    #[must_use]
     pub fn new(id: u16) -> Self {
         Self {
             header: DnsHeader::new(id),
@@ -718,71 +724,83 @@ pub struct DnsMessageBuilder {
 
 impl DnsMessageBuilder {
     /// Create new builder with random ID.
+    #[must_use]
     pub fn new() -> Self {
         Self { message: DnsMessage::new(0) }
     }
 
     /// Set message ID.
+    #[must_use]
     pub fn id(mut self, id: u16) -> Self {
         self.message.header.id = id;
         self
     }
 
     /// Set QR bit to 0 (query).
+    #[must_use]
     pub fn set_query(mut self) -> Self {
         self.message.header.flags.set_qr(false);
         self
     }
 
     /// Set QR bit to 1 (response).
+    #[must_use]
     pub fn set_response(mut self) -> Self {
         self.message.header.flags.set_qr(true);
         self
     }
 
     /// Set AA bit (authoritative answer).
+    #[must_use]
     pub fn set_authoritative(mut self) -> Self {
         self.message.header.flags.set_aa(true);
         self
     }
 
     /// Set RD bit (recursion desired).
+    #[must_use]
     pub fn set_recursion_desired(mut self) -> Self {
         self.message.header.flags.set_rd(true);
         self
     }
 
     /// Set RA bit (recursion available).
+    #[must_use]
     pub fn set_recursion_available(mut self) -> Self {
         self.message.header.flags.set_ra(true);
         self
     }
 
     /// Set RCODE (response code).
+    #[must_use]
     pub fn rcode(mut self, rcode: u8) -> Self {
         self.message.header.flags.set_rcode(rcode);
         self
     }
 
     /// Add question to question section.
+    #[must_use]
     pub fn add_question(mut self, question: Question) -> Self {
         self.message.questions.push(question);
         self
     }
 
     /// Add resource record to answer section.
+    #[must_use]
     pub fn add_answer(mut self, answer: ResourceRecord) -> Self {
         self.message.answers.push(answer);
         self
     }
 
     /// Add resource record to authority section.
+    #[must_use]
     pub fn add_authority(mut self, authority: ResourceRecord) -> Self {
         self.message.authority.push(authority);
         self
     }
 
     /// Add resource record to additional section.
+    #[must_use]
     pub fn add_additional(mut self, additional: ResourceRecord) -> Self {
         self.message.additional.push(additional);
         self
@@ -834,6 +852,7 @@ pub struct DnsResponse {
 
 impl DnsResponse {
     /// Create response from query message (copies ID and question).
+    #[must_use]
     pub fn from_query(query_message: &DnsMessage) -> Self {
         let mut message = DnsMessage::new(query_message.id());
         message.set_response();
@@ -842,6 +861,7 @@ impl DnsResponse {
     }
 
     /// Create response from an existing DNS message.
+    #[must_use]
     pub fn from_message(message: DnsMessage) -> Self {
         Self { message }
     }

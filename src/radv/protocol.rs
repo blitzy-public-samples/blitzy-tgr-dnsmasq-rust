@@ -13,21 +13,21 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! ICMPv6 Router Advertisement protocol constants and structures per RFC 4861
+//! `ICMPv6` Router Advertisement protocol constants and structures per RFC 4861
 //!
 //! This module defines protocol constants, packet structures, and option definitions for
 //! IPv6 Router Advertisement (RA) and Neighbor Discovery (ND) protocols as specified in
 //! RFC 4861 (IPv6 Neighbor Discovery Protocol). These definitions enable dnsmasq to
-//! construct and transmit ICMPv6 Router Advertisement messages for IPv6 network
+//! construct and transmit `ICMPv6` Router Advertisement messages for IPv6 network
 //! autoconfiguration, supporting both SLAAC (Stateless Address Autoconfiguration) and
-//! managed DHCPv6 address assignment.
+//! managed `DHCPv6` address assignment.
 //!
 //! # Key Responsibilities
 //!
 //! - Define IPv6 multicast addresses for ND protocol communication (all-nodes, all-routers)
-//! - Provide ICMPv6 packet structure definitions for Router Advertisement messages
+//! - Provide `ICMPv6` packet structure definitions for Router Advertisement messages
 //! - Define prefix information option structure for advertised IPv6 prefixes
-//! - Enumerate ICMPv6 Neighbor Discovery option types (prefix, RDNSS, DNSSL, etc.)
+//! - Enumerate `ICMPv6` Neighbor Discovery option types (prefix, RDNSS, DNSSL, etc.)
 //! - Support neighbor solicitation and advertisement packet structures
 //! - Enable ICMP6 Echo Request/Reply (ping) packet construction
 //!
@@ -35,7 +35,7 @@
 //!
 //! - RFC 4861: IPv6 Neighbor Discovery Protocol (Router Advertisement, Neighbor Solicitation)
 //! - RFC 6106: IPv6 Router Advertisement Options for DNS Configuration (RDNSS, DNSSL)
-//! - RFC 4443: ICMPv6 for IPv6 (ICMPv6 message format and type codes)
+//! - RFC 4443: `ICMPv6` for IPv6 (`ICMPv6` message format and type codes)
 //! - RFC 4191: Default Router Preferences and More-Specific Routes
 //! - RFC 6275: Mobility Support in IPv6 (Advertisement Interval option)
 //!
@@ -43,12 +43,12 @@
 //!
 //! This module is used by the `radv` module to construct Router Advertisement messages
 //! with configured prefixes and lifetimes, set Managed (M) and Other (O) flags controlling
-//! DHCPv6 usage, include RDNSS options advertising DNS servers, and transmit RAs to
-//! FF02::1 (all-nodes multicast) for network-wide autoconfiguration.
+//! `DHCPv6` usage, include RDNSS options advertising DNS servers, and transmit RAs to
+//! `FF02::1` (all-nodes multicast) for network-wide autoconfiguration.
 
 use std::net::Ipv6Addr;
 
-/// IPv6 link-local all-nodes multicast address (FF02::1)
+/// IPv6 link-local all-nodes multicast address (`FF02::1`)
 ///
 /// This address is used as the destination for Router Advertisement messages that
 /// should be received by all IPv6 nodes on the local link. Router Advertisements
@@ -62,7 +62,7 @@ use std::net::Ipv6Addr;
 /// forwarded beyond the local network segment.
 pub const ALL_NODES: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 1);
 
-/// IPv6 link-local all-routers multicast address (FF02::2)
+/// IPv6 link-local all-routers multicast address (`FF02::2`)
 ///
 /// This address is used as the destination for Router Solicitation messages sent
 /// by hosts to request immediate Router Advertisement messages from routers. This
@@ -74,7 +74,7 @@ pub const ALL_NODES: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 1);
 /// initialization.
 ///
 /// **Note**: While defined here for protocol completeness, dnsmasq as a router
-/// primarily transmits to ALL_NODES and may listen for solicitations on this address.
+/// primarily transmits to `ALL_NODES` and may listen for solicitations on this address.
 pub const ALL_ROUTERS: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 2);
 
 /// IPv6 Hop Limit for Router Advertisement messages (255)
@@ -86,51 +86,51 @@ pub const ALL_ROUTERS: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 2);
 /// hop limit equals 255 (since each hop decrements it).
 ///
 /// This constant is used when:
-/// - Setting IPV6_MULTICAST_HOPS socket option for RA transmission
-/// - Setting IPV6_UNICAST_HOPS for unicast RA responses
+/// - Setting `IPV6_MULTICAST_HOPS` socket option for RA transmission
+/// - Setting `IPV6_UNICAST_HOPS` for unicast RA responses
 /// - Validating received Router Solicitation messages
 ///
 /// RFC 4861 Section 6.1.2: "The IP Hop Limit field has a value of 255, i.e., the
 /// packet could not possibly have been forwarded by a router."
 pub const HOP_LIMIT: u8 = 255;
 
-/// ICMPv6 Echo Request message type (128)
+/// `ICMPv6` Echo Request message type (128)
 ///
 /// Used for IPv6 ping operations and address conflict detection.
 /// Echo Request messages are sent to test address availability.
 ///
-/// RFC 4443 Section 4.1: ICMPv6 Echo Request Message
+/// RFC 4443 Section 4.1: `ICMPv6` Echo Request Message
 pub const ICMP6_ECHO_REQUEST: u8 = 128;
 
-/// ICMPv6 Echo Reply message type (129)
+/// `ICMPv6` Echo Reply message type (129)
 ///
 /// Response to Echo Request, indicating the address is in use.
 ///
-/// RFC 4443 Section 4.2: ICMPv6 Echo Reply Message
+/// RFC 4443 Section 4.2: `ICMPv6` Echo Reply Message
 pub const ICMP6_ECHO_REPLY: u8 = 129;
 
-/// ICMPv6 Router Solicitation message type (133)
+/// `ICMPv6` Router Solicitation message type (133)
 ///
 /// Used by hosts to request routers to generate Router Advertisements immediately.
 ///
 /// RFC 4861 Section 4.1: Router Solicitation Message Format
 pub const ICMP6_ROUTER_SOLICIT: u8 = 133;
 
-/// ICMPv6 Router Advertisement message type (134)
+/// `ICMPv6` Router Advertisement message type (134)
 ///
 /// Used by routers to advertise their presence and network parameters.
 ///
 /// RFC 4861 Section 4.2: Router Advertisement Message Format
 pub const ICMP6_ROUTER_ADVERT: u8 = 134;
 
-/// ICMPv6 Neighbor Solicitation message type (135)
+/// `ICMPv6` Neighbor Solicitation message type (135)
 ///
 /// Used for address resolution and duplicate address detection.
 ///
 /// RFC 4861 Section 4.3: Neighbor Solicitation Message Format
 pub const ICMP6_NEIGH_SOLICIT: u8 = 135;
 
-/// ICMPv6 Neighbor Advertisement message type (136)
+/// `ICMPv6` Neighbor Advertisement message type (136)
 ///
 /// Response to Neighbor Solicitation or unsolicited announcement.
 ///
@@ -140,7 +140,7 @@ pub const ICMP6_NEIGH_ADVERT: u8 = 136;
 /// Source Link-Layer Address option type (1)
 ///
 /// This option provides the link-layer address (MAC address) of the interface from which
-/// the ICMPv6 message is sent. In Router Advertisement messages, this is the router's
+/// the `ICMPv6` message is sent. In Router Advertisement messages, this is the router's
 /// MAC address, allowing hosts to populate their neighbor cache with the router's
 /// link-layer address without requiring separate Neighbor Solicitation/Advertisement
 /// exchange.
@@ -189,7 +189,7 @@ pub const PREFIX_OPT: u8 = 3;
 /// - 1500: Standard Ethernet MTU
 /// - 1280: IPv6 minimum MTU (RFC 8200)
 /// - 9000: Jumbo frames
-/// - 1492: PPPoE with overhead
+/// - 1492: `PPPoE` with overhead
 ///
 /// RFC 4861 Section 4.6.4
 pub const MTU_OPT: u8 = 5;
@@ -241,7 +241,7 @@ pub const ROUTE_OPT: u8 = 24;
 ///
 /// This option provides IPv6 addresses of Recursive DNS Servers that hosts should use
 /// for DNS resolution. This enables DNS server configuration via Router Advertisement
-/// without requiring DHCPv6, supporting pure SLAAC environments.
+/// without requiring `DHCPv6`, supporting pure SLAAC environments.
 ///
 /// Option format (RFC 6106 Section 5.1):
 /// - Type: 25 (1 octet)
@@ -281,44 +281,44 @@ pub const RDNSS_OPT: u8 = 25;
 /// RFC 6106 Section 5.2
 pub const DNSSL_OPT: u8 = 31;
 
-/// ICMPv6 Echo Request/Reply packet structure for IPv6 ping operations
+/// `ICMPv6` Echo Request/Reply packet structure for IPv6 ping operations
 ///
-/// This structure defines the format of ICMPv6 Echo Request (type 128) and Echo Reply
+/// This structure defines the format of `ICMPv6` Echo Request (type 128) and Echo Reply
 /// (type 129) messages used for IPv6 reachability testing. In dnsmasq context, this
 /// structure is used to perform address conflict detection via ping testing before
-/// assigning SLAAC addresses or DHCPv6 addresses to ensure they are not already in use.
+/// assigning SLAAC addresses or `DHCPv6` addresses to ensure they are not already in use.
 ///
 /// # Layout
 ///
-/// Size: 8 bytes (fixed ICMPv6 echo message header)
+/// Size: 8 bytes (fixed `ICMPv6` echo message header)
 ///
 /// # Usage
 ///
 /// Used for SLAAC address confirmation (ping test for duplicate detection) and
-/// for verifying DHCPv6-assigned addresses are not in use. Transmitted to candidate
+/// for verifying `DHCPv6`-assigned addresses are not in use. Transmitted to candidate
 /// address to check for existing host before assignment.
 ///
 /// # RFC Compliance
 ///
-/// - RFC 4443 Section 4.1: ICMPv6 Echo Request Message (type 128)
-/// - RFC 4443 Section 4.2: ICMPv6 Echo Reply Message (type 129)
+/// - RFC 4443 Section 4.1: `ICMPv6` Echo Request Message (type 128)
+/// - RFC 4443 Section 4.2: `ICMPv6` Echo Reply Message (type 129)
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PingPacket {
-    /// ICMPv6 message type
+    /// `ICMPv6` message type
     ///
     /// - 128: Echo Request (ping query sent to test address availability)
     /// - 129: Echo Reply (response from host at tested address, indicating address is in use)
     pub type_: u8,
 
-    /// ICMPv6 message code (always 0 for Echo Request/Reply)
+    /// `ICMPv6` message code (always 0 for Echo Request/Reply)
     ///
     /// Must be set to 0 per RFC 4443. Non-zero values are invalid for echo messages.
     pub code: u8,
 
-    /// ICMPv6 checksum covering entire ICMPv6 message and IPv6 pseudo-header
+    /// `ICMPv6` checksum covering entire `ICMPv6` message and IPv6 pseudo-header
     ///
-    /// Computed over ICMPv6 message plus IPv6 pseudo-header (source, destination,
+    /// Computed over `ICMPv6` message plus IPv6 pseudo-header (source, destination,
     /// length, next header). Must be validated on receipt and computed on transmission.
     /// Network byte order (big-endian).
     pub checksum: u16,
@@ -338,12 +338,12 @@ pub struct PingPacket {
     pub sequence_no: u16,
 }
 
-/// ICMPv6 Router Advertisement message structure per RFC 4861
+/// `ICMPv6` Router Advertisement message structure per RFC 4861
 ///
 /// This structure defines the base Router Advertisement message format transmitted by
 /// IPv6 routers to advertise their presence, network parameters, and address prefixes
 /// to hosts on the local link. Router Advertisements enable IPv6 Stateless Address
-/// Autoconfiguration (SLAAC) and coordinate with DHCPv6 for managed addressing.
+/// Autoconfiguration (SLAAC) and coordinate with `DHCPv6` for managed addressing.
 ///
 /// # Description
 ///
@@ -354,12 +354,12 @@ pub struct PingPacket {
 ///
 /// # Layout
 ///
-/// Size: 16 bytes (fixed ICMPv6 RA message header, options follow separately)
+/// Size: 16 bytes (fixed `ICMPv6` RA message header, options follow separately)
 ///
 /// # Usage
 ///
-/// Created for periodic RA transmission to FF02::1 (all-nodes). Flags field (M and O bits)
-/// control DHCPv6 operational mode (stateful/stateless). Hop limit field advertises
+/// Created for periodic RA transmission to `FF02::1` (all-nodes). Flags field (M and O bits)
+/// control `DHCPv6` operational mode (stateful/stateless). Hop limit field advertises
 /// suggested default hop limit for outgoing packets. Lifetime field specifies router's
 /// validity as default router. Followed by `PrefixOpt` structures advertising on-link prefixes.
 ///
@@ -370,20 +370,20 @@ pub struct PingPacket {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RaPacket {
-    /// ICMPv6 message type (134 for Router Advertisement)
+    /// `ICMPv6` message type (134 for Router Advertisement)
     ///
-    /// Must be set to 134 (ND_ROUTER_ADVERT) to identify this as a Router Advertisement.
-    /// Hosts process only ICMPv6 type 134 messages as Router Advertisements.
+    /// Must be set to 134 (`ND_ROUTER_ADVERT`) to identify this as a Router Advertisement.
+    /// Hosts process only `ICMPv6` type 134 messages as Router Advertisements.
     pub type_: u8,
 
-    /// ICMPv6 message code (always 0 for Router Advertisement)
+    /// `ICMPv6` message code (always 0 for Router Advertisement)
     ///
     /// Must be set to 0 per RFC 4861. Non-zero values cause the message to be discarded.
     pub code: u8,
 
-    /// ICMPv6 checksum covering entire RA message and IPv6 pseudo-header
+    /// `ICMPv6` checksum covering entire RA message and IPv6 pseudo-header
     ///
-    /// Computed over ICMPv6 message (including all options) plus IPv6 pseudo-header.
+    /// Computed over `ICMPv6` message (including all options) plus IPv6 pseudo-header.
     /// Receivers must validate checksum; invalid checksums cause message discard.
     /// Network byte order (big-endian).
     pub checksum: u16,
@@ -400,8 +400,8 @@ pub struct RaPacket {
     /// RA flags byte controlling address configuration behavior
     ///
     /// Bit layout (MSB to LSB):
-    /// - Bit 7 (M): Managed address configuration flag (1 = use DHCPv6 for addresses)
-    /// - Bit 6 (O): Other configuration flag (1 = use DHCPv6 for non-address config)
+    /// - Bit 7 (M): Managed address configuration flag (1 = use `DHCPv6` for addresses)
+    /// - Bit 6 (O): Other configuration flag (1 = use `DHCPv6` for non-address config)
     /// - Bit 5 (H): Home Agent flag (Mobile IPv6, not used by dnsmasq)
     /// - Bits 4-3: Router preference (00=medium, 01=high, 11=low)
     /// - Bit 2 (Proxy): Proxy flag (not used by dnsmasq)
@@ -409,10 +409,10 @@ pub struct RaPacket {
     ///
     /// # Dnsmasq Usage
     ///
-    /// - M=1, O=0: Stateful DHCPv6 (clients get addresses via DHCPv6)
-    /// - M=0, O=1: Stateless DHCPv6 (clients use SLAAC for addresses, DHCPv6 for config)
-    /// - M=1, O=1: Stateful DHCPv6 with additional configuration
-    /// - M=0, O=0: SLAAC only (no DHCPv6 used)
+    /// - M=1, O=0: Stateful `DHCPv6` (clients get addresses via `DHCPv6`)
+    /// - M=0, O=1: Stateless `DHCPv6` (clients use SLAAC for addresses, `DHCPv6` for config)
+    /// - M=1, O=1: Stateful `DHCPv6` with additional configuration
+    /// - M=0, O=0: SLAAC only (no `DHCPv6` used)
     ///
     /// Configured via dhcp-range option parameters in dnsmasq.conf.
     pub flags: u8,
@@ -456,13 +456,13 @@ pub struct RaPacket {
     pub retrans_time: u32,
 }
 
-/// ICMPv6 Neighbor Solicitation/Advertisement packet structure per RFC 4861
+/// `ICMPv6` Neighbor Solicitation/Advertisement packet structure per RFC 4861
 ///
-/// This structure defines the format of ICMPv6 Neighbor Solicitation (type 135) and
+/// This structure defines the format of `ICMPv6` Neighbor Solicitation (type 135) and
 /// Neighbor Advertisement (type 136) messages used for IPv6 address resolution,
 /// duplicate address detection, and neighbor reachability verification. In dnsmasq
 /// context, this structure is used for duplicate address detection before assigning
-/// IPv6 addresses via SLAAC or DHCPv6.
+/// IPv6 addresses via SLAAC or `DHCPv6`.
 ///
 /// # Description
 ///
@@ -478,7 +478,7 @@ pub struct RaPacket {
 /// # Usage
 ///
 /// Used for duplicate address detection (send NS, wait for NA reply) and to verify
-/// DHCPv6-assigned addresses are not already in use. Neighbor Solicitation sent to
+/// `DHCPv6`-assigned addresses are not already in use. Neighbor Solicitation sent to
 /// solicited-node multicast address of target. Neighbor Advertisement response
 /// indicates address is in use (conflict detected).
 ///
@@ -490,7 +490,7 @@ pub struct RaPacket {
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct NeighPacket {
-    /// ICMPv6 message type
+    /// `ICMPv6` message type
     ///
     /// - 135: Neighbor Solicitation (query for address or duplicate address detection)
     /// - 136: Neighbor Advertisement (response or unsolicited announcement)
@@ -498,14 +498,14 @@ pub struct NeighPacket {
     /// Dnsmasq primarily sends Neighbor Solicitations for duplicate address detection.
     pub type_: u8,
 
-    /// ICMPv6 message code (always 0 for Neighbor Solicitation/Advertisement)
+    /// `ICMPv6` message code (always 0 for Neighbor Solicitation/Advertisement)
     ///
     /// Must be set to 0 per RFC 4861. Non-zero values cause the message to be discarded.
     pub code: u8,
 
-    /// ICMPv6 checksum covering entire NS/NA message and IPv6 pseudo-header
+    /// `ICMPv6` checksum covering entire NS/NA message and IPv6 pseudo-header
     ///
-    /// Computed over ICMPv6 message (including options) plus IPv6 pseudo-header.
+    /// Computed over `ICMPv6` message (including options) plus IPv6 pseudo-header.
     /// Must be validated on receipt and computed on transmission.
     /// Network byte order (big-endian).
     pub checksum: u16,
@@ -534,7 +534,7 @@ pub struct NeighPacket {
     ///
     /// # Duplicate Address Detection Usage
     ///
-    /// When dnsmasq tests if a SLAAC or DHCPv6 address is available, it sends a
+    /// When dnsmasq tests if a SLAAC or `DHCPv6` address is available, it sends a
     /// Neighbor Solicitation with source address :: (unspecified) and target address
     /// set to the candidate address. If any node responds with Neighbor Advertisement,
     /// the address is in use and must not be assigned.
@@ -549,7 +549,7 @@ impl Default for NeighPacket {
     }
 }
 
-/// Prefix Information option for ICMPv6 Router Advertisement per RFC 4861
+/// Prefix Information option for `ICMPv6` Router Advertisement per RFC 4861
 ///
 /// This structure defines the Prefix Information option (type 3) included in Router
 /// Advertisement messages to advertise IPv6 prefixes available for Stateless Address
@@ -578,10 +578,10 @@ impl Default for NeighPacket {
 /// from prefix remain valid. Preferred lifetime specifies how long addresses are
 /// preferred for new connections.
 ///
-/// # Integration with DHCPv6
+/// # Integration with `DHCPv6`
 ///
-/// When M flag in RA is set (stateful DHCPv6), prefix may still be advertised but
-/// hosts obtain addresses from DHCPv6 instead of SLAAC. Prefix information is used
+/// When M flag in RA is set (stateful `DHCPv6`), prefix may still be advertised but
+/// hosts obtain addresses from `DHCPv6` instead of SLAAC. Prefix information is used
 /// for on-link determination even when A flag is 0.
 ///
 /// # RFC Compliance
@@ -593,7 +593,7 @@ impl Default for NeighPacket {
 pub struct PrefixOpt {
     /// Option type identifier (3 for Prefix Information)
     ///
-    /// Must be set to 3 (ICMP6_OPT_PREFIX) to identify this as a Prefix Information
+    /// Must be set to 3 (`ICMP6_OPT_PREFIX`) to identify this as a Prefix Information
     /// option. Hosts process only type 3 options as prefix advertisements.
     pub type_: u8,
 
@@ -632,7 +632,7 @@ pub struct PrefixOpt {
     /// # Dnsmasq Typical Configuration
     ///
     /// - L=1, A=1: Prefix is on-link and should be used for SLAAC (normal SLAAC mode)
-    /// - L=1, A=0: Prefix is on-link but addresses assigned via DHCPv6 (stateful mode)
+    /// - L=1, A=0: Prefix is on-link but addresses assigned via `DHCPv6` (stateful mode)
     /// - L=0, A=0: Prefix advertised for route information only
     ///
     /// # On-Link Determination
@@ -661,7 +661,7 @@ pub struct PrefixOpt {
     ///
     /// # Relationship to Preferred Lifetime
     ///
-    /// Must be ≥ preferred_lifetime. Valid lifetime represents the upper bound on
+    /// Must be ≥ `preferred_lifetime`. Valid lifetime represents the upper bound on
     /// address usability, while preferred lifetime represents when addresses should
     /// stop being used for new connections.
     ///
@@ -687,7 +687,7 @@ pub struct PrefixOpt {
     /// deprecated state: existing connections continue normally, but new connections
     /// should use preferred addresses. This enables graceful prefix renumbering.
     ///
-    /// Must be ≤ valid_lifetime per RFC 4861.
+    /// Must be ≤ `valid_lifetime` per RFC 4861.
     /// Network byte order (big-endian).
     pub preferred_lifetime: u32,
 
@@ -702,14 +702,14 @@ pub struct PrefixOpt {
     /// IPv6 address prefix being advertised
     ///
     /// The IPv6 prefix that hosts use for SLAAC, on-link determination, or routing.
-    /// Only the bits specified by prefix_len are significant; remaining bits should
+    /// Only the bits specified by `prefix_len` are significant; remaining bits should
     /// be set to 0 but are ignored by receivers.
     ///
     /// # SLAAC Address Formation
     ///
     /// When A flag is set, hosts form complete IPv6 addresses by combining this prefix
     /// with their 64-bit interface identifier:
-    /// - Address = prefix (first prefix_len bits) + interface ID (remaining bits)
+    /// - Address = prefix (first `prefix_len` bits) + interface ID (remaining bits)
     /// - Interface ID derived from MAC address (EUI-64) or random (privacy extensions)
     ///
     /// # On-Link Determination
@@ -720,12 +720,12 @@ pub struct PrefixOpt {
     ///
     /// # Common Prefixes
     ///
-    /// - 2001:db8::/32: Documentation prefix (RFC 3849)
-    /// - fd00::/8: Unique Local Addresses (ULA, RFC 4193)
-    /// - fe80::/10: Link-local addresses (not typically advertised in prefix options)
-    /// - Global Unicast: Provider-assigned prefixes (e.g., 2001::/16 range)
+    /// - `2001:db8::/32`: Documentation prefix (RFC 3849)
+    /// - `fd00::/8`: Unique Local Addresses (ULA, RFC 4193)
+    /// - `fe80::/10`: Link-local addresses (not typically advertised in prefix options)
+    /// - Global Unicast: Provider-assigned prefixes (e.g., `2001::/16` range)
     ///
-    /// Must not be a link-local address (fe80::/10) or multicast address (ff00::/8).
+    /// Must not be a link-local address (`fe80::/10`) or multicast address (`ff00::/8`).
     pub prefix: Ipv6Addr,
 }
 

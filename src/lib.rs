@@ -39,10 +39,10 @@
 //!   verifying signatures and building trust chains to configured trust anchors. Sets AD
 //!   (Authenticated Data) flag when validation succeeds.
 //!
-//! - **DHCPv4 Server**: Provides IPv4 address allocation via RFC 2131 DISCOVER/OFFER/REQUEST/ACK
+//! - **`DHCPv4` Server**: Provides IPv4 address allocation via RFC 2131 DISCOVER/OFFER/REQUEST/ACK
 //!   flows, static reservations, lease persistence, and integration with DNS for hostname resolution.
 //!
-//! - **DHCPv6 Server**: Provides IPv6 address allocation and prefix delegation via RFC 3315
+//! - **`DHCPv6` Server**: Provides IPv6 address allocation and prefix delegation via RFC 3315
 //!   SOLICIT/ADVERTISE/REQUEST/REPLY flows with support for stateful and stateless address
 //!   autoconfiguration (SLAAC).
 //!
@@ -70,7 +70,7 @@
 //! memcpy(buf, packet, packet_len); // No bounds checking!
 //! ```
 //!
-//! ```rust
+//! ```rust,ignore
 //! // Rust implementation: Compile-time bounds checking
 //! let mut buf = vec![0u8; 512];
 //! buf[..packet.len()].copy_from_slice(packet); // Panics if packet.len() > 512
@@ -85,7 +85,7 @@
 //! return cache->data; // Accessing freed memory!
 //! ```
 //!
-//! ```rust
+//! ```rust,ignore
 //! // Rust implementation: Ownership prevents use-after-free
 //! let cache = find_cache_entry(name)?;
 //! // Rust ownership system ensures `cache` cannot be accessed after Drop
@@ -100,7 +100,7 @@
 //!     return -1; // Memory leak - forgot to free(l)
 //! ```
 //!
-//! ```rust
+//! ```rust,ignore
 //! // Rust implementation: Automatic cleanup via RAII
 //! let lease = Box::new(Lease::new());
 //! validate_mac(&mac)?; // Lease automatically dropped on early return
@@ -180,11 +180,11 @@
 //! - **[`dns`]**: DNS forwarding, caching, DNSSEC validation, and authoritative zone serving.
 //!   Replaces `src/forward.c`, `src/cache.c`, `src/rfc1035.c`, `src/dnssec.c` with async I/O.
 //!
-//! - **[`dhcp`]**: DHCPv4 and DHCPv6 servers with lease management, static reservations, and
+//! - **[`dhcp`]**: `DHCPv4` and `DHCPv6` servers with lease management, static reservations, and
 //!   DNS integration. Replaces `src/dhcp.c`, `src/dhcp6.c`, `src/lease.c` with safe concurrency.
 //!
 //! - **[`radv`]**: IPv6 Router Advertisement generation per RFC 4861. Replaces `src/radv.c`
-//!   with type-safe ICMPv6 RA construction.
+//!   with type-safe `ICMPv6` RA construction.
 //!
 //! - **[`network`]**: Cross-platform socket management, interface enumeration, and firewall
 //!   integration (ipset, nftables, PF). Replaces `src/network.c`, `src/netlink.c`, `src/bpf.c`
@@ -435,30 +435,31 @@ pub use dhcp::DhcpService;  // Primary DHCP service coordinating DHCPv4/v6
 /// Provides methods for cache clearing, server configuration, metrics retrieval,
 /// and DHCP lease enumeration via the uk.org.thekelleys.dnsmasq D-Bus service.
 ///
-/// **Enabled by**: `dbus` feature flag (matches C's HAVE_DBUS)
+/// **Enabled by**: `dbus` feature flag (matches C's `HAVE_DBUS`)
 #[cfg(feature = "dbus")]
-pub use platform::dbus::DbusInterface;
+pub use platform::dbus::DbusDaemon;
 
-/// Lua scripting interface for DHCP lease event handling.
+/// Helper process manager for script execution including Lua support.
 ///
-/// Allows custom Lua scripts to be invoked on lease add/delete/old events,
-/// receiving lease details via Lua function parameters.
+/// Provides privilege-separated external script invocation for DHCP lease events,
+/// TFTP transfers, and ARP changes. Lua scripting is integrated when the
+/// `lua-scripts` feature is enabled.
 ///
-/// **Enabled by**: `lua-scripts` feature flag (matches C's HAVE_LUASCRIPT)
+/// **Enabled by**: `lua-scripts` feature flag (matches C's `HAVE_LUASCRIPT`)
 #[cfg(feature = "lua-scripts")]
-pub use util::lua::LuaScriptExecutor;
+pub use util::helpers::HelperProcess;
 
 /// DNSSEC validation components for cryptographic DNS response verification.
 ///
 /// Provides signature verification, trust anchor management, and chain building.
 ///
-/// **Enabled by**: `dnssec` feature flag (default, matches C's HAVE_DNSSEC)
+/// **Enabled by**: `dnssec` feature flag (default, matches C's `HAVE_DNSSEC`)
 #[cfg(feature = "dnssec")]
 pub use dns::dnssec::DnssecValidator;
 
 /// TFTP server for network boot and file transfer.
 ///
-/// **Enabled by**: `tftp` feature flag (matches C's HAVE_TFTP)
+/// **Enabled by**: `tftp` feature flag (matches C's `HAVE_TFTP`)
 #[cfg(feature = "tftp")]
 pub use tftp::TftpServer;
 
@@ -468,7 +469,7 @@ pub use tftp::TftpServer;
 
 /// dnsmasq version string matching C implementation format.
 ///
-/// Used for --version CLI output and D-Bus GetVersion method response.
+/// Used for --version CLI output and D-Bus `GetVersion` method response.
 /// Format: "Dnsmasq version <version>" matching C's VERSION macro output.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -476,6 +477,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 ///
 /// Includes Rust implementation identifier to distinguish from C version while
 /// maintaining version number compatibility.
+#[must_use]
 pub fn version_string() -> String {
     format!(
         "Dnsmasq version {} (Rust implementation)\n\
@@ -488,16 +490,13 @@ pub fn version_string() -> String {
 
 /// Returns space-separated list of enabled compile-time features.
 ///
-/// Matches C's compile_opts() output format for compatibility with existing scripts
+/// Matches C's `compile_opts()` output format for compatibility with existing scripts
 /// and monitoring tools that parse --version output.
 ///
 /// Example output: "dnssec dbus tftp idn"
 fn compile_time_options() -> String {
-    let mut opts = Vec::new();
-
-    // Default features
-    opts.push("dhcp");
-    opts.push("dhcp6");
+    // Default features (always enabled)
+    let mut opts = vec!["dhcp", "dhcp6"];
 
     // Optional features
     #[cfg(feature = "dnssec")]
@@ -561,7 +560,7 @@ pub mod prelude {
     pub use crate::dns::dnssec::DnssecValidator;
 
     #[cfg(feature = "dbus")]
-    pub use crate::platform::dbus::DbusInterface;
+    pub use crate::platform::dbus::DbusDaemon;
 
     #[cfg(feature = "tftp")]
     pub use crate::tftp::TftpServer;

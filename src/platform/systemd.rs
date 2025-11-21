@@ -19,7 +19,7 @@
 //!
 //! # Service Notifications
 //!
-//! The module implements sd_notify() to send status updates to systemd:
+//! The module implements `sd_notify()` to send status updates to systemd:
 //! - READY=1: Service has completed initialization
 //! - STOPPING=1: Service is shutting down
 //! - RELOADING=1: Service is reloading configuration
@@ -52,7 +52,7 @@ use std::os::unix::net::UnixDatagram;
 use tokio::net::{TcpListener, UdpSocket};
 use tracing::{debug, error, info};
 
-/// SD_LISTEN_FDS_START is the first file descriptor number that systemd passes
+/// `SD_LISTEN_FDS_START` is the first file descriptor number that systemd passes
 /// File descriptors are numbered starting from 3 (after stdin=0, stdout=1, stderr=2)
 const SD_LISTEN_FDS_START: RawFd = 3;
 
@@ -63,9 +63,9 @@ const SD_LISTEN_FDS_START: RawFd = 3;
 /// the socket type matches expectations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemdSocket {
-    /// TCP stream socket (SOCK_STREAM + AF_INET or AF_INET6)
+    /// TCP stream socket (`SOCK_STREAM` + `AF_INET` or `AF_INET6`)
     Tcp,
-    /// UDP datagram socket (SOCK_DGRAM + AF_INET or AF_INET6)
+    /// UDP datagram socket (`SOCK_DGRAM` + `AF_INET` or `AF_INET6`)
     Udp,
 }
 
@@ -78,9 +78,9 @@ pub enum SystemdSocket {
 pub struct WatchdogState {
     /// Whether watchdog is enabled for this service
     pub enabled: bool,
-    /// Watchdog interval in microseconds (from WATCHDOG_USEC)
+    /// Watchdog interval in microseconds (from `WATCHDOG_USEC`)
     pub interval_usec: u64,
-    /// Process ID that watchdog applies to (from WATCHDOG_PID)
+    /// Process ID that watchdog applies to (from `WATCHDOG_PID`)
     pub pid: u32,
 }
 
@@ -88,11 +88,11 @@ pub struct WatchdogState {
 ///
 /// This function implements the systemd socket activation protocol. When systemd
 /// starts a service with socket activation, it passes pre-created and bound sockets
-/// as file descriptors starting from SD_LISTEN_FDS_START (fd 3).
+/// as file descriptors starting from `SD_LISTEN_FDS_START` (fd 3).
 ///
 /// # Arguments
 ///
-/// * `unset_environment` - If true, unset the LISTEN_FDS and LISTEN_PID environment
+/// * `unset_environment` - If true, unset the `LISTEN_FDS` and `LISTEN_PID` environment
 ///   variables after reading them. This prevents child processes from inheriting
 ///   these variables and mistakenly believing they have activated sockets.
 ///
@@ -100,14 +100,14 @@ pub struct WatchdogState {
 ///
 /// A vector of raw file descriptors passed by systemd. The vector is empty if:
 /// - The service was not started by systemd with socket activation
-/// - The LISTEN_PID doesn't match our process ID
-/// - The LISTEN_FDS environment variable is not set or invalid
+/// - The `LISTEN_PID` doesn't match our process ID
+/// - The `LISTEN_FDS` environment variable is not set or invalid
 ///
 /// # Errors
 ///
 /// Returns `PlatformError` if:
-/// - The LISTEN_FDS environment variable contains invalid data
-/// - The LISTEN_PID environment variable contains invalid data
+/// - The `LISTEN_FDS` environment variable contains invalid data
+/// - The `LISTEN_PID` environment variable contains invalid data
 ///
 /// # Example
 ///
@@ -126,12 +126,12 @@ pub struct WatchdogState {
 /// # Protocol Details
 ///
 /// The systemd socket activation protocol uses environment variables:
-/// - `LISTEN_PID`: Process ID that should receive the file descriptors
-/// - `LISTEN_FDS`: Number of file descriptors being passed
+/// - ``LISTEN_PID``: Process ID that should receive the file descriptors
+/// - ``LISTEN_FDS``: Number of file descriptors being passed
 /// - `LISTEN_FDNAMES`: Optional semicolon-separated names for the sockets
 ///
-/// File descriptors are passed starting at SD_LISTEN_FDS_START (3) and continuing
-/// for LISTEN_FDS count. Example: if LISTEN_FDS=2, the fds are 3 and 4.
+/// File descriptors are passed starting at `SD_LISTEN_FDS_START` (3) and continuing
+/// for `LISTEN_FDS` count. Example: if `LISTEN_FDS=2`, the fds are 3 and 4.
 pub fn sd_listen_fds(unset_environment: bool) -> Result<Vec<RawFd>> {
     // Check if we were started by systemd by looking for LISTEN_PID
     let listen_pid = match env::var("LISTEN_PID") {
@@ -195,13 +195,13 @@ pub fn sd_listen_fds(unset_environment: bool) -> Result<Vec<RawFd>> {
 
 /// Send a notification message to systemd
 ///
-/// This function implements the sd_notify() protocol for sending service status
+/// This function implements the `sd_notify()` protocol for sending service status
 /// updates to systemd. The notification is sent via a UNIX domain socket whose
-/// path is specified in the NOTIFY_SOCKET environment variable.
+/// path is specified in the `NOTIFY_SOCKET` environment variable.
 ///
 /// # Arguments
 ///
-/// * `unset_environment` - If true, unset the NOTIFY_SOCKET environment variable
+/// * `unset_environment` - If true, unset the `NOTIFY_SOCKET` environment variable
 ///   after sending the notification. This prevents child processes from sending
 ///   notifications and confusing systemd about the service state.
 ///
@@ -216,13 +216,13 @@ pub fn sd_listen_fds(unset_environment: bool) -> Result<Vec<RawFd>> {
 /// # Returns
 ///
 /// Returns `Ok(())` if the notification was successfully sent, or if there was
-/// no NOTIFY_SOCKET (meaning we're not running under systemd with notification
+/// no `NOTIFY_SOCKET` (meaning we're not running under systemd with notification
 /// support). Returns an error if the socket path is invalid or the send fails.
 ///
 /// # Errors
 ///
 /// Returns `PlatformError` if:
-/// - The NOTIFY_SOCKET path is invalid
+/// - The `NOTIFY_SOCKET` path is invalid
 /// - The UNIX socket cannot be created
 /// - The notification cannot be sent
 ///
@@ -246,8 +246,8 @@ pub fn sd_listen_fds(unset_environment: bool) -> Result<Vec<RawFd>> {
 ///
 /// # Protocol Details
 ///
-/// The sd_notify protocol uses a UNIX domain socket (either abstract or file-based)
-/// specified in the NOTIFY_SOCKET environment variable. The message is sent as
+/// The `sd_notify` protocol uses a UNIX domain socket (either abstract or file-based)
+/// specified in the `NOTIFY_SOCKET` environment variable. The message is sent as
 /// a datagram with the status string as the payload.
 pub fn sd_notify(unset_environment: bool, state: &str) -> Result<()> {
     // Get the notification socket path from environment
@@ -297,7 +297,7 @@ pub fn sd_notify(unset_environment: bool, state: &str) -> Result<()> {
 
 /// Send status text to systemd
 ///
-/// This is a convenience wrapper around sd_notify() for sending human-readable
+/// This is a convenience wrapper around `sd_notify()` for sending human-readable
 /// status text. The status is displayed in systemctl status output.
 ///
 /// # Example
@@ -316,7 +316,7 @@ pub fn sd_notify_status(status: &str) -> Result<()> {
 
 /// Notify systemd that the service is ready
 ///
-/// This is a convenience wrapper around sd_notify() for sending the READY=1
+/// This is a convenience wrapper around `sd_notify()` for sending the READY=1
 /// notification. This should be called once after the service has completed
 /// initialization and is ready to serve requests.
 ///
@@ -339,7 +339,7 @@ pub fn sd_notify_ready() -> Result<()> {
 
 /// Notify systemd that the service is reloading
 ///
-/// This is a convenience wrapper around sd_notify() for sending the RELOADING=1
+/// This is a convenience wrapper around `sd_notify()` for sending the RELOADING=1
 /// notification. This should be called when handling SIGHUP or other configuration
 /// reload triggers.
 ///
@@ -361,7 +361,7 @@ pub fn sd_notify_reloading() -> Result<()> {
 
 /// Notify systemd that the service is stopping
 ///
-/// This is a convenience wrapper around sd_notify() for sending the STOPPING=1
+/// This is a convenience wrapper around `sd_notify()` for sending the STOPPING=1
 /// notification. This should be called when beginning graceful shutdown.
 ///
 /// # Example
@@ -524,8 +524,8 @@ pub fn sd_is_socket_inet(fd: RawFd, socket_type: SystemdSocket) -> Result<bool> 
 /// Check if systemd watchdog is enabled and get its configuration
 ///
 /// This function checks if the systemd watchdog mechanism is enabled for this
-/// service by reading the WATCHDOG_USEC and WATCHDOG_PID environment variables.
-/// The watchdog requires periodic notifications via `sd_notify(false, "WATCHDOG=1")`
+/// service by reading the `WATCHDOG_USEC` and `WATCHDOG_PID` environment variables.
+/// The watchdog requires periodic notifications via ``sd_notify`(false, "WATCHDOG=1")`
 /// to prevent the service from being restarted by systemd.
 ///
 /// # Returns
@@ -539,8 +539,8 @@ pub fn sd_is_socket_inet(fd: RawFd, socket_type: SystemdSocket) -> Result<bool> 
 /// # Errors
 ///
 /// Returns `PlatformError` if:
-/// - WATCHDOG_USEC is set but invalid
-/// - WATCHDOG_PID is set but invalid
+/// - `WATCHDOG_USEC` is set but invalid
+/// - `WATCHDOG_PID` is set but invalid
 ///
 /// # Example
 ///
@@ -607,10 +607,10 @@ pub fn sd_watchdog_enabled() -> Result<WatchdogState> {
     Ok(WatchdogState { enabled: true, interval_usec: watchdog_usec, pid: watchdog_pid })
 }
 
-/// Convert a raw file descriptor to a tokio TcpListener
+/// Convert a raw file descriptor to a tokio `TcpListener`
 ///
 /// This function takes a raw file descriptor from systemd socket activation
-/// and converts it to a tokio TcpListener for use in async code.
+/// and converts it to a tokio `TcpListener` for use in async code.
 ///
 /// # Safety
 ///
@@ -625,7 +625,7 @@ pub fn sd_watchdog_enabled() -> Result<WatchdogState> {
 ///
 /// # Returns
 ///
-/// A tokio TcpListener or an error if conversion fails.
+/// A tokio `TcpListener` or an error if conversion fails.
 ///
 /// # Errors
 ///
@@ -671,10 +671,10 @@ pub async fn fd_to_tcp_listener(fd: RawFd) -> Result<TcpListener> {
     })
 }
 
-/// Convert a raw file descriptor to a tokio UdpSocket
+/// Convert a raw file descriptor to a tokio `UdpSocket`
 ///
 /// This function takes a raw file descriptor from systemd socket activation
-/// and converts it to a tokio UdpSocket for use in async code.
+/// and converts it to a tokio `UdpSocket` for use in async code.
 ///
 /// # Safety
 ///
@@ -689,7 +689,7 @@ pub async fn fd_to_tcp_listener(fd: RawFd) -> Result<TcpListener> {
 ///
 /// # Returns
 ///
-/// A tokio UdpSocket or an error if conversion fails.
+/// A tokio `UdpSocket` or an error if conversion fails.
 ///
 /// # Errors
 ///

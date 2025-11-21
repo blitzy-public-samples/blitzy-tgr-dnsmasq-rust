@@ -1565,7 +1565,7 @@ mod tests {
     fn test_ra_packet_header_size() {
         use crate::radv::protocol::RaPacket;
         
-        let packet = RaPacket {
+        let _packet = RaPacket {
             type_: protocol::ICMP6_ROUTER_ADVERT,
             code: 0,
             checksum: 0,

@@ -1,22 +1,22 @@
 // Copyright (c) 2000-2025 Simon Kelley
 // SPDX-License-Identifier: GPL-2.0-or-later OR GPL-3.0-or-later
 
-//! DHCPv6 option serialization module implementing safe encoding of all RFC 3315 options.
+//! `DHCPv6` option serialization module implementing safe encoding of all RFC 3315 options.
 //!
-//! This module provides the [`OptionBuilder`] struct for constructing DHCPv6 options with
+//! This module provides the [`OptionBuilder`] struct for constructing `DHCPv6` options with
 //! automatic buffer management, replacing C's manual pointer arithmetic and outpacket buffer
 //! manipulation with memory-safe Rust patterns. All multi-byte integers are encoded in
-//! big-endian (network byte order) format per DHCPv6 specification.
+//! big-endian (network byte order) format per `DHCPv6` specification.
 //!
 //! # Purpose
 //!
-//! DHCPv6 options follow a TLV (Type-Length-Value) format:
+//! `DHCPv6` options follow a TLV (Type-Length-Value) format:
 //! - **Type**: 2-byte option code (u16)
 //! - **Length**: 2-byte length of option data (u16), excluding the 4-byte header
 //! - **Value**: Variable-length option data
 //!
 //! The [`OptionBuilder`] handles automatic length calculation, including complex nested
-//! options like IA_NA containers that contain multiple IA_ADDR sub-options, each with
+//! options like `IA_NA` containers that contain multiple `IA_ADDR` sub-options, each with
 //! their own TLV structure.
 //!
 //! # Architecture
@@ -49,7 +49,7 @@
 //!
 //! ```rust,ignore
 //! // Rust pattern: Owned Vec<u8> with type-safe methods
-//! let mut builder = OptionBuilder::new();
+//! let mut builder = `OptionBuilder`::new();
 //!
 //! builder.start_container(OPTION_IA_NA)?;
 //! builder.put_u32(iaid)?;
@@ -64,59 +64,59 @@
 //!
 //! - **Automatic bounds checking**: Vec<u8> prevents buffer overflows
 //! - **Ownership semantics**: No dangling pointers or use-after-free
-//! - **Type-safe encoding**: to_be_bytes() replaces manual PUTSHORT/PUTLONG macros
-//! - **Explicit error handling**: Result<T, DhcpError> replaces silent failures
+//! - **Type-safe encoding**: `to_be_bytes()` replaces manual PUTSHORT/PUTLONG macros
+//! - **Explicit error handling**: Result<T, `DhcpError`> replaces silent failures
 //!
 //! # Nested Option Support
 //!
-//! DHCPv6 options can be nested (e.g., IA_NA contains IA_ADDR sub-options). The builder
+//! `DHCPv6` options can be nested (e.g., `IA_NA` contains `IA_ADDR` sub-options). The builder
 //! maintains a container stack to track nesting depth and automatically calculates lengths
 //! for each container level when `end_container()` is called.
 //!
-//! ## Example: IA_NA with IA_ADDR
+//! ## Example: `IA_NA` with `IA_ADDR`
 //!
 //! ```rust,ignore
 //! use std::net::Ipv6Addr;
 //!
-//! let mut builder = OptionBuilder::new();
+//! let mut builder = `OptionBuilder`::new();
 //!
-//! // Start IA_NA container
+//! // Start `IA_NA` container
 //! builder.start_container(constants::OPTION_IA_NA)?;
 //! builder.put_u32(0x12345678)?;  // IAID
 //! builder.put_u32(3600)?;         // T1
 //! builder.put_u32(7200)?;         // T2
 //!
-//! // Add IA_ADDR sub-option within IA_NA
+//! // Add `IA_ADDR` sub-option within `IA_NA`
 //! builder.start_container(constants::OPTION_IAADDR)?;
 //! builder.put_ipv6_addr(&Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1))?;
 //! builder.put_u32(7200)?;   // Preferred lifetime
 //! builder.put_u32(14400)?;  // Valid lifetime
-//! builder.end_container()?;  // Finalize IA_ADDR
+//! builder.end_container()?;  // Finalize `IA_ADDR`
 //!
-//! builder.end_container()?;  // Finalize IA_NA with correct total length
+//! builder.end_container()?;  // Finalize `IA_NA` with correct total length
 //! ```
 //!
 //! # RFC Compliance
 //!
-//! - **RFC 3315**: DHCPv6 core specification (option format, message types)
-//! - **RFC 3633**: IPv6 Prefix Options for DHCPv6 (IA_PD, IAPREFIX)
-//! - **RFC 3646**: DNS Configuration options (DNS_SERVER, DOMAIN_SEARCH)
+//! - **RFC 3315**: `DHCPv6` core specification (option format, message types)
+//! - **RFC 3633**: IPv6 Prefix Options for `DHCPv6` (`IA_PD`, `IAPREFIX`)
+//! - **RFC 3646**: DNS Configuration options (`DNS_SERVER`, `DOMAIN_SEARCH`)
 //! - **RFC 4704**: Client FQDN option
 //! - **RFC 5908**: Network Time Protocol (NTP) Server Option
 //!
 //! # Usage
 //!
 //! ```rust,ignore
-//! use crate::dhcp::v6::options::OptionBuilder;
+//! use crate::dhcp::v6::options::`OptionBuilder`;
 //! use crate::dhcp::v6::constants;
 //!
 //! // Build a simple PREFERENCE option
-//! let mut builder = OptionBuilder::new();
+//! let mut builder = `OptionBuilder`::new();
 //! builder.put_preference(255)?;
 //! let options_bytes = builder.build();
 //!
 //! // Build complex nested options
-//! let mut builder = OptionBuilder::new();
+//! let mut builder = `OptionBuilder`::new();
 //! builder.put_server_id(&[0x00, 0x01, 0x00, 0x01, ...])?;
 //! builder.put_ia_na(0x12345678, 3600, 7200, |b| {
 //!     b.put_ia_addr(&addr, 7200, 14400, |_| Ok(()))?;
@@ -128,7 +128,7 @@ use crate::dhcp::v6::constants;
 use crate::error::DhcpError;
 use std::net::Ipv6Addr;
 
-/// DHCPv6 option builder providing safe construction of DHCPv6 options with TLV encoding.
+/// `DHCPv6` option builder providing safe construction of `DHCPv6` options with TLV encoding.
 ///
 /// This struct replaces the C implementation's global `daemon->outpacket` buffer and
 /// `outpacket_counter` position tracking with an owned `Vec<u8>` buffer and a container
@@ -149,22 +149,22 @@ use std::net::Ipv6Addr;
 /// # Example
 ///
 /// ```rust,ignore
-/// let mut builder = OptionBuilder::new();
+/// let mut builder = `OptionBuilder`::new();
 /// builder.put_client_id(&duid)?;
 /// builder.put_preference(255)?;
 /// let packet_options = builder.build();
 /// ```
 pub struct OptionBuilder {
-    /// Buffer containing serialized DHCPv6 options in wire format
+    /// Buffer containing serialized `DHCPv6` options in wire format
     buffer: Vec<u8>,
 
-    /// Stack of container start positions for nested options (e.g., IA_NA containing IA_ADDR)
+    /// Stack of container start positions for nested options (e.g., `IA_NA` containing `IA_ADDR`)
     /// Each entry stores the byte offset where the container option header begins
     container_stack: Vec<usize>,
 }
 
 impl OptionBuilder {
-    /// Creates a new empty OptionBuilder with zero-capacity buffer.
+    /// Creates a new empty `OptionBuilder` with zero-capacity buffer.
     ///
     /// The buffer will grow automatically as options are added. This replaces the C
     /// implementation's `reset_counter()` function which cleared the global buffer.
@@ -176,14 +176,15 @@ impl OptionBuilder {
     /// # Example
     ///
     /// ```rust,ignore
-    /// let mut builder = OptionBuilder::new();
+    /// let mut builder = `OptionBuilder`::new();
     /// assert_eq!(builder.buffer.len(), 0);
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self { buffer: Vec::new(), container_stack: Vec::new() }
     }
 
-    /// Starts a new DHCPv6 option with the specified option code.
+    /// Starts a new `DHCPv6` option with the specified option code.
     ///
     /// Writes a 4-byte option header (2-byte option code + 2-byte length placeholder) to
     /// the buffer. This is the Rust equivalent of the C `new_opt6(int opt)` function.
@@ -194,7 +195,7 @@ impl OptionBuilder {
     ///
     /// # Arguments
     ///
-    /// * `option_code` - DHCPv6 option code (e.g., `constants::OPTION_PREFERENCE`)
+    /// * `option_code` - `DHCPv6` option code (e.g., `constants::OPTION_PREFERENCE`)
     ///
     /// # Returns
     ///
@@ -245,7 +246,7 @@ impl OptionBuilder {
     /// Appends a 32-bit unsigned integer in network byte order (big-endian).
     ///
     /// Equivalent to C's `put_opt6_long(unsigned int val)` which used the PUTLONG macro.
-    /// Used for DHCPv6 fields like IAID, T1, T2, preferred/valid lifetimes.
+    /// Used for `DHCPv6` fields like IAID, T1, T2, preferred/valid lifetimes.
     ///
     /// # Arguments
     ///
@@ -270,7 +271,7 @@ impl OptionBuilder {
     /// Appends a 16-bit unsigned integer in network byte order (big-endian).
     ///
     /// Equivalent to C's `put_opt6_short(unsigned int val)` which used the PUTSHORT macro.
-    /// Used for DHCPv6 fields like status codes, DUID types, hardware types.
+    /// Used for `DHCPv6` fields like status codes, DUID types, hardware types.
     ///
     /// # Arguments
     ///
@@ -343,7 +344,7 @@ impl OptionBuilder {
     /// Appends an IPv6 address as 16 bytes in network byte order.
     ///
     /// Uses `Ipv6Addr::octets()` to get the 16-byte representation. This method provides
-    /// type safety compared to C's `put_opt6(&addr, 16)` with raw struct in6_addr pointers.
+    /// type safety compared to C's `put_opt6(&addr, 16)` with raw struct `in6_addr` pointers.
     ///
     /// # Arguments
     ///
@@ -379,7 +380,7 @@ impl OptionBuilder {
     ///
     /// # Arguments
     ///
-    /// * `option_code` - DHCPv6 option code for the container (e.g., `OPTION_IA_NA`)
+    /// * `option_code` - `DHCPv6` option code for the container (e.g., `OPTION_IA_NA`)
     ///
     /// # Returns
     ///
@@ -440,10 +441,12 @@ impl OptionBuilder {
         let total_length = self.buffer.len() - container_pos;
         if total_length < 4 {
             return Err(DhcpError::V6ProtocolError {
-                reason: format!("Invalid container length: {}", total_length),
+                reason: format!("Invalid container length: {total_length}"),
             });
         }
-        let option_data_len = (total_length - 4) as u16;
+        let option_data_len = u16::try_from(total_length - 4).map_err(|_| DhcpError::V6ProtocolError {
+            reason: format!("Option data length {total_length} exceeds u16::MAX"),
+        })?;
 
         // Backpatch the length field (bytes at container_pos+2 and container_pos+3)
         let length_bytes = option_data_len.to_be_bytes();
@@ -455,19 +458,20 @@ impl OptionBuilder {
 
     /// Finalizes buffer construction and returns the complete option data.
     ///
-    /// Consumes the builder and returns the serialized DHCPv6 options as a `Vec<u8>`.
+    /// Consumes the builder and returns the serialized `DHCPv6` options as a `Vec<u8>`.
     /// All containers must be properly closed with `end_container()` before calling this.
     ///
     /// # Returns
     ///
-    /// Owned vector containing all serialized DHCPv6 options
+    /// Owned vector containing all serialized `DHCPv6` options
     ///
     /// # Example
     ///
     /// ```rust,ignore
     /// let options = builder.build();
-    /// // options now contains wire-format DHCPv6 options ready for transmission
+    /// // options now contains wire-format `DHCPv6` options ready for transmission
     /// ```
+    #[must_use]
     pub fn build(self) -> Vec<u8> {
         self.buffer
     }
@@ -480,9 +484,9 @@ impl OptionBuilder {
     // according to RFC specifications. Each method creates the option header, adds the
     // required fields in the correct order, and finalizes the option.
 
-    /// Adds a CLIENT_ID option (Option 1) containing client DUID.
+    /// Adds a `CLIENT_ID` option (Option 1) containing client DUID.
     ///
-    /// Per RFC 3315 Section 22.2, CLIENT_ID uniquely identifies the DHCP client.
+    /// Per RFC 3315 Section 22.2, `CLIENT_ID` uniquely identifies the DHCP client.
     /// The DUID (DHCP Unique Identifier) format can be DUID-LLT, DUID-EN, or DUID-LL.
     ///
     /// # Arguments
@@ -507,9 +511,9 @@ impl OptionBuilder {
         self.end_container()
     }
 
-    /// Adds a SERVER_ID option (Option 2) containing server DUID.
+    /// Adds a `SERVER_ID` option (Option 2) containing server DUID.
     ///
-    /// Per RFC 3315 Section 22.3, SERVER_ID identifies the DHCP server. Required in
+    /// Per RFC 3315 Section 22.3, `SERVER_ID` identifies the DHCP server. Required in
     /// ADVERTISE, REPLY, RECONFIGURE messages.
     ///
     /// # Arguments
@@ -533,17 +537,17 @@ impl OptionBuilder {
         self.end_container()
     }
 
-    /// Adds an IA_NA option (Option 3) for non-temporary address assignment.
+    /// Adds an `IA_NA` option (Option 3) for non-temporary address assignment.
     ///
-    /// Per RFC 3315 Section 22.4, IA_NA (Identity Association for Non-temporary Addresses)
-    /// contains IAID, T1, T2, and may contain IA_ADDR options for assigned addresses.
+    /// Per RFC 3315 Section 22.4, `IA_NA` (Identity Association for Non-temporary Addresses)
+    /// contains IAID, T1, T2, and may contain `IA_ADDR` options for assigned addresses.
     ///
     /// # Arguments
     ///
     /// * `iaid` - Identity Association Identifier (arbitrary 32-bit value)
     /// * `t1` - Time when client contacts server to extend lifetimes (seconds)
     /// * `t2` - Time when client contacts any server to extend lifetimes (seconds)
-    /// * `sub_options_fn` - Closure to add IA_ADDR sub-options and other nested options
+    /// * `sub_options_fn` - Closure to add `IA_ADDR` sub-options and other nested options
     ///
     /// # Returns
     ///
@@ -579,15 +583,15 @@ impl OptionBuilder {
         self.end_container()
     }
 
-    /// Adds an IA_TA option (Option 4) for temporary address assignment.
+    /// Adds an `IA_TA` option (Option 4) for temporary address assignment.
     ///
-    /// Per RFC 3315 Section 22.5, IA_TA (Identity Association for Temporary Addresses)
-    /// contains IAID and may contain IA_ADDR options. No T1/T2 timers for temporary addresses.
+    /// Per RFC 3315 Section 22.5, `IA_TA` (Identity Association for Temporary Addresses)
+    /// contains IAID and may contain `IA_ADDR` options. No T1/T2 timers for temporary addresses.
     ///
     /// # Arguments
     ///
     /// * `iaid` - Identity Association Identifier (arbitrary 32-bit value)
-    /// * `sub_options_fn` - Closure to add IA_ADDR sub-options
+    /// * `sub_options_fn` - Closure to add `IA_ADDR` sub-options
     ///
     /// # Returns
     ///
@@ -612,18 +616,18 @@ impl OptionBuilder {
         self.end_container()
     }
 
-    /// Adds an IA_PD option (Option 25) for prefix delegation.
+    /// Adds an `IA_PD` option (Option 25) for prefix delegation.
     ///
-    /// Per RFC 3633, IA_PD (Identity Association for Prefix Delegation) is used by
+    /// Per RFC 3633, `IA_PD` (Identity Association for Prefix Delegation) is used by
     /// requesting routers to obtain IPv6 prefixes. Contains IAID, T1, T2, and
-    /// IA_PREFIX sub-options.
+    /// `IA_PREFIX` sub-options.
     ///
     /// # Arguments
     ///
     /// * `iaid` - Identity Association Identifier (arbitrary 32-bit value)
     /// * `t1` - Time when client contacts server to extend lifetimes (seconds)
     /// * `t2` - Time when client contacts any server to extend lifetimes (seconds)
-    /// * `sub_options_fn` - Closure to add IA_PREFIX sub-options
+    /// * `sub_options_fn` - Closure to add `IA_PREFIX` sub-options
     ///
     /// # Returns
     ///
@@ -656,17 +660,17 @@ impl OptionBuilder {
         self.end_container()
     }
 
-    /// Adds an IA_ADDR sub-option (Option 5) within IA_NA or IA_TA.
+    /// Adds an `IA_ADDR` sub-option (Option 5) within `IA_NA` or `IA_TA`.
     ///
-    /// Per RFC 3315 Section 22.6, IA_ADDR specifies an IPv6 address with preferred
-    /// and valid lifetimes. Appears within IA_NA or IA_TA options.
+    /// Per RFC 3315 Section 22.6, `IA_ADDR` specifies an IPv6 address with preferred
+    /// and valid lifetimes. Appears within `IA_NA` or `IA_TA` options.
     ///
     /// # Arguments
     ///
     /// * `addr` - IPv6 address being assigned (16 bytes)
     /// * `preferred_lifetime` - Preferred lifetime in seconds (0xFFFFFFFF = infinity)
     /// * `valid_lifetime` - Valid lifetime in seconds (0xFFFFFFFF = infinity)
-    /// * `sub_options_fn` - Closure to add optional STATUS_CODE or other sub-options
+    /// * `sub_options_fn` - Closure to add optional `STATUS_CODE` or other sub-options
     ///
     /// # Returns
     ///
@@ -697,9 +701,9 @@ impl OptionBuilder {
         self.end_container()
     }
 
-    /// Adds an IA_PREFIX sub-option (Option 26) within IA_PD.
+    /// Adds an `IA_PREFIX` sub-option (Option 26) within `IA_PD`.
     ///
-    /// Per RFC 3633 Section 10, IA_PREFIX specifies an IPv6 prefix for delegation,
+    /// Per RFC 3633 Section 10, `IA_PREFIX` specifies an IPv6 prefix for delegation,
     /// including prefix length, lifetimes, and prefix address.
     ///
     /// # Arguments
@@ -713,7 +717,7 @@ impl OptionBuilder {
     /// # Returns
     ///
     /// - `Ok(())` on success
-    /// - `Err(DhcpError)` if encoding fails or prefix_len > 128
+    /// - `Err(DhcpError)` if encoding fails or `prefix_len` > 128
     ///
     /// # Example
     ///
@@ -734,7 +738,7 @@ impl OptionBuilder {
     {
         if prefix_len > 128 {
             return Err(DhcpError::V6ProtocolError {
-                reason: format!("Invalid prefix length: {} (must be <= 128)", prefix_len),
+                reason: format!("Invalid prefix length: {prefix_len} (must be <= 128)"),
             });
         }
 
@@ -747,7 +751,7 @@ impl OptionBuilder {
         self.end_container()
     }
 
-    /// Adds an OPTION_REQUEST option (Option 6, ORO) listing requested options.
+    /// Adds an `OPTION_REQUEST` option (Option 6, ORO) listing requested options.
     ///
     /// Per RFC 3315 Section 22.7, ORO (Option Request Option) contains a list of
     /// option codes that the client is requesting from the server.
@@ -765,8 +769,8 @@ impl OptionBuilder {
     ///
     /// ```rust,ignore
     /// let oro = vec![
-    ///     constants::OPTION_DNS_SERVER,
-    ///     constants::OPTION_DOMAIN_SEARCH,
+    ///     constants::`OPTION_DNS_SERVER`,
+    ///     constants::`OPTION_DOMAIN_SEARCH`,
     ///     constants::OPTION_NTP_SERVER,
     /// ];
     /// builder.put_option_request(&oro)?;
@@ -805,9 +809,9 @@ impl OptionBuilder {
         self.end_container()
     }
 
-    /// Adds an ELAPSED_TIME option (Option 8) indicating time since client started.
+    /// Adds an `ELAPSED_TIME` option (Option 8) indicating time since client started.
     ///
-    /// Per RFC 3315 Section 22.9, ELAPSED_TIME contains the time (in hundredths of a
+    /// Per RFC 3315 Section 22.9, `ELAPSED_TIME` contains the time (in hundredths of a
     /// second) since the client began the current DHCP transaction.
     ///
     /// # Arguments
@@ -830,9 +834,9 @@ impl OptionBuilder {
         self.end_container()
     }
 
-    /// Adds a STATUS_CODE option (Option 13) indicating operation status.
+    /// Adds a `STATUS_CODE` option (Option 13) indicating operation status.
     ///
-    /// Per RFC 3315 Section 22.13, STATUS_CODE contains a status code (2 bytes) and
+    /// Per RFC 3315 Section 22.13, `STATUS_CODE` contains a status code (2 bytes) and
     /// optional human-readable message explaining the status.
     ///
     /// # Arguments
@@ -861,9 +865,9 @@ impl OptionBuilder {
         self.end_container()
     }
 
-    /// Adds a RAPID_COMMIT option (Option 14) for two-message exchange.
+    /// Adds a `RAPID_COMMIT` option (Option 14) for two-message exchange.
     ///
-    /// Per RFC 3315 Section 22.14, RAPID_COMMIT (zero-length option) signals that
+    /// Per RFC 3315 Section 22.14, `RAPID_COMMIT` (zero-length option) signals that
     /// the client/server supports rapid commit mode, allowing address assignment in
     /// two messages (SOLICIT+REPLY) instead of four (SOLICIT, ADVERTISE, REQUEST, REPLY).
     ///
@@ -883,9 +887,9 @@ impl OptionBuilder {
         self.end_container()
     }
 
-    /// Adds a USER_CLASS option (Option 15) identifying user class.
+    /// Adds a `USER_CLASS` option (Option 15) identifying user class.
     ///
-    /// Per RFC 3315 Section 22.15, USER_CLASS contains one or more user class data
+    /// Per RFC 3315 Section 22.15, `USER_CLASS` contains one or more user class data
     /// items, each prefixed with a 2-byte length.
     ///
     /// # Arguments
@@ -906,20 +910,18 @@ impl OptionBuilder {
         self.start_container(constants::OPTION_USER_CLASS)?;
         for class in user_classes {
             let class_bytes = class.as_bytes();
-            if class_bytes.len() > 65535 {
-                return Err(DhcpError::V6ProtocolError {
-                    reason: format!("User class too long: {} bytes", class_bytes.len()),
-                });
-            }
-            self.put_u16(class_bytes.len() as u16)?;
+            let len = u16::try_from(class_bytes.len()).map_err(|_| DhcpError::V6ProtocolError {
+                reason: format!("User class too long: {} bytes", class_bytes.len()),
+            })?;
+            self.put_u16(len)?;
             self.put_bytes(class_bytes)?;
         }
         self.end_container()
     }
 
-    /// Adds a VENDOR_CLASS option (Option 16) identifying vendor class.
+    /// Adds a `VENDOR_CLASS` option (Option 16) identifying vendor class.
     ///
-    /// Per RFC 3315 Section 22.16, VENDOR_CLASS contains enterprise number and
+    /// Per RFC 3315 Section 22.16, `VENDOR_CLASS` contains enterprise number and
     /// one or more vendor class data items.
     ///
     /// # Arguments
@@ -946,20 +948,18 @@ impl OptionBuilder {
         self.put_u32(enterprise_number)?;
         for class in vendor_classes {
             let class_bytes = class.as_bytes();
-            if class_bytes.len() > 65535 {
-                return Err(DhcpError::V6ProtocolError {
-                    reason: format!("Vendor class too long: {} bytes", class_bytes.len()),
-                });
-            }
-            self.put_u16(class_bytes.len() as u16)?;
+            let len = u16::try_from(class_bytes.len()).map_err(|_| DhcpError::V6ProtocolError {
+                reason: format!("Vendor class too long: {} bytes", class_bytes.len()),
+            })?;
+            self.put_u16(len)?;
             self.put_bytes(class_bytes)?;
         }
         self.end_container()
     }
 
-    /// Adds a DNS_SERVERS option (Option 23) listing recursive DNS server addresses.
+    /// Adds a `DNS_SERVERS` option (Option 23) listing recursive DNS server addresses.
     ///
-    /// Per RFC 3646 Section 3, DNS_SERVERS contains one or more IPv6 addresses of
+    /// Per RFC 3646 Section 3, `DNS_SERVERS` contains one or more IPv6 addresses of
     /// recursive DNS servers available to the client.
     ///
     /// # Arguments
@@ -988,9 +988,9 @@ impl OptionBuilder {
         self.end_container()
     }
 
-    /// Adds a DOMAIN_LIST option (Option 24) listing DNS search domains.
+    /// Adds a `DOMAIN_LIST` option (Option 24) listing DNS search domains.
     ///
-    /// Per RFC 3646 Section 4, DOMAIN_LIST contains a list of domain names for
+    /// Per RFC 3646 Section 4, `DOMAIN_LIST` contains a list of domain names for
     /// DNS search list configuration. Domains are encoded in DNS name format.
     ///
     /// # Arguments
@@ -1012,12 +1012,10 @@ impl OptionBuilder {
         for domain in domains {
             // Encode domain in DNS wire format (length-prefixed labels)
             for label in domain.split('.') {
-                if label.len() > 63 {
-                    return Err(DhcpError::V6ProtocolError {
-                        reason: format!("Domain label too long: {}", label),
-                    });
-                }
-                self.put_u8(label.len() as u8)?;
+                let label_len = u8::try_from(label.len()).map_err(|_| DhcpError::V6ProtocolError {
+                    reason: format!("Domain label too long: {label}"),
+                })?;
+                self.put_u8(label_len)?;
                 self.put_bytes(label.as_bytes())?;
             }
             self.put_u8(0)?; // Null terminator for domain name
@@ -1025,9 +1023,9 @@ impl OptionBuilder {
         self.end_container()
     }
 
-    /// Adds an NTP_SERVER option (Option 56) listing NTP server addresses.
+    /// Adds an `NTP_SERVER` option (Option 56) listing NTP server addresses.
     ///
-    /// Per RFC 5908, NTP_SERVER contains one or more IPv6 addresses of NTP servers
+    /// Per RFC 5908, `NTP_SERVER` contains one or more IPv6 addresses of NTP servers
     /// available to the client for time synchronization.
     ///
     /// # Arguments
@@ -1085,12 +1083,10 @@ impl OptionBuilder {
             if label.is_empty() {
                 continue;
             }
-            if label.len() > 63 {
-                return Err(DhcpError::V6ProtocolError {
-                    reason: format!("FQDN label too long: {}", label),
-                });
-            }
-            self.put_u8(label.len() as u8)?;
+            let label_len = u8::try_from(label.len()).map_err(|_| DhcpError::V6ProtocolError {
+                reason: format!("FQDN label too long: {label}"),
+            })?;
+            self.put_u8(label_len)?;
             self.put_bytes(label.as_bytes())?;
         }
         self.put_u8(0)?; // Null terminator for domain name

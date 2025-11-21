@@ -245,6 +245,7 @@ impl Config {
     /// Creates a new configuration with default values.
     ///
     /// Equivalent to [`Config::default()`] but more explicit.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -293,7 +294,7 @@ impl Config {
         for (i, range) in self.dhcp.v4_ranges.iter().enumerate() {
             if range.start.is_ipv6() || range.end.is_ipv6() {
                 return Err(ConfigError::ValidationFailed {
-                    reason: format!("DHCPv4 range {} contains IPv6 addresses", i),
+                    reason: format!("DHCPv4 range {i} contains IPv6 addresses"),
                 });
             }
         }
@@ -301,7 +302,7 @@ impl Config {
         for (i, range) in self.dhcp.v6_ranges.iter().enumerate() {
             if range.start.is_ipv4() || range.end.is_ipv4() {
                 return Err(ConfigError::ValidationFailed {
-                    reason: format!("DHCPv6 range {} contains IPv4 addresses", i),
+                    reason: format!("DHCPv6 range {i} contains IPv4 addresses"),
                 });
             }
         }
@@ -417,6 +418,7 @@ impl Config {
 /// dns_config.domain_needed = true;
 /// dns_config.bogus_priv = true;
 /// ```
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DnsConfig {
     /// Upstream DNS servers for query forwarding.
@@ -438,7 +440,7 @@ pub struct DnsConfig {
 
     /// Enable DNSSEC validation.
     ///
-    /// Replaces C option bit OPT_DNSSEC_VALID. When enabled, validates DNSSEC
+    /// Replaces C option bit `OPT_DNSSEC_VALID`. When enabled, validates DNSSEC
     /// signatures using configured trust anchors. Invalid signatures result in SERVFAIL.
     ///
     /// Default: false
@@ -446,7 +448,7 @@ pub struct DnsConfig {
 
     /// Query timeout for upstream servers (seconds).
     ///
-    /// Replaces C TIMEOUT constant. Maximum time to wait for upstream response
+    /// Replaces C `TIMEOUT` constant. Maximum time to wait for upstream response
     /// before retrying or failing the query.
     ///
     /// Default: 10 seconds
@@ -463,7 +465,7 @@ pub struct DnsConfig {
 
     /// Reject queries for plain names (no dots or domain parts).
     ///
-    /// Replaces C option bit OPT_DOMAIN_NEEDED. Prevents forwarding of short names
+    /// Replaces C option bit `OPT_DOMAIN_NEEDED`. Prevents forwarding of short names
     /// like "hostname" that are likely local-only.
     ///
     /// Default: false
@@ -471,7 +473,7 @@ pub struct DnsConfig {
 
     /// Reject reverse DNS lookups for private IP ranges.
     ///
-    /// Replaces C option bit OPT_BOGUSPRIV. Blocks reverse queries for RFC 1918
+    /// Replaces C option bit `OPT_BOGUSPRIV`. Blocks reverse queries for RFC 1918
     /// addresses (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) and link-local ranges.
     ///
     /// Default: false
@@ -479,7 +481,7 @@ pub struct DnsConfig {
 
     /// Add domain suffix to simple names from /etc/hosts.
     ///
-    /// Replaces C option bit OPT_EXPAND_HOSTS. Appends configured domain to
+    /// Replaces C option bit `OPT_EXPAND_HOSTS`. Appends configured domain to
     /// single-label names when reading local hosts file.
     ///
     /// Default: false
@@ -487,7 +489,7 @@ pub struct DnsConfig {
 
     /// Query upstream servers in configured order (disable fastest-first).
     ///
-    /// Replaces C option bit OPT_ORDER. By default, dnsmasq tracks response times
+    /// Replaces C option bit `OPT_ORDER`. By default, dnsmasq tracks response times
     /// and prefers faster servers. This forces strict configuration order.
     ///
     /// Default: false
@@ -495,7 +497,7 @@ pub struct DnsConfig {
 
     /// Send queries to all upstream servers and use first response.
     ///
-    /// Replaces C option bit OPT_ALL_SERVERS. Increases reliability at cost of
+    /// Replaces C option bit `OPT_ALL_SERVERS`. Increases reliability at cost of
     /// higher query load on upstream servers.
     ///
     /// Default: false
@@ -527,7 +529,7 @@ pub struct DnsConfig {
 
     /// Don't read /etc/resolv.conf for upstream servers.
     ///
-    /// Replaces C option bit OPT_NO_RESOLV. When true, only use servers
+    /// Replaces C option bit `OPT_NO_RESOLV`. When true, only use servers
     /// explicitly configured via --server options.
     ///
     /// Default: false
@@ -535,7 +537,7 @@ pub struct DnsConfig {
 
     /// Don't poll /etc/resolv.conf for changes.
     ///
-    /// Replaces C option bit OPT_NO_POLL. When true, don't watch resolv.conf
+    /// Replaces C option bit `OPT_NO_POLL`. When true, don't watch resolv.conf
     /// for modifications to update upstream server list.
     ///
     /// Default: false
@@ -543,7 +545,7 @@ pub struct DnsConfig {
 
     /// Don't read /etc/hosts file.
     ///
-    /// Replaces C option bit OPT_NO_HOSTS. When true, don't load local host entries.
+    /// Replaces C option bit `OPT_NO_HOSTS`. When true, don't load local host entries.
     ///
     /// Default: false
     pub no_hosts: bool,
@@ -678,12 +680,12 @@ impl Default for DnsConfig {
 ///
 /// # Fields
 ///
-/// - `v4_ranges`: DHCPv4 address ranges for lease allocation
-/// - `v6_ranges`: DHCPv6 address ranges and prefix delegation pools
-/// - `static_leases`: MAC-to-IP static reservations
+/// - `v4_ranges`: `DHCPv4` address ranges for lease allocation
+/// - `v6_ranges`: `DHCPv6` address ranges and prefix delegation pools
+/// - `static_leases`: `MAC`-to-IP static reservations
 /// - `lease_file`: Path to lease database file for persistence
 /// - `lease_time`: Default lease duration for dynamic allocations
-/// - `authoritative`: Send NAKs for wrong-network requests (DHCPv4 only)
+/// - `authoritative`: Send NAKs for wrong-network requests (`DHCPv4` only)
 ///
 /// # Examples
 ///
@@ -704,16 +706,16 @@ pub struct DhcpConfig {
     /// Each range defines start/end addresses for dynamic allocation.
     pub v4_ranges: Vec<DhcpRange>,
 
-    /// DHCPv6 address ranges and prefix delegation.
+    /// `DHCPv6` address ranges and prefix delegation.
     ///
     /// Replaces C `struct dhcp_context *dhcp6` linked list and entries with
-    /// CONTEXT_V6 flag. Includes both IA_NA (address allocation) and IA_PD
+    /// `CONTEXT_V6` flag. Includes both `IA_NA` (address allocation) and `IA_PD`
     /// (prefix delegation) pools.
     pub v6_ranges: Vec<DhcpRange>,
     
-    /// DHCPv6 contexts for Router Advertisement integration.
+    /// `DHCPv6` contexts for Router Advertisement integration.
     ///
-    /// Replaces C `struct dhcp_context *dhcp6` linked list. Contains DHCPv6
+    /// Replaces C `struct dhcp_context *dhcp6` linked list. Contains `DHCPv6`
     /// context information needed for Router Advertisement processing including
     /// interface bindings, flags, and lease times.
     pub dhcp_contexts: Vec<DhcpContext>,
@@ -742,7 +744,7 @@ pub struct DhcpConfig {
 
     /// Authoritative DHCP mode (send NAKs for wrong-network requests).
     ///
-    /// Replaces C option bit OPT_AUTHORITATIVE. When true, send DHCPNAK to
+    /// Replaces C option bit `OPT_AUTHORITATIVE`. When true, send DHCPNAK to
     /// clients requesting addresses outside configured ranges.
     ///
     /// Default: false (safe mode, don't interfere with other DHCP servers)
@@ -808,9 +810,9 @@ impl Default for DhcpConfig {
 /// - `lease_time_override`: Optional per-range lease time (overrides global default)
 /// - `interface`: Optional interface restriction (None = all interfaces)
 ///
-/// For DHCPv6, additional fields from `DhcpContext` are used:
-/// - `start6`: IPv6 range start (from C `struct in6_addr start6`)
-/// - `flags`: Context flags (CONTEXT_STATIC, CONTEXT_V6, etc.)
+/// For `DHCPv6`, additional fields from `DhcpContext` are used:
+/// - `start6`: `IPv6` range start (from C `struct in6_addr start6`)
+/// - `flags`: Context flags (`CONTEXT_STATIC`, `CONTEXT_V6`, etc.)
 /// - `if_index`: Interface index for IPv6 link-local binding
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DhcpRange {
@@ -826,13 +828,13 @@ pub struct DhcpRange {
 
     /// Per-range lease time override.
     ///
-    /// Replaces C `unsigned int lease_time` in dhcp_context.
+    /// Replaces C `unsigned int lease_time` in `dhcp_context`.
     /// None = use global default from `DhcpConfig::lease_time`.
     pub lease_time_override: Option<Duration>,
 
-    /// Optional netmask (IPv4 only).
+    /// Optional netmask (`IPv4` only).
     ///
-    /// Used for subnet configuration in DHCPv4.
+    /// Used for subnet configuration in `DHCPv4`.
     pub netmask: Option<IpAddr>,
 
     /// Optional interface restriction.
@@ -843,30 +845,30 @@ pub struct DhcpRange {
 
     /// Lease time for this range (in seconds).
     ///
-    /// Simplified accessor for lease_time_override converted to seconds.
+    /// Simplified accessor for `lease_time_override` converted to seconds.
     pub lease_time: Option<u64>,
 
-    /// Whether this is an IPv6 range.
+    /// Whether this is an `IPv6` range.
     ///
-    /// Computed from start address being IPv6.
+    /// Computed from start address being `IPv6`.
     pub is_ipv6: bool,
 
-    /// Prefix length for DHCPv6 prefix delegation (IPv6 only).
+    /// Prefix length for `DHCPv6` prefix delegation (`IPv6` only).
     ///
     /// Replaces C `int prefix` from `struct dhcp_context`.
-    /// When set to a value > 0, this range is used for prefix delegation (IA_PD)
-    /// instead of or in addition to address allocation (IA_NA).
+    /// When set to a value > 0, this range is used for prefix delegation (`IA_PD`)
+    /// instead of or in addition to address allocation (`IA_NA`).
     /// Typical values: 48, 56, 60, 64 (for /48, /56, /60, /64 prefixes).
     /// 
     /// For address allocation ranges (not PD), this should be 0.
     pub prefix_len: u8,
 }
 
-/// DHCP context metadata for DHCPv6 ranges.
+/// DHCP context metadata for `DHCPv6` ranges.
 ///
-/// Contains additional DHCPv6-specific fields from C `struct dhcp_context`
+/// Contains additional `DHCPv6`-specific fields from C `struct dhcp_context`
 /// that don't fit into the simplified `DhcpRange` structure. Used for
-/// advanced DHCPv6 prefix delegation and Router Advertisement integration.
+/// advanced `DHCPv6` prefix delegation and Router Advertisement integration.
 ///
 /// # C Equivalent
 ///
@@ -885,19 +887,20 @@ pub struct DhcpRange {
 ///
 /// # Fields (from exports schema)
 ///
-/// - `start6`: IPv6 range start address (already in DhcpRange::start)
-/// - `flags`: Context flags (CONTEXT_V6, CONTEXT_RA, CONTEXT_STATIC, etc.)
+/// - `start6`: `IPv6` range start address (already in `DhcpRange::start`)
+/// - `flags`: Context flags (`CONTEXT_V6`, `CONTEXT_RA`, `CONTEXT_STATIC`, etc.)
 /// - `if_index`: Network interface index for link-local binding
 ///
-/// Additional C fields not in exports schema but part of dhcp_context:
-/// - `prefix`: Prefix length for DHCPv6 prefix delegation (bits)
-/// - `valid`: Valid lifetime for IPv6 addresses (seconds)
-/// - `preferred`: Preferred lifetime for IPv6 addresses (seconds)
-
-// DHCP Context flags (from C dnsmasq.h)
-// These flags control DHCP and Router Advertisement behavior
-
-/// Static DHCP lease flag
+/// Additional C fields not in exports schema but part of `dhcp_context`:
+/// - `prefix`: Prefix length for `DHCPv6` prefix delegation (bits)
+/// - `valid`: Valid lifetime for `IPv6` addresses (seconds)
+/// - `preferred`: Preferred lifetime for `IPv6` addresses (seconds)
+///
+/// # DHCP Context flags (from C dnsmasq.h)
+///
+/// These flags control DHCP and Router Advertisement behavior.
+///
+/// ## Static DHCP lease flag
 pub const CONTEXT_STATIC: u32 = 1u32 << 0;
 
 /// Network mask specification flag
@@ -1028,6 +1031,7 @@ impl DhcpContext {
     /// Check if this context is for IPv6.
     ///
     /// Replaces C check: `(context->flags & CONTEXT_V6)`
+    #[must_use]
     pub fn is_v6(&self) -> bool {
         (self.flags & CONTEXT_V6) != 0
     }
@@ -1039,6 +1043,7 @@ impl DhcpContext {
     /// checks if the address matches the start address.
     ///
     /// Replaces C: `is_same_net6(local, &context->start6, context->prefix)`
+    #[must_use]
     pub fn contains_address(&self, addr: std::net::IpAddr) -> bool {
         // Simplified check - just compare addresses for now
         // A full implementation would need prefix length and proper subnet matching
@@ -1222,6 +1227,7 @@ impl Default for NetworkConfig {
 /// };
 /// ```
 #[cfg(feature = "tftp")]
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TftpConfig {
     /// TFTP root directory.
@@ -1332,6 +1338,7 @@ impl Default for TftpConfig {
 ///     ..Default::default()
 /// };
 /// ```
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LoggingConfig {
     /// Log all DNS queries.
@@ -1626,35 +1633,41 @@ pub struct ConfigBuilder {
 
 impl ConfigBuilder {
     /// Creates a new configuration builder with default values.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Sets DNS listening port.
+    #[must_use]
     pub fn dns_port(mut self, port: u16) -> Self {
         self.config.network.port = port;
         self
     }
 
     /// Sets DNS cache size.
+    #[must_use]
     pub fn cache_size(mut self, size: usize) -> Self {
         self.config.dns.cache_size = size;
         self
     }
 
     /// Enables DNSSEC validation.
+    #[must_use]
     pub fn enable_dnssec(mut self) -> Self {
         self.config.dns.dnssec_enabled = true;
         self
     }
 
     /// Adds an upstream DNS server.
+    #[must_use]
     pub fn add_upstream_server(mut self, server: ServerDetails) -> Self {
         self.config.dns.upstream_servers.push(server);
         self
     }
 
     /// Adds a DHCPv4 address range.
+    #[must_use]
     pub fn add_dhcp_range(mut self, start: IpAddr, end: IpAddr) -> Self {
         let is_ipv6 = start.is_ipv6();
         self.config.dhcp.v4_ranges.push(DhcpRange {
@@ -1671,24 +1684,28 @@ impl ConfigBuilder {
     }
 
     /// Enables query logging.
+    #[must_use]
     pub fn log_queries(mut self) -> Self {
         self.config.logging.log_queries = true;
         self
     }
 
     /// Enables DHCP logging.
+    #[must_use]
     pub fn log_dhcp(mut self) -> Self {
         self.config.logging.log_dhcp = true;
         self
     }
 
     /// Sets user for privilege dropping.
+    #[must_use]
     pub fn user(mut self, user: impl Into<String>) -> Self {
         self.config.security.user = Some(user.into());
         self
     }
 
     /// Sets group for privilege dropping.
+    #[must_use]
     pub fn group(mut self, group: impl Into<String>) -> Self {
         self.config.security.group = Some(group.into());
         self

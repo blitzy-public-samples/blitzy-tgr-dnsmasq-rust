@@ -13,13 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! DHCPv6 protocol state machine module implementing RFC 3315 compliant message exchange patterns.
+//! `DHCPv6` protocol state machine module implementing `RFC 3315` compliant message exchange patterns.
 //!
-//! This module provides the core DHCPv6 protocol state machine that manages client request
-//! processing through complete lifecycle: SOLICIT→ADVERTISE→REQUEST→REPLY for stateful address
-//! assignment, INFORMATION-REQUEST→REPLY for stateless configuration, RENEW/REBIND for lease
-//! extension, RELEASE for address relinquishment, DECLINE for duplicate address reporting, and
-//! CONFIRM for address validation after network change.
+//! This module provides the core `DHCPv6` protocol state machine that manages client request
+//! processing through complete lifecycle: `SOLICIT`→`ADVERTISE`→`REQUEST`→`REPLY` for stateful address
+//! assignment, `INFORMATION-REQUEST`→`REPLY` for stateless configuration, `RENEW`/`REBIND` for lease
+//! extension, `RELEASE` for address relinquishment, `DECLINE` for duplicate address reporting, and
+//! `CONFIRM` for address validation after network change.
 //!
 //! # C Source Transformation
 //!
@@ -30,10 +30,10 @@
 //! ```c
 //! // Global state with manual memory management
 //! struct state {
-//!     unsigned char *clid;
-//!     int clid_len;
-//!     char *hostname, *client_hostname;
-//!     struct dhcp_context *context;
+//!     unsigned char *`clid`;
+//!     int `clid_len`;
+//!     char *hostname, *`client_hostname`;
+//!     struct dhcp_context *`context`;
 //!     // ... many more fields
 //! };
 //!
@@ -55,17 +55,17 @@
 //!
 //! ```rust,ignore
 //! // Type-safe state with ownership
-//! pub struct RequestContext {
-//!     pub clid: Vec<u8>,
-//!     pub client_hostname: Option<String>,
-//!     pub context: Option<DhcpContext>,
+//! pub struct `RequestContext` {
+//!     pub `clid`: Vec<u8>,
+//!     pub `client_hostname`: Option<String>,
+//!     pub `context`: Option<`DhcpContext`>,
 //!     // Strongly typed fields
 //! }
 //!
 //! // Async message processing with Result error handling
-//! impl DhcpV6StateMachine {
-//!     pub async fn handle_solicit(&self, ctx: &RequestContext, msg: &DhcpV6Message)
-//!         -> Result<DhcpV6Message, DhcpError>
+//! impl `DhcpV6StateMachine` {
+//!     pub async fn handle_solicit(&self, ctx: &`RequestContext`, msg: &DhcpV6Message)
+//!         -> Result<DhcpV6Message, `DhcpError`>
 //!     {
 //!         // Safe message construction with OptionBuilder
 //!         // Automatic memory management via Vec/String
@@ -80,10 +80,10 @@
 //! ```text
 //! Client                Server
 //!   |                      |
-//!   |----SOLICIT---------->|  (I need an address)
-//!   |<---ADVERTISE---------|  (I can offer X.X.X.X)
-//!   |----REQUEST---------->|  (I want X.X.X.X)
-//!   |<---REPLY-------------|  (Here's X.X.X.X, valid for T seconds)
+//!   |----`SOLICIT`---------->|  (I need an address)
+//!   |<---`ADVERTISE`---------|  (I can offer X.X.X.X)
+//!   |----`REQUEST`---------->|  (I want X.X.X.X)
+//!   |<---`REPLY`-------------|  (Here's X.X.X.X, valid for T seconds)
 //! ```
 //!
 //! ## Stateful with Rapid Commit (Two-Way Exchange)
@@ -91,8 +91,8 @@
 //! ```text
 //! Client                Server
 //!   |                      |
-//!   |----SOLICIT---------->|  (I need an address, rapid commit requested)
-//!   |<---REPLY-------------|  (Here's X.X.X.X immediately)
+//!   |----`SOLICIT`---------->|  (I need an address, rapid commit requested)
+//!   |<---`REPLY`-------------|  (Here's X.X.X.X immediately)
 //! ```
 //!
 //! ## Stateless Configuration (Information Request)
@@ -100,8 +100,8 @@
 //! ```text
 //! Client                Server
 //!   |                      |
-//!   |----INFO-REQUEST----->|  (Send me DNS servers, domain, etc.)
-//!   |<---REPLY-------------|  (Here's the config)
+//!   |----INFO-`REQUEST`----->|  (Send me `DNS` servers, domain, etc.)
+//!   |<---`REPLY`-------------|  (Here's the config)
 //! ```
 //!
 //! ## Lease Renewal
@@ -109,8 +109,8 @@
 //! ```text
 //! Client                Server
 //!   |                      |
-//!   |----RENEW------------>|  (Extend lease for X.X.X.X)
-//!   |<---REPLY-------------|  (OK, extended for T seconds)
+//!   |----`RENEW`------------>|  (Extend lease for X.X.X.X)
+//!   |<---`REPLY`-------------|  (OK, extended for T seconds)
 //! ```
 //!
 //! ## Lease Rebind (When renewal fails)
@@ -118,8 +118,8 @@
 //! ```text
 //! Client                Server
 //!   |                      |
-//!   |----REBIND----------->|  (Any server: extend X.X.X.X)
-//!   |<---REPLY-------------|  (OK/NotOnLink)
+//!   |----`REBIND`----------->|  (Any server: extend X.X.X.X)
+//!   |<---`REPLY`-------------|  (OK/`NotOnLink`)
 //! ```
 //!
 //! ## Address Release
@@ -127,8 +127,8 @@
 //! ```text
 //! Client                Server
 //!   |                      |
-//!   |----RELEASE---------->|  (I'm done with X.X.X.X)
-//!   |<---REPLY-------------|  (Acknowledged)
+//!   |----`RELEASE`---------->|  (I'm done with X.X.X.X)
+//!   |<---`REPLY`-------------|  (Acknowledged)
 //! ```
 //!
 //! ## Duplicate Address Detection
@@ -136,19 +136,19 @@
 //! ```text
 //! Client                Server
 //!   |                      |
-//!   |----DECLINE---------->|  (X.X.X.X is already in use!)
-//!   |<---REPLY-------------|  (Acknowledged, removed from pool)
+//!   |----`DECLINE`---------->|  (X.X.X.X is already in use!)
+//!   |<---`REPLY`-------------|  (Acknowledged, removed from pool)
 //! ```
 //!
-//! # Status Codes (RFC 3315 Section 24.4)
+//! # Status Codes (`RFC 3315` Section 24.4)
 //!
 //! - **SUCCESS (0)**: Request successful
-//! - **UNSPEC_FAIL (1)**: General failure
-//! - **NO_ADDRS_AVAIL (2)**: No addresses available in pool
-//! - **NO_BINDING (3)**: Client's binding not found
-//! - **NOT_ON_LINK (4)**: Address not appropriate for link
-//! - **USE_MULTICAST (5)**: Client must use multicast
-//! - **NO_PREFIX_AVAIL (6)**: No prefixes available for delegation
+//! - **`UNSPEC_FAIL` (1)**: General failure
+//! - **`NO_ADDRS_AVAIL` (2)**: No addresses available in pool
+//! - **`NO_BINDING` (3)**: Client's binding not found
+//! - **`NOT_ON_LINK` (4)**: Address not appropriate for link
+//! - **`USE_MULTICAST` (5)**: Client must use multicast
+//! - **`NO_PREFIX_AVAIL` (6)**: No prefixes available for delegation
 //!
 //! # Memory Safety
 //!
@@ -162,21 +162,21 @@
 //! # Example Usage
 //!
 //! ```rust,ignore
-//! use std::sync::Arc;
-//! use tokio::sync::RwLock;
+//! use std::sync::`Arc`;
+//! use tokio::sync::`RwLock`;
 //!
 //! // Initialize state machine
-//! let config = Arc::new(Config::from_file("/etc/dnsmasq.conf").await?);
-//! let lease_manager = Arc::new(RwLock::new(LeaseManager::new(
+//! let config = `Arc`::new(Config::from_file("/etc/dnsmasq.conf").await?);
+//! let lease_manager = `Arc`::new(`RwLock`::new(`LeaseManager`::new(
 //!     config.clone(),
 //!     dns_cache.clone(),
 //!     1000,
 //! )));
 //!
-//! let state_machine = DhcpV6StateMachine::new(config, lease_manager, server_duid);
+//! let state_machine = `DhcpV6StateMachine`::new(config, lease_manager, server_duid);
 //!
-//! // Handle incoming SOLICIT message
-//! let request_ctx = RequestContext::from_message(&incoming_msg, "eth0")?;
+//! // Handle incoming `SOLICIT` message
+//! let request_ctx = `RequestContext`::from_message(&incoming_msg, "eth0")?;
 //! let response = state_machine.handle_solicit(&request_ctx, &incoming_msg).await?;
 //! ```
 
@@ -191,25 +191,31 @@ use tracing::{debug, info, instrument, warn};
 use crate::config::types::DhcpContext;
 use crate::config::Config;
 use crate::dhcp::lease::{Lease, LeaseManager};
-use crate::dhcp::v6::constants::*;
+use crate::dhcp::v6::constants::{
+    MSG_ADVERTISE, MSG_REPLY,
+    OPTION_CLIENT_ID, OPTION_IA_NA,
+    OPTION_IAADDR, OPTION_RAPID_COMMIT, OPTION_SERVER_ID, OPTION_STATUS_CODE,
+    STATUS_NOADDRS, STATUS_NOBINDING, STATUS_NOPREFIXAVAIL,
+    STATUS_NOTONLINK, STATUS_SUCCESS, STATUS_UNSPEC, STATUS_USEMULTICAST,
+};
 use crate::dhcp::v6::message::DhcpV6Message;
 use crate::error::DhcpError;
 
-/// DHCPv6 status codes per RFC 3315 Section 24.4.
+/// `DHCPv6` status codes per `RFC 3315` Section 24.4.
 ///
-/// Represents the result of DHCPv6 request processing, used in STATUS_CODE options
-/// within REPLY messages to indicate success or specific failure conditions.
+/// Represents the result of `DHCPv6` request processing, used in `STATUS_CODE` options
+/// within `REPLY` messages to indicate success or specific failure conditions.
 ///
-/// # RFC 3315 Status Code Values
+/// # `RFC 3315` Status Code Values
 ///
 /// ```text
-/// 0 = Success
-/// 1 = UnspecFail (General failure, not covered by more specific codes)
-/// 2 = NoAddrsAvail (Server has no addresses available)
-/// 3 = NoBinding (Client's IA_NA/IA_TA/IA_PD not bound to server)
-/// 4 = NotOnLink (Address not appropriate for link)
-/// 5 = UseMulticast (Client must use multicast, not unicast)
-/// 6 = NoPrefixAvail (No prefixes available for IA_PD)
+/// 0 = `Success`
+/// 1 = `UnspecFail` (General failure, not covered by more specific codes)
+/// 2 = `NoAddrsAvail` (Server has no addresses available)
+/// 3 = `NoBinding` (Client's `IA_NA`/`IA_TA`/`IA_PD` not bound to server)
+/// 4 = `NotOnLink` (Address not appropriate for link)
+/// 5 = `UseMulticast` (Client must use multicast, not unicast)
+/// 6 = `NoPrefixAvail` (No prefixes available for `IA_PD`)
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusCode {
@@ -219,10 +225,10 @@ pub enum StatusCode {
     /// General failure not covered by more specific status codes.
     UnspecFail,
 
-    /// Server has no addresses available to assign to client's IA_NA.
+    /// Server has no addresses available to assign to client's `IA_NA`.
     NoAddrsAvail,
 
-    /// Client's IA_NA, IA_TA, or IA_PD binding doesn't exist on this server.
+    /// Client's `IA_NA`, `IA_TA`, or `IA_PD` binding doesn't exist on this server.
     NoBinding,
 
     /// Address or prefix is not appropriate for the link (wrong subnet).
@@ -231,14 +237,15 @@ pub enum StatusCode {
     /// Client used unicast when it should have used multicast.
     UseMulticast,
 
-    /// Server has no prefixes available for IA_PD delegation.
+    /// Server has no prefixes available for `IA_PD` delegation.
     NoPrefixAvail,
 }
 
 impl StatusCode {
     /// Returns the numeric code value for wire format encoding.
     ///
-    /// Maps enum variant to u16 value for inclusion in STATUS_CODE option.
+    /// Maps enum variant to u16 value for inclusion in `STATUS_CODE` option.
+    #[must_use]
     pub fn to_u16(&self) -> u16 {
         match self {
             StatusCode::Success => STATUS_SUCCESS,
@@ -252,6 +259,7 @@ impl StatusCode {
     }
 
     /// Returns human-readable status message for logging.
+    #[must_use]
     pub fn message(&self) -> &'static str {
         match self {
             StatusCode::Success => "Success",
@@ -265,7 +273,7 @@ impl StatusCode {
     }
 }
 
-/// DHCPv6 request processing context.
+/// `DHCPv6` request processing `context`.
 ///
 /// Replaces C `struct state` from rfc3315.c with Rust struct using owned types.
 /// Contains parsed information from client request messages needed for protocol
@@ -275,14 +283,14 @@ impl StatusCode {
 ///
 /// ```c
 /// struct state {
-///     unsigned char *clid;
-///     int clid_len;
-///     char *hostname, *client_hostname;
-///     struct dhcp_context *context;
+///     unsigned char *`clid`;
+///     int `clid_len`;
+///     char *hostname, *`client_hostname`;
+///     struct dhcp_context *`context`;
 ///     unsigned int xid;
 ///     int iface;
 ///     char *iface_name;
-///     unsigned int iaid[3], ia_type;
+///     unsigned int `iaid`[3], `ia_type`;
 ///     struct in6_addr *link_address;
 ///     unsigned char mac[DHCP_CHADDR_MAX];
 ///     unsigned int mac_len, mac_type;
@@ -292,26 +300,26 @@ impl StatusCode {
 ///
 /// # Fields
 ///
-/// - `clid`: Client DUID (DHCP Unique Identifier) bytes from OPTION_CLIENT_ID
-/// - `clid_len`: Length of DUID (for validation, derived from clid.len())
+/// - `clid`: Client `DUID` (`DHCP` Unique Identifier) bytes from `OPTION_CLIENT_ID`
+/// - `clid_len`: Length of `DUID` (for validation, derived from `clid`.`len()`)
 /// - `transaction_id`: 3-byte transaction ID from message header
 /// - `interface`: Network interface name where request was received
-/// - `client_hostname`: Optional hostname from OPTION_FQDN or local resolution
-/// - `context`: Matched DHCPv6 context (address pool) for this request
-/// - `iaid`: Identity Association Identifier from IA_NA/IA_TA/IA_PD option
-/// - `ia_type`: Type of IA (IA_NA=3, IA_TA=4, IA_PD=25)
+/// - `client_hostname`: Optional hostname from `OPTION_FQDN` or local resolution
+/// - `context`: Matched `DHCPv6` `context` (address pool) for this request
+/// - `iaid`: Identity Association Identifier from `IA_NA`/`IA_TA`/`IA_PD` option
+/// - `ia_type`: Type of IA (`IA_NA`=3, `IA_TA`=4, `IA_PD`=25)
 /// - `multicast_dest`: True if request was sent to multicast address
 #[derive(Debug, Clone)]
 pub struct RequestContext {
-    /// Client DUID from OPTION_CLIENT_ID (required in all messages).
+    /// Client `DUID` from `OPTION_CLIENT_ID` (required in all messages).
     ///
-    /// DUID format per RFC 3315 Section 9:
-    /// - DUID-LLT (Type 1): Link-layer address + time
-    /// - DUID-EN (Type 2): Enterprise number + identifier
-    /// - DUID-LL (Type 3): Link-layer address only
+    /// `DUID` format per `RFC 3315` Section 9:
+    /// - `DUID`-LLT (Type 1): Link-layer address + time
+    /// - `DUID`-EN (Type 2): Enterprise number + identifier
+    /// - `DUID`-LL (Type 3): Link-layer address only
     pub clid: Vec<u8>,
 
-    /// Length of DUID (convenience field, same as clid.len()).
+    /// Length of `DUID` (convenience field, same as `clid`.`len()`).
     pub clid_len: usize,
 
     /// 3-byte transaction ID from message header.
@@ -323,61 +331,61 @@ pub struct RequestContext {
     /// Network interface name where request was received (e.g., "eth0").
     pub interface: String,
 
-    /// Optional client hostname from OPTION_FQDN or DNS lookup.
+    /// Optional client hostname from `OPTION_FQDN` or `DNS` lookup.
     ///
-    /// Used for DNS registration and logging. Sanitized to valid DNS format.
+    /// Used for `DNS` registration and logging. Sanitized to valid `DNS` format.
     pub client_hostname: Option<String>,
 
-    /// Matched DHCPv6 context (address pool configuration).
+    /// Matched `DHCPv6` `context` (address pool configuration).
     ///
     /// Selected based on interface, client tags, and address range matching.
     /// None if no suitable pool found for this request.
     pub context: Option<DhcpContext>,
 
-    /// Identity Association Identifier from IA_NA/IA_TA/IA_PD option.
+    /// Identity Association Identifier from `IA_NA`/`IA_TA`/`IA_PD` option.
     ///
     /// Client-chosen 32-bit identifier for this IA. Client may have multiple
     /// IAs with different IAIDs for different address types.
     pub iaid: u32,
 
     /// Type of Identity Association:
-    /// - OPTION_IA_NA (3): Non-temporary address
-    /// - OPTION_IA_TA (4): Temporary address
-    /// - OPTION_IA_PD (25): Prefix delegation
+    /// - `OPTION_IA_NA` (3): Non-temporary address
+    /// - `OPTION_IA_TA` (4): Temporary address
+    /// - `OPTION_IA_PD` (25): Prefix delegation
     pub ia_type: u16,
 
-    /// True if request was sent to multicast address (ff02::1:2).
+    /// True if request was sent to multicast address (`ff02::1:2`).
     ///
-    /// Per RFC 3315, initial messages (SOLICIT, INFORMATION-REQUEST) must use
-    /// multicast. Renewals can use unicast if server provided OPTION_UNICAST.
+    /// Per `RFC 3315`, initial messages (`SOLICIT`, `INFORMATION-REQUEST`) must use
+    /// multicast. Renewals can use unicast if server provided `OPTION_UNICAST`.
     pub multicast_dest: bool,
 }
 
 impl RequestContext {
-    /// Creates a new RequestContext from parsed message data.
+    /// Creates a new `RequestContext` from parsed message data.
     ///
     /// # Arguments
     ///
-    /// * `clid` - Client DUID bytes from OPTION_CLIENT_ID
+    /// * `clid` - Client `DUID` bytes from `OPTION_CLIENT_ID`
     /// * `transaction_id` - 3-byte transaction ID from message header
     /// * `interface` - Network interface name where request received
     /// * `iaid` - Identity Association Identifier
-    /// * `ia_type` - Type of IA (IA_NA, IA_TA, or IA_PD)
+    /// * `ia_type` - Type of IA (`IA_NA`, `IA_TA`, or `IA_PD`)
     /// * `multicast_dest` - Whether request used multicast destination
     ///
     /// # Returns
     ///
-    /// New RequestContext instance with specified parameters.
+    /// New `RequestContext` instance with specified parameters.
     ///
     /// # Example
     ///
     /// ```rust,ignore
-    /// let ctx = RequestContext::new(
-    ///     vec![0x00, 0x01, 0x00, 0x0e, 0x00, 0x01, ...], // DUID
+    /// let ctx = `RequestContext`::new(
+    ///     vec![0x00, 0x01, 0x00, 0x0e, 0x00, 0x01, ...], // `DUID`
     ///     [0x12, 0x34, 0x56],                             // Transaction ID
     ///     "eth0",                                          // Interface
     ///     0x12345678,                                      // IAID
-    ///     OPTION_IA_NA,                                    // IA type
+    ///     `OPTION_IA_NA`,                                    // IA type
     ///     true,                                            // Multicast
     /// );
     /// ```
@@ -404,76 +412,78 @@ impl RequestContext {
     }
 
     /// Sets the client hostname after sanitization.
+    #[must_use]
     pub fn with_hostname(mut self, hostname: Option<String>) -> Self {
         self.client_hostname = hostname;
         self
     }
 
-    /// Sets the matched DHCPv6 context.
+    /// Sets the matched `DHCPv6` `context`.
+    #[must_use]
     pub fn with_context(mut self, context: Option<DhcpContext>) -> Self {
         self.context = context;
         self
     }
 }
 
-/// DHCPv6 protocol state machine.
+/// `DHCPv6` protocol state machine.
 ///
-/// Coordinates DHCPv6 message processing through complete request/response lifecycle.
-/// Replaces C functions dhcp6_reply(), dhcp6_no_relay(), dhcp6_maybe_relay() with
+/// Coordinates `DHCPv6` message processing through complete request/response lifecycle.
+/// Replaces C functions `dhcp6_reply()`, `dhcp6_no_relay()`, `dhcp6_maybe_relay()` with
 /// async Rust implementation using dependency injection and Result-based error handling.
 ///
 /// # Architecture
 ///
 /// - **Config**: Global dnsmasq configuration (address pools, options, timeouts)
-/// - **LeaseManager**: Coordinates lease allocation, renewal, and persistence
-/// - **ServerDUID**: This server's DHCP Unique Identifier for OPTION_SERVER_ID
+/// - **`LeaseManager`**: Coordinates lease allocation, renewal, and persistence
+/// - **`ServerDUID`**: This server's `DHCP` Unique Identifier for `OPTION_SERVER_ID`
 ///
 /// # State Machine Operations
 ///
-/// The state machine processes messages according to RFC 3315:
+/// The state machine processes messages according to `RFC 3315`:
 ///
-/// 1. **Parse request**: Extract DUID, IAID, IA type, options
-/// 2. **Validate DUID**: Check format and length constraints
-/// 3. **Match context**: Select appropriate address pool based on interface/tags
-/// 4. **Process message**: Handle specific message type (SOLICIT, REQUEST, etc.)
+/// 1. **Parse request**: Extract `DUID`, IAID, IA type, options
+/// 2. **Validate `DUID`**: Check format and length constraints
+/// 3. **Match `context`**: Select appropriate address pool based on interface/tags
+/// 4. **Process message**: Handle specific message type (`SOLICIT`, `REQUEST`, etc.)
 /// 5. **Generate status**: Determine SUCCESS or error status code
-/// 6. **Build response**: Construct ADVERTISE or REPLY with appropriate options
+/// 6. **Build response**: Construct `ADVERTISE` or `REPLY` with appropriate options
 ///
 /// # Thread Safety
 ///
-/// Uses Arc<RwLock<LeaseManager>> for concurrent access to lease database.
-/// Multiple DHCPv6 requests can be processed in parallel with safe lease coordination.
+/// Uses `Arc`<`RwLock`<`LeaseManager`>> for concurrent access to lease database.
+/// Multiple `DHCPv6` requests can be processed in parallel with safe lease coordination.
 pub struct DhcpV6StateMachine {
     /// Global dnsmasq configuration (immutable, shared across requests).
     config: Arc<Config>,
 
-    /// Lease database manager (mutable, synchronized with RwLock).
+    /// Lease database manager (mutable, synchronized with `RwLock`).
     lease_manager: Arc<RwLock<LeaseManager>>,
 
-    /// Server's DUID for OPTION_SERVER_ID in responses.
+    /// Server's `DUID` for `OPTION_SERVER_ID` in responses.
     ///
-    /// Format per RFC 3315: typically DUID-LL (type 3) with link-layer address.
+    /// Format per `RFC 3315`: typically `DUID`-LL (type 3) with link-layer address.
     server_duid: Vec<u8>,
 }
 
 impl DhcpV6StateMachine {
-    /// Creates a new DHCPv6 protocol state machine.
+    /// Creates a new `DHCPv6` protocol state machine.
     ///
     /// # Arguments
     ///
     /// * `config` - Global dnsmasq configuration
     /// * `lease_manager` - Shared lease database manager
-    /// * `server_duid` - Server's DHCP Unique Identifier
+    /// * `server_duid` - Server's `DHCP` Unique Identifier
     ///
     /// # Returns
     ///
-    /// New DhcpV6StateMachine instance ready to process messages.
+    /// New `DhcpV6StateMachine` instance ready to process messages.
     ///
     /// # Example
     ///
     /// ```rust,ignore
-    /// let server_duid = vec![0x00, 0x03, 0x00, 0x01, ...]; // DUID-LL
-    /// let state_machine = DhcpV6StateMachine::new(
+    /// let server_duid = vec![0x00, 0x03, 0x00, 0x01, ...]; // `DUID`-LL
+    /// let state_machine = `DhcpV6StateMachine`::new(
     ///     config.clone(),
     ///     lease_manager.clone(),
     ///     server_duid,
@@ -487,30 +497,30 @@ impl DhcpV6StateMachine {
         Self { config, lease_manager, server_duid }
     }
 
-    /// Handles DHCPv6 SOLICIT message (first message in four-way exchange).
+    /// Handles `DHCPv6` `SOLICIT` message (first message in four-way exchange).
     ///
-    /// Generates ADVERTISE response offering available addresses to client.
-    /// Does NOT allocate lease yet - client must send REQUEST to confirm.
+    /// Generates `ADVERTISE` response offering available addresses to client.
+    /// Does NOT allocate lease yet - client must send `REQUEST` to confirm.
     ///
-    /// # RFC 3315 Section 17.2.2 - Server Behavior
+    /// # `RFC 3315` Section 17.2.2 - Server Behavior
     ///
-    /// 1. Discard if no OPTION_CLIENT_ID
+    /// 1. Discard if no `OPTION_CLIENT_ID`
     /// 2. Match address pool (dhcp-range) based on interface
-    /// 3. If rapid commit requested and allowed, skip ADVERTISE and send REPLY
-    /// 4. Otherwise, send ADVERTISE with available address(es)
+    /// 3. If rapid commit requested and allowed, skip `ADVERTISE` and send `REPLY`
+    /// 4. Otherwise, send `ADVERTISE` with available address(es)
     ///
     /// # Arguments
     ///
-    /// * `ctx` - Request context with parsed message data
-    /// * `msg` - Incoming SOLICIT message
+    /// * `ctx` - Request `context` with parsed message data
+    /// * `msg` - Incoming `SOLICIT` message
     ///
     /// # Returns
     ///
-    /// ADVERTISE or REPLY message (with rapid commit if applicable)
+    /// `ADVERTISE` or `REPLY` message (with rapid commit if applicable)
     ///
     /// # Errors
     ///
-    /// Returns DhcpError if:
+    /// Returns `DhcpError` if:
     /// - No address pools configured for this interface
     /// - No addresses available in matched pool
     /// - Message construction fails
@@ -562,6 +572,8 @@ impl DhcpV6StateMachine {
 
         // Build IA_NA option manually
         // IA_NA format: IAID (4) + T1 (4) + T2 (4) + IA options
+        #[allow(clippy::cast_possible_truncation)]
+
         let lease_secs = self.config.dhcp.lease_time.as_secs() as u32;
         let mut ia_na_data = Vec::new();
 
@@ -591,31 +603,31 @@ impl DhcpV6StateMachine {
         Ok(response)
     }
 
-    /// Handles DHCPv6 REQUEST message (third message in four-way exchange).
+    /// Handles `DHCPv6` `REQUEST` message (third message in four-way exchange).
     ///
-    /// Allocates lease for requested address and sends REPLY confirming allocation.
-    /// This is where actual lease allocation occurs after SOLICIT/ADVERTISE negotiation.
+    /// Allocates lease for requested address and sends `REPLY` confirming allocation.
+    /// This is where actual lease allocation occurs after `SOLICIT`/`ADVERTISE` negotiation.
     ///
-    /// # RFC 3315 Section 18.2.1 - Server Behavior
+    /// # `RFC 3315` Section 18.2.1 - Server Behavior
     ///
-    /// 1. Verify OPTION_SERVER_ID matches this server
-    /// 2. Extract IAADDR from IA_NA option
+    /// 1. Verify `OPTION_SERVER_ID` matches this server
+    /// 2. Extract `IAADDR` from `IA_NA` option
     /// 3. Validate address is in configured pool
     /// 4. Allocate lease in database
-    /// 5. Send REPLY with STATUS_CODE and allocated IAADDR
+    /// 5. Send `REPLY` with `STATUS_CODE` and allocated `IAADDR`
     ///
     /// # Arguments
     ///
-    /// * `ctx` - Request context
-    /// * `msg` - Incoming REQUEST message
+    /// * `ctx` - Request `context`
+    /// * `msg` - Incoming `REQUEST` message
     ///
     /// # Returns
     ///
-    /// REPLY message with allocated address or error status
+    /// `REPLY` message with allocated address or error status
     ///
     /// # Errors
     ///
-    /// Returns DhcpError if allocation fails or address not available
+    /// Returns `DhcpError` if allocation fails or address not available
     #[instrument(skip(self, msg), fields(iface = %ctx.interface, iaid = ctx.iaid))]
     pub async fn handle_request(
         &self,
@@ -664,7 +676,7 @@ impl DhcpV6StateMachine {
         // Parse nested IAADDR option within IA_NA
         // IA_NA structure: IAID (4) + T1 (4) + T2 (4) + IA_options (variable)
         let ia_options = &ia_na_data[12..];
-        let requested_address = self.parse_iaaddr_from_options(ia_options)?;
+        let requested_address = Self::parse_iaaddr_from_options(ia_options)?;
 
         debug!(address = %requested_address, "Client requesting address");
 
@@ -673,7 +685,7 @@ impl DhcpV6StateMachine {
             reason: "No matching address pool".to_string(),
         })?;
 
-        self.validate_address_in_pool(&requested_address, context)?;
+        Self::validate_address_in_pool(&requested_address, context)?;
 
         // Allocate the lease
         let lease_duration = self.config.dhcp.lease_time;
@@ -704,25 +716,25 @@ impl DhcpV6StateMachine {
         Ok(response)
     }
 
-    /// Handles DHCPv6 RENEW message (lease extension request).
+    /// Handles `DHCPv6` `RENEW` message (lease extension request).
     ///
     /// Extends existing lease if valid binding found for client's IAID.
     ///
-    /// # RFC 3315 Section 18.2.3
+    /// # `RFC 3315` Section 18.2.3
     ///
     /// Server extends lease if:
-    /// 1. SERVER_ID matches this server
+    /// 1. `SERVER_ID` matches this server
     /// 2. Client has valid binding for IAID
     /// 3. Address is still in configured pool
     ///
     /// # Arguments
     ///
-    /// * `ctx` - Request context
-    /// * `msg` - Incoming RENEW message
+    /// * `ctx` - Request `context`
+    /// * `msg` - Incoming `RENEW` message
     ///
     /// # Returns
     ///
-    /// REPLY with extended lease or NO_BINDING status
+    /// `REPLY` with extended lease or `NO_BINDING` status
     #[instrument(skip(self, msg), fields(iface = %ctx.interface, iaid = ctx.iaid))]
     pub async fn handle_renew(
         &self,
@@ -748,7 +760,7 @@ impl DhcpV6StateMachine {
         })?;
 
         let ia_options = &ia_na_data[12..];
-        let address = self.parse_iaaddr_from_options(ia_options)?;
+        let address = Self::parse_iaaddr_from_options(ia_options)?;
 
         debug!(address = %address, "Client renewing address");
 
@@ -781,23 +793,23 @@ impl DhcpV6StateMachine {
         Ok(response)
     }
 
-    /// Handles DHCPv6 REBIND message (broadcast lease extension).
+    /// Handles `DHCPv6` `REBIND` message (broadcast lease extension).
     ///
-    /// Similar to RENEW but sent to all servers (multicast) when renewal fails.
+    /// Similar to `RENEW` but sent to all servers (multicast) when renewal fails.
     ///
-    /// # RFC 3315 Section 18.2.4
+    /// # `RFC 3315` Section 18.2.4
     ///
     /// Any server can respond if address is appropriate for link.
-    /// Returns NOT_ON_LINK if address doesn't belong to this server's pools.
+    /// Returns `NOT_ON_LINK` if address doesn't belong to this server's pools.
     ///
     /// # Arguments
     ///
-    /// * `ctx` - Request context
-    /// * `msg` - Incoming REBIND message
+    /// * `ctx` - Request `context`
+    /// * `msg` - Incoming `REBIND` message
     ///
     /// # Returns
     ///
-    /// REPLY with extended lease or NOT_ON_LINK status
+    /// `REPLY` with extended lease or `NOT_ON_LINK` status
     #[instrument(skip(self, msg), fields(iface = %ctx.interface, iaid = ctx.iaid))]
     pub async fn handle_rebind(
         &self,
@@ -812,13 +824,13 @@ impl DhcpV6StateMachine {
         })?;
 
         let ia_options = &ia_na_data[12..];
-        let address = self.parse_iaaddr_from_options(ia_options)?;
+        let address = Self::parse_iaaddr_from_options(ia_options)?;
 
         debug!(address = %address, "Client rebinding address");
 
         // Check if address belongs to our pools
         let context = ctx.context.as_ref();
-        if context.is_none() || !self.is_address_in_pool(&address, context.unwrap()) {
+        if context.is_none() || !Self::is_address_in_pool(&address, context.unwrap()) {
             info!(address = %address, "Address not on this link");
             return self.build_reply_with_status(ctx, StatusCode::NotOnLink);
         }
@@ -859,23 +871,23 @@ impl DhcpV6StateMachine {
         Ok(response)
     }
 
-    /// Handles DHCPv6 RELEASE message (client releasing address).
+    /// Handles `DHCPv6` `RELEASE` message (client releasing address).
     ///
-    /// Removes lease from database and sends REPLY acknowledging release.
+    /// Removes lease from database and sends `REPLY` acknowledging release.
     ///
-    /// # RFC 3315 Section 18.2.6
+    /// # `RFC 3315` Section 18.2.6
     ///
     /// Server releases address if valid binding exists.
-    /// Sends STATUS_CODE = Success in REPLY to acknowledge.
+    /// Sends `STATUS_CODE` = `Success` in `REPLY` to acknowledge.
     ///
     /// # Arguments
     ///
-    /// * `ctx` - Request context
-    /// * `msg` - Incoming RELEASE message
+    /// * `ctx` - Request `context`
+    /// * `msg` - Incoming `RELEASE` message
     ///
     /// # Returns
     ///
-    /// REPLY with SUCCESS or NO_BINDING status
+    /// `REPLY` with SUCCESS or `NO_BINDING` status
     #[instrument(skip(self, msg), fields(iface = %ctx.interface, iaid = ctx.iaid))]
     pub async fn handle_release(
         &self,
@@ -903,7 +915,7 @@ impl DhcpV6StateMachine {
         })?;
 
         let ia_options = &ia_na_data[12..];
-        let address = self.parse_iaaddr_from_options(ia_options)?;
+        let address = Self::parse_iaaddr_from_options(ia_options)?;
 
         debug!(address = %address, "Client releasing address");
 
@@ -930,23 +942,23 @@ impl DhcpV6StateMachine {
         self.build_reply_with_status(ctx, StatusCode::Success)
     }
 
-    /// Handles DHCPv6 DECLINE message (client detected duplicate address).
+    /// Handles `DHCPv6` `DECLINE` message (client detected duplicate address).
     ///
     /// Marks address as declined in database so it won't be offered to other clients.
     ///
-    /// # RFC 3315 Section 18.2.7
+    /// # `RFC 3315` Section 18.2.7
     ///
     /// Server marks address as unavailable for future allocation.
     /// Address remains declined until administrator intervention or timeout.
     ///
     /// # Arguments
     ///
-    /// * `ctx` - Request context
-    /// * `msg` - Incoming DECLINE message
+    /// * `ctx` - Request `context`
+    /// * `msg` - Incoming `DECLINE` message
     ///
     /// # Returns
     ///
-    /// REPLY acknowledging decline
+    /// `REPLY` acknowledging decline
     #[instrument(skip(self, msg), fields(iface = %ctx.interface, iaid = ctx.iaid))]
     pub async fn handle_decline(
         &self,
@@ -974,7 +986,7 @@ impl DhcpV6StateMachine {
         })?;
 
         let ia_options = &ia_na_data[12..];
-        let address = self.parse_iaaddr_from_options(ia_options)?;
+        let address = Self::parse_iaaddr_from_options(ia_options)?;
 
         warn!(address = %address, "Client declined address (duplicate detected)");
 
@@ -1002,24 +1014,24 @@ impl DhcpV6StateMachine {
         self.build_reply_with_status(ctx, StatusCode::Success)
     }
 
-    /// Handles DHCPv6 CONFIRM message (address validation after network change).
+    /// Handles `DHCPv6` `CONFIRM` message (address validation after network change).
     ///
     /// Validates that client's addresses are still appropriate for current link.
     ///
-    /// # RFC 3315 Section 18.2.2
+    /// # `RFC 3315` Section 18.2.2
     ///
     /// Server checks if addresses are on-link:
-    /// - If all addresses valid: STATUS_CODE = Success
-    /// - If any address invalid: STATUS_CODE = NotOnLink
+    /// - If all addresses valid: `STATUS_CODE` = `Success`
+    /// - If any address invalid: `STATUS_CODE` = `NotOnLink`
     ///
     /// # Arguments
     ///
-    /// * `ctx` - Request context
-    /// * `msg` - Incoming CONFIRM message
+    /// * `ctx` - Request `context`
+    /// * `msg` - Incoming `CONFIRM` message
     ///
     /// # Returns
     ///
-    /// REPLY with SUCCESS or NOT_ON_LINK status (no address options)
+    /// `REPLY` with SUCCESS or `NOT_ON_LINK` status (no address options)
     #[instrument(skip(self, msg), fields(iface = %ctx.interface, iaid = ctx.iaid))]
     pub async fn handle_confirm(
         &self,
@@ -1034,14 +1046,14 @@ impl DhcpV6StateMachine {
         })?;
 
         let ia_options = &ia_na_data[12..];
-        let address = self.parse_iaaddr_from_options(ia_options)?;
+        let address = Self::parse_iaaddr_from_options(ia_options)?;
 
         debug!(address = %address, "Client confirming address");
 
         // Check if address is appropriate for this link
         let context = ctx.context.as_ref();
         let is_on_link = if let Some(context) = context {
-            self.is_address_in_pool(&address, context)
+            Self::is_address_in_pool(&address, context)
         } else {
             false
         };
@@ -1058,23 +1070,23 @@ impl DhcpV6StateMachine {
         self.build_reply_with_status(ctx, status)
     }
 
-    /// Handles DHCPv6 INFORMATION-REQUEST message (stateless configuration).
+    /// Handles `DHCPv6` `INFORMATION-REQUEST` message (stateless configuration).
     ///
-    /// Provides configuration options (DNS servers, domain, NTP) without address allocation.
+    /// Provides configuration options (`DNS` servers, domain, NTP) without address allocation.
     ///
-    /// # RFC 3315 Section 18.2.5
+    /// # `RFC 3315` Section 18.2.5
     ///
     /// Server provides options but does not allocate addresses.
-    /// Used for stateless DHCPv6 where addresses come from SLAAC.
+    /// Used for stateless `DHCPv6` where addresses come from `SLAAC`.
     ///
     /// # Arguments
     ///
-    /// * `ctx` - Request context
-    /// * `msg` - Incoming INFORMATION-REQUEST message
+    /// * `ctx` - Request `context`
+    /// * `msg` - Incoming `INFORMATION-REQUEST` message
     ///
     /// # Returns
     ///
-    /// REPLY with DNS servers, domain list, and other options
+    /// `REPLY` with `DNS` servers, domain list, and other options
     #[instrument(skip(self, _msg), fields(iface = %ctx.interface))]
     pub async fn handle_information_request(
         &self,
@@ -1101,10 +1113,10 @@ impl DhcpV6StateMachine {
         Ok(response)
     }
 
-    /// Handles DHCPv6 ADVERTISE message (client-side processing stub).
+    /// Handles `DHCPv6` `ADVERTISE` message (client-side processing stub).
     ///
-    /// This method is provided for completeness but is primarily used by DHCPv6 clients.
-    /// Servers do not process ADVERTISE messages.
+    /// This method is provided for completeness but is primarily used by `DHCPv6` clients.
+    /// Servers do not process `ADVERTISE` messages.
     ///
     /// # Note
     ///
@@ -1122,10 +1134,10 @@ impl DhcpV6StateMachine {
         })
     }
 
-    /// Handles DHCPv6 REPLY message (client-side processing stub).
+    /// Handles `DHCPv6` `REPLY` message (client-side processing stub).
     ///
-    /// This method is provided for completeness but is primarily used by DHCPv6 clients.
-    /// Servers do not process REPLY messages.
+    /// This method is provided for completeness but is primarily used by `DHCPv6` clients.
+    /// Servers do not process `REPLY` messages.
     ///
     /// # Note
     ///
@@ -1145,25 +1157,25 @@ impl DhcpV6StateMachine {
 
     /// Generates appropriate status code based on request validation.
     ///
-    /// Analyzes request context and determines correct RFC 3315 status code.
+    /// Analyzes request `context` and determines correct `RFC 3315` status code.
     ///
     /// # Status Code Selection Logic
     ///
     /// - **SUCCESS**: Request can be fulfilled
-    /// - **NO_ADDRS_AVAIL**: Pool exhausted, no addresses available
-    /// - **NO_BINDING**: Client's binding not found on this server
-    /// - **NOT_ON_LINK**: Address not appropriate for link
-    /// - **USE_MULTICAST**: Client must use multicast, not unicast
+    /// - **`NO_ADDRS_AVAIL`**: Pool exhausted, no addresses available
+    /// - **`NO_BINDING`**: Client's binding not found on this server
+    /// - **`NOT_ON_LINK`**: Address not appropriate for link
+    /// - **`USE_MULTICAST`**: Client must use multicast, not unicast
     ///
     /// # Arguments
     ///
-    /// * `ctx` - Request context
+    /// * `ctx` - Request `context`
     /// * `requested_address` - Address client is requesting (if any)
     /// * `unicast_request` - Whether request was sent to unicast address
     ///
     /// # Returns
     ///
-    /// Appropriate StatusCode enum variant
+    /// Appropriate `StatusCode` enum variant
     pub fn generate_status_code(
         &self,
         ctx: &RequestContext,
@@ -1172,23 +1184,20 @@ impl DhcpV6StateMachine {
     ) -> StatusCode {
         // Check for USE_MULTICAST condition
         // Per RFC 3315, certain messages must use multicast
-        if unicast_request && !self.unicast_allowed_for_client(ctx) {
+        if unicast_request && !Self::unicast_allowed_for_client(ctx) {
             debug!("Client must use multicast");
             return StatusCode::UseMulticast;
         }
 
         // Check if we have a matching context (address pool)
-        let context = match &ctx.context {
-            Some(ctx) => ctx,
-            None => {
-                debug!("No matching address pool");
-                return StatusCode::NoAddrsAvail;
-            }
+        let Some(context) = &ctx.context else {
+            debug!("No matching address pool");
+            return StatusCode::NoAddrsAvail;
         };
 
         // If address requested, validate it's in our pool
         if let Some(address) = requested_address {
-            if !self.is_address_in_pool(address, context) {
+            if !Self::is_address_in_pool(address, context) {
                 debug!(address = %address, "Address not in pool");
                 return StatusCode::NotOnLink;
             }
@@ -1198,29 +1207,29 @@ impl DhcpV6StateMachine {
         StatusCode::Success
     }
 
-    /// Validates DUID (DHCP Unique Identifier) format.
+    /// Validates `DUID` (`DHCP` Unique Identifier) format.
     ///
-    /// Checks DUID conforms to RFC 3315 Section 9 format requirements.
+    /// Checks `DUID` conforms to `RFC 3315` Section 9 format requirements.
     ///
-    /// # DUID Types (RFC 3315)
+    /// # `DUID` Types (`RFC 3315`)
     ///
-    /// - **DUID-LLT (Type 1)**: Link-layer + time (min 8 bytes)
-    /// - **DUID-EN (Type 2)**: Enterprise number (min 6 bytes)
-    /// - **DUID-LL (Type 3)**: Link-layer only (min 4 bytes)
+    /// - **`DUID`-LLT (Type 1)**: Link-layer + time (min 8 bytes)
+    /// - **`DUID`-EN (Type 2)**: Enterprise number (min 6 bytes)
+    /// - **`DUID`-LL (Type 3)**: Link-layer only (min 4 bytes)
     ///
     /// # Arguments
     ///
-    /// * `duid` - DUID bytes from OPTION_CLIENT_ID
+    /// * `duid` - `DUID` bytes from `OPTION_CLIENT_ID`
     ///
     /// # Returns
     ///
-    /// Ok(()) if DUID is valid, Err with description if invalid
+    /// Ok(()) if `DUID` is valid, Err with description if invalid
     ///
     /// # Example
     ///
     /// ```rust,ignore
-    /// let duid = vec![0x00, 0x01, 0x00, 0x01, 0x29, 0xf3, 0xa4, 0x32, ...];
-    /// state_machine.validate_duid(&duid)?;
+    /// let `duid` = vec![0x00, 0x01, 0x00, 0x01, 0x29, 0xf3, 0xa4, 0x32, ...];
+    /// state_machine.validate_duid(&`duid`)?;
     /// ```
     pub fn validate_duid(&self, duid: &[u8]) -> Result<(), DhcpError> {
         // DUID must be at least 2 bytes (type field)
@@ -1274,25 +1283,26 @@ impl DhcpV6StateMachine {
             _ => {
                 // Unknown DUID type - reject per RFC 3315 (only types 1, 2, 3 are defined)
                 Err(DhcpError::V6ProtocolError {
-                    reason: format!("Invalid DUID type: {}", duid_type),
+                    reason: format!("Invalid DUID type: {duid_type}"),
                 })
             }
         }
     }
 
-    /// Builds DHCPv6 REPLY message with allocated address.
+    /// Builds `DHCPv6` `REPLY` message with allocated address.
     ///
-    /// Constructs complete REPLY with IA_NA containing IAADDR and all configured options.
+    /// Constructs complete `REPLY` with `IA_NA` containing `IAADDR` and all configured options.
     ///
     /// # Arguments
     ///
-    /// * `ctx` - Request context
+    /// * `ctx` - Request `context`
     /// * `lease` - Allocated lease with address and expiration
-    /// * `status` - Status code to include (typically Success)
+    /// * `status` - Status code to include (typically `Success`)
     ///
     /// # Returns
     ///
-    /// Complete REPLY message ready for transmission
+    /// Complete `REPLY` message ready for transmission
+    #[allow(clippy::unnecessary_wraps)]
     fn build_reply_with_address(
         &self,
         ctx: &RequestContext,
@@ -1311,9 +1321,14 @@ impl DhcpV6StateMachine {
         let lease_duration =
             lease.expires.duration_since(SystemTime::now()).unwrap_or(Duration::from_secs(3600));
 
-        let t1 = (lease_duration.as_secs() as f64 * 0.5) as u32; // 50% of lease time
-        let t2 = (lease_duration.as_secs() as f64 * 0.8) as u32; // 80% of lease time
-        let lifetime_secs = lease_duration.as_secs() as u32;
+        // Calculate T1 (50%) and T2 (80%) using checked arithmetic to avoid float conversion
+        let lease_secs_u64 = lease_duration.as_secs();
+        #[allow(clippy::cast_possible_truncation)]
+        let t1 = (lease_secs_u64 / 2) as u32; // 50% of lease time
+        #[allow(clippy::cast_possible_truncation)]
+        let t2 = (lease_secs_u64 * 4 / 5) as u32; // 80% of lease time
+        #[allow(clippy::cast_possible_truncation)]
+        let lifetime_secs = lease_secs_u64 as u32;
 
         // Build IA_NA option manually
         // IA_NA format: IAID (4) + T1 (4) + T2 (4) + IA options
@@ -1358,18 +1373,19 @@ impl DhcpV6StateMachine {
         Ok(response)
     }
 
-    /// Builds DHCPv6 REPLY message with status code only (no address).
+    /// Builds `DHCPv6` `REPLY` message with status code only (no address).
     ///
-    /// Used for CONFIRM, RELEASE, DECLINE responses where no address is included.
+    /// Used for `CONFIRM`, `RELEASE`, `DECLINE` responses where no address is included.
     ///
     /// # Arguments
     ///
-    /// * `ctx` - Request context
+    /// * `ctx` - Request `context`
     /// * `status` - Status code to report
     ///
     /// # Returns
     ///
-    /// REPLY message with status code
+    /// `REPLY` message with status code
+    #[allow(clippy::unnecessary_wraps)]
     fn build_reply_with_status(
         &self,
         ctx: &RequestContext,
@@ -1395,7 +1411,7 @@ impl DhcpV6StateMachine {
 
     // Helper methods
 
-    /// Finds an available address in the specified DHCPv6 context (pool).
+    /// Finds an available address in the specified `DHCPv6` `context` (pool).
     ///
     /// Scans pool range for an unallocated address.
     async fn find_available_address(&self, context: &DhcpContext) -> Result<IpAddr, DhcpError> {
@@ -1418,20 +1434,19 @@ impl DhcpV6StateMachine {
 
     /// Validates that address is within configured pool range.
     fn validate_address_in_pool(
-        &self,
         address: &IpAddr,
         context: &DhcpContext,
     ) -> Result<(), DhcpError> {
-        if !self.is_address_in_pool(address, context) {
+        if !Self::is_address_in_pool(address, context) {
             return Err(DhcpError::V6ProtocolError {
-                reason: format!("Address {} not in pool", address),
+                reason: format!("Address {address} not in pool"),
             });
         }
         Ok(())
     }
 
     /// Checks if address is within pool range.
-    fn is_address_in_pool(&self, address: &IpAddr, context: &DhcpContext) -> bool {
+    fn is_address_in_pool(address: &IpAddr, context: &DhcpContext) -> bool {
         // Simplified check - just verify it's the same as start6 for now
         // Full implementation would check if address is within start6..end6 range
         address == &context.start6
@@ -1439,18 +1454,18 @@ impl DhcpV6StateMachine {
 
     /// Determines if unicast is allowed for this client.
     ///
-    /// Checks if server has provided OPTION_UNICAST to client previously.
-    fn unicast_allowed_for_client(&self, _ctx: &RequestContext) -> bool {
+    /// Checks if server has provided `OPTION_UNICAST` to client previously.
+    fn unicast_allowed_for_client(_ctx: &RequestContext) -> bool {
         // Simplified implementation
         // Full implementation would check if OPTION_UNICAST was sent to this client
         // For now, allow unicast for RENEW/REBIND/RELEASE but not initial SOLICIT
         false // Conservative default
     }
 
-    /// Parses IAADDR option from IA_NA options section.
+    /// Parses `IAADDR` option from `IA_NA` options section.
     ///
-    /// Extracts IPv6 address from nested IAADDR option within IA_NA.
-    fn parse_iaaddr_from_options(&self, ia_options: &[u8]) -> Result<IpAddr, DhcpError> {
+    /// Extracts `IPv6` address from nested `IAADDR` option within `IA_NA`.
+    fn parse_iaaddr_from_options(ia_options: &[u8]) -> Result<IpAddr, DhcpError> {
         // Parse TLV options looking for OPTION_IAADDR (5)
         let mut offset = 0;
 
@@ -1491,7 +1506,7 @@ impl DhcpV6StateMachine {
     }
 }
 
-/// Encodes a domain name in DNS wire format (RFC 1035 section 3.1).
+/// Encodes a domain name in `DNS` wire format (RFC 1035 section 3.1).
 ///
 /// Format: sequence of labels, each prefixed by length byte, terminated by zero byte.
 /// Example: "example.com" -> [7]example[3]com[0]
@@ -1507,7 +1522,7 @@ impl DhcpV6StateMachine {
 ///
 /// # Note
 ///
-/// This function is reserved for implementing DNS options (OPTION_DNS_SERVER, OPTION_DOMAIN_SEARCH)
+/// This function is reserved for implementing `DNS` options (`OPTION_DNS_SERVER`, `OPTION_DOMAIN_SEARCH`)
 /// as indicated by TODOs at lines 1088 and 1346. The C implementation supports these options.
 #[allow(dead_code)]
 fn encode_dns_name(domain: &str, output: &mut Vec<u8>) -> Result<(), DhcpError> {
@@ -1529,6 +1544,8 @@ fn encode_dns_name(domain: &str, output: &mut Vec<u8>) -> Result<(), DhcpError> 
         }
 
         // Write length byte followed by label bytes
+        #[allow(clippy::cast_possible_truncation)]
+
         output.push(label.len() as u8);
         output.extend_from_slice(label.as_bytes());
     }
@@ -1542,6 +1559,7 @@ fn encode_dns_name(domain: &str, output: &mut Vec<u8>) -> Result<(), DhcpError> 
 mod tests {
     use super::*;
     use crate::config::types::DnsConfig;
+    use crate::dhcp::v6::{OPTION_IA_PD, OPTION_IA_TA};
     use crate::dns::cache::DnsCache;
 
     #[test]

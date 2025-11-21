@@ -912,6 +912,7 @@ impl DnsQueryBuilder {
     }
 
     /// Set the query ID explicitly.
+    #[allow(dead_code)]
     pub fn with_id(mut self, id: u16) -> Self {
         self.id = id;
         self

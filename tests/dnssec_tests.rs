@@ -135,7 +135,6 @@ use dnsmasq::dns::dnssec::{
     CryptoAlgorithm, DnssecValidator, SignatureVerifier, ValidationCounter,
 };
 use dnsmasq::dns::protocol::constants::*;
-use dnsmasq::dns::protocol::message::DnsMessage;
 use dnsmasq::dns::protocol::name::DomainName;
 use dnsmasq::dns::protocol::record::{RData, ResourceRecord};
 use dnsmasq::error::{DnsError, DnsmasqError};

@@ -261,7 +261,7 @@ const PF_TABLE_NAME_SIZE: usize = 32;
 ///
 /// Tables with this flag survive even when no rules reference them, preventing
 /// data loss during `pfctl -f /etc/pf.conf` reloads.
-const PFR_TFLAG_PERSIST: u32 = 0x00000001;
+const PFR_TFLAG_PERSIST: u32 = 0x0000_0001;
 
 /// ioctl request code for adding PF tables (from BSD sys/net/pfvar.h).
 ///
@@ -282,7 +282,7 @@ const DIOCRADDTABLES: libc::c_ulong = 0xc4504441;
 
 // Dummy value for non-BSD platforms to allow compilation (will never be used at runtime)
 #[cfg(not(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd")))]
-const DIOCRADDTABLES: libc::c_ulong = 0xc4504441;
+const DIOCRADDTABLES: libc::c_ulong = 0xc450_4441;
 
 /// ioctl request code for adding addresses to PF tables.
 ///
@@ -298,7 +298,7 @@ const DIOCRADDADDRS: libc::c_ulong = 0xc4504443;
 
 // Dummy value for non-BSD platforms to allow compilation (will never be used at runtime)
 #[cfg(not(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd")))]
-const DIOCRADDADDRS: libc::c_ulong = 0xc4504443;
+const DIOCRADDADDRS: libc::c_ulong = 0xc450_4443;
 
 /// ioctl request code for deleting addresses from PF tables.
 ///
@@ -314,7 +314,7 @@ const DIOCRDELADDRS: libc::c_ulong = 0xc4504444;
 
 // Dummy value for non-BSD platforms to allow compilation (will never be used at runtime)
 #[cfg(not(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd")))]
-const DIOCRDELADDRS: libc::c_ulong = 0xc4504444;
+const DIOCRDELADDRS: libc::c_ulong = 0xc450_4444;
 
 /// PF table descriptor structure (from BSD sys/net/pfvar.h).
 ///
@@ -332,6 +332,7 @@ const DIOCRDELADDRS: libc::c_ulong = 0xc4504444;
 /// controlling table behavior (e.g., persistence).
 #[repr(C)]
 #[derive(Clone, Copy)]
+#[allow(clippy::struct_field_names)]
 struct pfr_table {
     /// Anchor path (empty for global tables, e.g., "myanchor/nested")
     pfrt_anchor: [u8; 1024], // MAXPATHLEN on most BSD systems
@@ -377,6 +378,7 @@ impl Default for pfr_table {
 /// ```
 #[repr(C)]
 #[derive(Clone, Copy)]
+#[allow(clippy::struct_field_names)]
 struct pfr_addr {
     /// Union containing either IPv4 or IPv6 address
     pfra_u: pfra_union,
@@ -444,6 +446,7 @@ impl Default for pfr_addr {
 /// };
 /// ```
 #[repr(C)]
+#[allow(clippy::struct_field_names)]
 struct pfioc_table {
     /// Target table descriptor
     pfrio_table: pfr_table,
@@ -680,6 +683,7 @@ impl PfBackend {
     /// # Synchronous Operation
     ///
     /// This method is synchronous and should only be called from within `spawn_blocking`.
+    #[allow(clippy::unused_self)]
     #[instrument(name = "pf_ensure_table", skip(self))]
     fn ensure_table_exists_sync(&self, fd: libc::c_int, table_name: &str) -> Result<()> {
         debug!(table = %table_name, "Ensuring PF table exists");
@@ -707,7 +711,8 @@ impl PfBackend {
 
         // Construct pfioc_table structure for ioctl
         let mut io = pfioc_table {
-            pfrio_buffer: &mut table as *mut pfr_table as *mut libc::c_void,
+            pfrio_buffer: (&raw mut table).cast::<libc::c_void>(),
+            #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
             pfrio_esize: std::mem::size_of::<pfr_table>() as libc::c_int,
             pfrio_size: 1,
             pfrio_flags: 0,
@@ -717,7 +722,7 @@ impl PfBackend {
         // Execute DIOCRADDTABLES ioctl
         // SAFETY: fd is valid (checked by get_fd), io structure is properly initialized
         let result = unsafe {
-            libc::ioctl(fd, DIOCRADDTABLES as libc::c_ulong, &mut io as *mut pfioc_table)
+            libc::ioctl(fd, DIOCRADDTABLES as libc::c_ulong, &raw mut io)
         };
 
         if result < 0 {
@@ -737,8 +742,7 @@ impl PfBackend {
 
             let error_msg = pf_strerror(errno);
             return Err(FirewallError::TableCreateFailed(format!(
-                "Failed to create table '{}': {}",
-                table_name, error_msg
+                "Failed to create table '{table_name}': {error_msg}"
             )));
         }
 
@@ -765,6 +769,7 @@ impl PfBackend {
     /// # Errors
     ///
     /// Returns [`FirewallError::AddressFailed`] if ioctl fails or address format is invalid.
+    #[allow(clippy::unused_self)]
     #[instrument(name = "pf_add_address", skip(self, fd))]
     fn add_address_sync(&self, fd: libc::c_int, table_name: &str, ip: IpAddr) -> Result<()> {
         debug!(table = %table_name, ip = %ip, "Adding IP address to PF table");
@@ -800,7 +805,7 @@ impl PfBackend {
         // Construct pfioc_table structure for DIOCRADDADDRS
         let mut io = pfioc_table {
             pfrio_table: table,
-            pfrio_buffer: &mut addr as *mut pfr_addr as *mut libc::c_void,
+            pfrio_buffer: (&raw mut addr).cast::<libc::c_void>(),
             pfrio_esize: std::mem::size_of::<pfr_addr>() as libc::c_int,
             pfrio_size: 1,
             pfrio_flags: 0,
@@ -810,7 +815,7 @@ impl PfBackend {
         // Execute DIOCRADDADDRS ioctl
         // SAFETY: fd is valid, io structure is properly initialized
         let result =
-            unsafe { libc::ioctl(fd, DIOCRADDADDRS as libc::c_ulong, &mut io as *mut pfioc_table) };
+            unsafe { libc::ioctl(fd, DIOCRADDADDRS as libc::c_ulong, &raw mut io) };
 
         if result < 0 {
             let errno = Errno::last();
@@ -849,6 +854,7 @@ impl PfBackend {
     /// # Errors
     ///
     /// Returns [`FirewallError::AddressFailed`] if ioctl fails.
+    #[allow(clippy::unused_self)]
     #[instrument(name = "pf_remove_address", skip(self, fd))]
     fn remove_address_sync(&self, fd: libc::c_int, table_name: &str, ip: IpAddr) -> Result<()> {
         debug!(table = %table_name, ip = %ip, "Removing IP address from PF table");
@@ -883,7 +889,7 @@ impl PfBackend {
         // Construct pfioc_table structure for DIOCRDELADDRS
         let mut io = pfioc_table {
             pfrio_table: table,
-            pfrio_buffer: &mut addr as *mut pfr_addr as *mut libc::c_void,
+            pfrio_buffer: (&raw mut addr).cast::<libc::c_void>(),
             pfrio_esize: std::mem::size_of::<pfr_addr>() as libc::c_int,
             pfrio_size: 1,
             pfrio_flags: 0,
@@ -893,7 +899,7 @@ impl PfBackend {
         // Execute DIOCRDELADDRS ioctl
         // SAFETY: fd is valid, io structure is properly initialized
         let result =
-            unsafe { libc::ioctl(fd, DIOCRDELADDRS as libc::c_ulong, &mut io as *mut pfioc_table) };
+            unsafe { libc::ioctl(fd, DIOCRDELADDRS as libc::c_ulong, &raw mut io) };
 
         if result < 0 {
             let errno = Errno::last();
