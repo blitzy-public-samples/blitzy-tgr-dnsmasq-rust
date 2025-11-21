@@ -78,10 +78,10 @@
 
 use crate::config::reload::ConfigReloader;
 use crate::dns::cache::DnsCache;
-use crate::error::PlatformError;
+
 use crate::runtime::tasks::ShutdownHandle;
-use crate::util::logging::flush_log;
-use crate::util::metrics::report_all;
+use crate::util::logging::{flush_log, LoggingService};
+use crate::util::metrics::{report_all, MetricsCollector};
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -210,6 +210,12 @@ pub struct SignalHandlers {
 
     /// Shutdown handle for SIGTERM/SIGINT graceful shutdown coordination.
     shutdown_handle: Arc<ShutdownHandle>,
+
+    /// Metrics collector for SIGUSR2 statistics reporting.
+    metrics_collector: Arc<RwLock<MetricsCollector>>,
+
+    /// Logging service for SIGUSR2 log rotation.
+    logging_service: Arc<RwLock<LoggingService>>,
 }
 
 impl SignalHandlers {
@@ -220,6 +226,8 @@ impl SignalHandlers {
     /// * `config_reloader` - Configuration reload service for SIGHUP
     /// * `dns_cache` - DNS cache for SIGUSR1 statistics dumping
     /// * `shutdown_handle` - Shutdown coordination for SIGTERM/SIGINT
+    /// * `metrics_collector` - Metrics collector for SIGUSR2 statistics reporting
+    /// * `logging_service` - Logging service for SIGUSR2 log rotation
     ///
     /// # Returns
     ///
@@ -232,17 +240,23 @@ impl SignalHandlers {
     ///     Arc::clone(&config_reloader),
     ///     Arc::clone(&dns_cache),
     ///     Arc::clone(&shutdown_handle),
+    ///     Arc::clone(&metrics_collector),
+    ///     Arc::clone(&logging_service),
     /// );
     /// ```
     pub fn new(
         config_reloader: Arc<RwLock<ConfigReloader>>,
         dns_cache: Arc<RwLock<DnsCache>>,
         shutdown_handle: Arc<ShutdownHandle>,
+        metrics_collector: Arc<RwLock<MetricsCollector>>,
+        logging_service: Arc<RwLock<LoggingService>>,
     ) -> Self {
         Self {
             config_reloader,
             dns_cache,
             shutdown_handle,
+            metrics_collector,
+            logging_service,
         }
     }
 
@@ -296,16 +310,9 @@ impl SignalHandlers {
     pub async fn handle_sigterm(&self) -> Result<()> {
         info!("SIGTERM received: initiating graceful shutdown");
         
-        match self.shutdown_handle.shutdown().await {
-            Ok(()) => {
-                info!("Graceful shutdown completed");
-                Ok(())
-            }
-            Err(e) => {
-                error!("Shutdown failed: {}", e);
-                Err(e).context("SIGTERM handler: failed to shutdown gracefully")
-            }
-        }
+        self.shutdown_handle.shutdown().await;
+        info!("Graceful shutdown completed");
+        Ok(())
     }
 
     /// Handles SIGINT: Graceful shutdown (same as SIGTERM).
@@ -320,16 +327,9 @@ impl SignalHandlers {
     pub async fn handle_sigint(&self) -> Result<()> {
         info!("SIGINT received: initiating graceful shutdown");
         
-        match self.shutdown_handle.shutdown().await {
-            Ok(()) => {
-                info!("Graceful shutdown completed");
-                Ok(())
-            }
-            Err(e) => {
-                error!("Shutdown failed: {}", e);
-                Err(e).context("SIGINT handler: failed to shutdown gracefully")
-            }
-        }
+        self.shutdown_handle.shutdown().await;
+        info!("Graceful shutdown completed");
+        Ok(())
     }
 
     /// Handles SIGUSR1: Dumps DNS cache statistics to log.
@@ -353,8 +353,8 @@ impl SignalHandlers {
         let stats = cache.get_stats();
         
         info!(
-            entries = stats.entries,
-            max_size = stats.max_size,
+            entries = stats.current_size,
+            capacity = stats.capacity,
             hits = stats.hits,
             misses = stats.misses,
             evictions = stats.evictions,
@@ -395,11 +395,13 @@ impl SignalHandlers {
         info!("SIGUSR2 received: reporting metrics and rotating logs");
         
         // Report all metrics first
-        report_all();
+        let collector = self.metrics_collector.read().await;
+        report_all(&collector);
         info!("Metrics reported successfully");
         
         // Flush and rotate logs
-        match flush_log().await {
+        let mut logging_service = self.logging_service.write().await;
+        match flush_log(&mut *logging_service).await {
             Ok(()) => {
                 info!("Log rotation completed successfully");
                 Ok(())

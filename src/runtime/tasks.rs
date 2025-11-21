@@ -188,17 +188,17 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio::task::JoinHandle;
-use tokio::time::{interval, sleep};
+use tokio::time::sleep;
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::config::Config;
-use crate::dns::cache::DnsCache;
-use crate::dns::upstream::UpstreamPool;
-use crate::dhcp::lease::database::write_leases;
-use crate::dhcp::lease::LeaseManager;
+
+
+
+
+
 use crate::error::Result;
-use crate::types::Timestamp;
-use crate::util::logging::flush_log;
+
+
 
 /// Backoff strategy for task restart on failure.
 ///
@@ -333,8 +333,8 @@ impl ShutdownHandle {
     ///
     /// `true` if shutdown has been signaled, `false` otherwise.
     pub fn is_shutdown(&self) -> bool {
-        // Try to receive without blocking
-        let rx = self.rx.try_read();
+        // Try to receive without blocking - requires mutable access
+        let rx = self.rx.try_write();
         if let Ok(mut receiver) = rx {
             matches!(receiver.try_recv(), Ok(()) | Err(broadcast::error::TryRecvError::Closed))
         } else {
@@ -353,6 +353,7 @@ impl ShutdownHandle {
 
 /// Task metadata for tracking and debugging.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct TaskMetadata {
     /// Task name for logging and identification.
     name: String,
@@ -495,7 +496,7 @@ impl TaskManager {
     #[instrument(skip(self, task_fn), fields(task_name = %name))]
     pub fn spawn_periodic_task<F, Fut>(
         &self,
-        name: impl Into<String>,
+        name: String,
         interval_duration: Duration,
         backoff: BackoffStrategy,
         task_fn: F,
@@ -503,7 +504,6 @@ impl TaskManager {
         F: Fn(ShutdownHandle) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<()>> + Send + 'static,
     {
-        let name = name.into();
         let shutdown_rx = self.shutdown_tx.subscribe();
         let shutdown_handle = ShutdownHandle::new(shutdown_rx);
         let completion_tx = self.completion_tx.clone();
@@ -613,14 +613,13 @@ impl TaskManager {
     #[instrument(skip(self, task_fn), fields(task_name = %name))]
     pub fn spawn_background_task<F, Fut>(
         &self,
-        name: impl Into<String>,
+        name: String,
         backoff: BackoffStrategy,
         task_fn: F,
     ) where
         F: Fn(ShutdownHandle) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<()>> + Send + 'static,
     {
-        let name = name.into();
         let shutdown_rx = self.shutdown_tx.subscribe();
         let shutdown_handle = ShutdownHandle::new(shutdown_rx);
         let completion_tx = self.completion_tx.clone();
@@ -782,7 +781,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         task_manager.spawn_periodic_task(
-            "test_periodic",
+            "test_periodic".to_string(),
             Duration::from_millis(50),
             BackoffStrategy::None,
             move |shutdown| {
@@ -812,7 +811,7 @@ mod tests {
         let executed_clone = Arc::clone(&executed);
 
         task_manager.spawn_background_task(
-            "test_background",
+            "test_background".to_string(),
             BackoffStrategy::None,
             move |shutdown| {
                 let executed = Arc::clone(&executed_clone);
@@ -839,7 +838,7 @@ mod tests {
         let shutdown_clone = Arc::clone(&shutdown_received);
 
         task_manager.spawn_background_task(
-            "test_shutdown",
+            "test_shutdown".to_string(),
             BackoffStrategy::None,
             move |shutdown| {
                 let flag = Arc::clone(&shutdown_clone);

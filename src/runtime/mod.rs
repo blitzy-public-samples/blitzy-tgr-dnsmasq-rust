@@ -11,3 +11,4 @@
 //! event loop with Rust's tokio async/await model.
 
 pub mod reactor;
+pub mod tasks;
