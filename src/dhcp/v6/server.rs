@@ -516,7 +516,7 @@ impl DhcpV6Server {
 
         // Extract CLIENT_ID option (required per RFC 3315)
         let client_id = message.get_option(OPTION_CLIENT_ID)
-            .ok_or_else(|| DhcpError::MissingOption { option_code: OPTION_CLIENT_ID })?
+            .ok_or(DhcpError::MissingOption { option_code: OPTION_CLIENT_ID })?
             .to_vec();
 
         // Extract IA (Identity Association) information
@@ -1036,7 +1036,7 @@ impl DhcpV6Server {
             }
             
             let interface = range.interface.clone().unwrap_or_else(|| "default".to_string());
-            pools.entry(interface).or_insert_with(Vec::new).push(range.clone());
+            pools.entry(interface).or_default().push(range.clone());
         }
         
         Ok(pools)
@@ -1118,9 +1118,9 @@ mod tests {
         };
         
         let addr_in = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 150);
-        assert!(DhcpV6Server::is_address_in_pools(&addr_in, &[pool.clone()]));
+        assert!(DhcpV6Server::is_address_in_pools(&addr_in, std::slice::from_ref(&pool)));
         
         let addr_out = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 250);
-        assert!(!DhcpV6Server::is_address_in_pools(&addr_out, &[pool]));
+        assert!(!DhcpV6Server::is_address_in_pools(&addr_out, std::slice::from_ref(&pool)));
     }
 }
