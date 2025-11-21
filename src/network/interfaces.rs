@@ -237,7 +237,7 @@ use crate::network::platform::NetworkPlatform;
 ///     println!("Interface event: {:?}", event);
 /// }
 /// ```
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InterfaceManager {
     /// Platform-specific network operations implementation
     ///

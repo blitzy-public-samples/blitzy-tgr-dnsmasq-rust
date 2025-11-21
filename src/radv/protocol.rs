@@ -60,7 +60,7 @@ use std::net::Ipv6Addr;
 ///
 /// **Note**: This is a link-local scope multicast address (FF02), meaning it is not
 /// forwarded beyond the local network segment.
-pub const ALL_NODES: &str = "FF02::1";
+pub const ALL_NODES: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 1);
 
 /// IPv6 link-local all-routers multicast address (FF02::2)
 ///
@@ -75,7 +75,24 @@ pub const ALL_NODES: &str = "FF02::1";
 ///
 /// **Note**: While defined here for protocol completeness, dnsmasq as a router
 /// primarily transmits to ALL_NODES and may listen for solicitations on this address.
-pub const ALL_ROUTERS: &str = "FF02::2";
+pub const ALL_ROUTERS: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 2);
+
+/// IPv6 Hop Limit for Router Advertisement messages (255)
+///
+/// RFC 4861 Section 6.1.2 requires that Router Advertisement messages MUST have
+/// a hop limit of 255 to prevent off-link attackers from injecting fraudulent
+/// Router Advertisements. This is a crucial security requirement - the receiving
+/// host can verify the RA came from an on-link router by checking that the
+/// hop limit equals 255 (since each hop decrements it).
+///
+/// This constant is used when:
+/// - Setting IPV6_MULTICAST_HOPS socket option for RA transmission
+/// - Setting IPV6_UNICAST_HOPS for unicast RA responses
+/// - Validating received Router Solicitation messages
+///
+/// RFC 4861 Section 6.1.2: "The IP Hop Limit field has a value of 255, i.e., the
+/// packet could not possibly have been forwarded by a router."
+pub const HOP_LIMIT: u8 = 255;
 
 /// ICMPv6 Echo Request message type (128)
 ///
@@ -91,6 +108,13 @@ pub const ICMP6_ECHO_REQUEST: u8 = 128;
 ///
 /// RFC 4443 Section 4.2: ICMPv6 Echo Reply Message
 pub const ICMP6_ECHO_REPLY: u8 = 129;
+
+/// ICMPv6 Router Solicitation message type (133)
+///
+/// Used by hosts to request routers to generate Router Advertisements immediately.
+///
+/// RFC 4861 Section 4.1: Router Solicitation Message Format
+pub const ICMP6_ROUTER_SOLICIT: u8 = 133;
 
 /// ICMPv6 Router Advertisement message type (134)
 ///
@@ -766,8 +790,8 @@ mod tests {
 
     #[test]
     fn test_multicast_addresses() {
-        assert_eq!(ALL_NODES, "FF02::1");
-        assert_eq!(ALL_ROUTERS, "FF02::2");
+        assert_eq!(ALL_NODES, Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 1));
+        assert_eq!(ALL_ROUTERS, Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 2));
     }
 
     #[test]

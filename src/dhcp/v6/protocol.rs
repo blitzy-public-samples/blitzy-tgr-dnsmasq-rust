@@ -1626,6 +1626,7 @@ mod tests {
             start6: IpAddr::V6(Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1)),
             flags: 0,
             if_index: 1,
+            lease_time: 3600, // 1 hour lease time
         };
 
         let ctx = RequestContext::new(clid, txid, "eth0", 0x9999, OPTION_IA_PD, true)

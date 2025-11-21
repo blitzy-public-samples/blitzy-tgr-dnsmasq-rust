@@ -323,7 +323,7 @@ pub enum InterfaceEvent {
 /// - `subscribe_to_changes()`: Replaces netlink.c (Linux) and bpf.c (BSD) monitoring
 /// - `index_to_name()`: Replaces if_indextoname() calls
 #[async_trait]
-pub trait NetworkPlatform: Send + Sync {
+pub trait NetworkPlatform: Send + Sync + std::fmt::Debug {
     /// Enumerate all network interfaces on the system
     ///
     /// Returns a complete list of interfaces with their addresses, flags, and properties.

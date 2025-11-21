@@ -103,7 +103,7 @@ use tracing::{debug, error, info, instrument, trace};
 ///     Ok(())
 /// }
 /// ```
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LinuxNetworkPlatform {
     /// rtnetlink handle for making requests to the kernel.
     ///

@@ -102,13 +102,26 @@
 //!
 //! **Rust Pattern** (this module):
 //! ```rust
+//! use dnsmasq::dhcp::v4::DhcpMessage;
+//!
 //! // Automatic memory management with RAII
 //! let mut buffer = vec![0u8; 1024];
 //! // Automatic Drop cleanup, no leaks possible
 //!
+//! # // Simulate a minimal DHCP message for the example
+//! # buffer[0] = 1; // op = BOOTREQUEST
+//! # buffer[1] = 1; // htype = Ethernet
+//! # buffer[2] = 6; // hlen = 6
+//! # buffer[236] = 0x63; // magic cookie
+//! # buffer[237] = 0x82;
+//! # buffer[238] = 0x53;
+//! # buffer[239] = 0x63;
+//! # buffer[240] = 0xFF; // End option
+//! # 
 //! // Bounds-checked parsing with nom combinators
 //! let message = DhcpMessage::parse_dhcp_message(&buffer)?;
 //! // Compile-time prevention of buffer overflows
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
 //! ## Concurrency Model

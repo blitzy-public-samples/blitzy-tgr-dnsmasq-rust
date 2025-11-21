@@ -217,6 +217,10 @@ pub struct Config {
     /// DHCP subsystem configuration  
     pub dhcp: DhcpConfig,
 
+    /// Router Advertisement interface configurations
+    /// Corresponds to C daemon->ra_interfaces linked list
+    pub ra_interfaces: Vec<RaInterface>,
+
     /// Network interface and listening configuration
     pub network: NetworkConfig,
 
@@ -706,6 +710,13 @@ pub struct DhcpConfig {
     /// CONTEXT_V6 flag. Includes both IA_NA (address allocation) and IA_PD
     /// (prefix delegation) pools.
     pub v6_ranges: Vec<DhcpRange>,
+    
+    /// DHCPv6 contexts for Router Advertisement integration.
+    ///
+    /// Replaces C `struct dhcp_context *dhcp6` linked list. Contains DHCPv6
+    /// context information needed for Router Advertisement processing including
+    /// interface bindings, flags, and lease times.
+    pub dhcp_contexts: Vec<DhcpContext>,
 
     /// Static DHCP lease reservations.
     ///
@@ -755,6 +766,7 @@ impl Default for DhcpConfig {
         Self {
             v4_ranges: Vec::new(),
             v6_ranges: Vec::new(),
+            dhcp_contexts: Vec::new(),
             static_leases: Vec::new(),
             lease_file: Some(PathBuf::from(LEASEFILE)),
             lease_time: Duration::from_secs(DEFLEASE as u64),
@@ -881,6 +893,104 @@ pub struct DhcpRange {
 /// - `prefix`: Prefix length for DHCPv6 prefix delegation (bits)
 /// - `valid`: Valid lifetime for IPv6 addresses (seconds)
 /// - `preferred`: Preferred lifetime for IPv6 addresses (seconds)
+
+// DHCP Context flags (from C dnsmasq.h)
+// These flags control DHCP and Router Advertisement behavior
+
+/// Static DHCP lease flag
+pub const CONTEXT_STATIC: u32 = 1u32 << 0;
+
+/// Network mask specification flag
+pub const CONTEXT_NETMASK: u32 = 1u32 << 1;
+
+/// Broadcast address flag
+pub const CONTEXT_BRDCAST: u32 = 1u32 << 2;
+
+/// Proxy DHCP flag
+pub const CONTEXT_PROXY: u32 = 1u32 << 3;
+
+/// Router Advertisement router flag
+pub const CONTEXT_RA_ROUTER: u32 = 1u32 << 4;
+
+/// Router Advertisement processing complete flag
+pub const CONTEXT_RA_DONE: u32 = 1u32 << 5;
+
+/// Router Advertisement name flag
+pub const CONTEXT_RA_NAME: u32 = 1u32 << 6;
+
+/// Router Advertisement stateless autoconfiguration flag
+pub const CONTEXT_RA_STATELESS: u32 = 1u32 << 7;
+
+/// DHCP context active flag
+pub const CONTEXT_DHCP: u32 = 1u32 << 8;
+
+/// Deprecated address flag
+pub const CONTEXT_DEPRECATE: u32 = 1u32 << 9;
+
+/// Template context flag for dynamic ranges
+pub const CONTEXT_TEMPLATE: u32 = 1u32 << 10;
+
+/// Constructed context flag
+pub const CONTEXT_CONSTRUCTED: u32 = 1u32 << 11;
+
+/// Garbage collection candidate flag
+pub const CONTEXT_GC: u32 = 1u32 << 12;
+
+/// Router Advertisement enabled flag
+pub const CONTEXT_RA: u32 = 1u32 << 13;
+
+/// Configuration used flag
+pub const CONTEXT_CONF_USED: u32 = 1u32 << 14;
+
+/// Context currently in use flag
+pub const CONTEXT_USED: u32 = 1u32 << 15;
+
+/// Old/stale context flag
+pub const CONTEXT_OLD: u32 = 1u32 << 16;
+
+/// IPv6 context flag
+pub const CONTEXT_V6: u32 = 1u32 << 17;
+
+/// Router Advertisement off-link prefix flag
+pub const CONTEXT_RA_OFF_LINK: u32 = 1u32 << 18;
+
+/// Set lease flag for manual lease assignment
+pub const CONTEXT_SETLEASE: u32 = 1u32 << 19;
+
+/// Router Advertisement interface configuration
+///
+/// Corresponds to C struct ra_interface from dnsmasq.h.
+/// Specifies per-interface Router Advertisement parameters.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct RaInterface {
+    /// Interface name (e.g., "eth0", "wlan0")
+    pub name: String,
+    
+    /// Router Advertisement interval in seconds
+    /// RFC 4861 Section 6.2.1: MinRtrAdvInterval to MaxRtrAdvInterval (typically 200-600s)
+    pub interval: u32,
+    
+    /// Router lifetime in seconds
+    /// RFC 4861 Section 6.2.1: Indicates how long the router should be considered a default router.
+    /// Value of 0 means the router should not be considered a default router.
+    pub lifetime: u32,
+    
+    /// Router priority (for default router preference)
+    /// RFC 4191: HIGH (1), MEDIUM (0), LOW (3), or RESERVED (2)
+    pub priority: u8,
+    
+    /// MTU option value for Router Advertisements
+    /// Advertises the link MTU to hosts. Value of 0 means no MTU option is sent.
+    /// Typical value: 1500 (Ethernet), 1280 (minimum IPv6 MTU)
+    pub mtu: u32,
+}
+
+/// DHCP context for IPv6 address ranges and Router Advertisement configuration.
+///
+/// Replaces C `struct dhcp_context`. This structure defines the parameters for
+/// DHCPv6 address allocation and IPv6 Router Advertisement for a specific network
+/// range or interface. Each context represents a logical network segment with its
+/// own allocation policies, RA settings, and lifetime parameters.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DhcpContext {
     /// IPv6 range start address.
@@ -905,6 +1015,35 @@ pub struct DhcpContext {
     /// Replaces C `int if_index`. Interface index for binding DHCPv6 server
     /// socket and correlating with Router Advertisement interface.
     pub if_index: i32,
+    
+    /// DHCP lease time in seconds.
+    ///
+    /// Replaces C `unsigned int lease_time`. Specifies the lease duration
+    /// for addresses allocated from this context. Used for calculating 
+    /// valid and preferred lifetimes in Router Advertisements.
+    pub lease_time: u32,
+}
+
+impl DhcpContext {
+    /// Check if this context is for IPv6.
+    ///
+    /// Replaces C check: `(context->flags & CONTEXT_V6)`
+    pub fn is_v6(&self) -> bool {
+        (self.flags & CONTEXT_V6) != 0
+    }
+
+    /// Check if this context contains the given IP address.
+    ///
+    /// For IPv6 contexts, this would check if the address falls within
+    /// the context's range. This is a simplified implementation that
+    /// checks if the address matches the start address.
+    ///
+    /// Replaces C: `is_same_net6(local, &context->start6, context->prefix)`
+    pub fn contains_address(&self, addr: std::net::IpAddr) -> bool {
+        // Simplified check - just compare addresses for now
+        // A full implementation would need prefix length and proper subnet matching
+        self.start6 == addr
+    }
 }
 
 /// Static DHCP lease reservation.
