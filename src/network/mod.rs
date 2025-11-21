@@ -205,15 +205,12 @@
 //!
 //! No `unsafe` blocks in this file; FFI to system calls is encapsulated in `platform/` submodules.
 
-use std::collections::{HashMap, Vec};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tokio::time::{interval, Duration};
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::config::Config;
+use crate::config::types::Config;
 use crate::error::NetworkError;
-use crate::types::MacAddress;
 
 // Module declarations with appropriate visibility
 pub mod sockets;
@@ -229,7 +226,7 @@ pub mod firewall;
 pub mod conntrack;
 
 // Re-export commonly used types from submodules
-pub use sockets::{DhcpSocket, DnsSocket, SocketManager, TftpSocket};
+pub use sockets::{DhcpSocket, DnsSocket, DnsSocketType, RaSocket, SocketManager, TftpSocket};
 pub use interfaces::{InterfaceEvent, InterfaceManager, NetworkInterface};
 pub use arp::ArpCache;
 pub use platform::{create_platform_handler, NetworkPlatform};
@@ -283,7 +280,7 @@ pub struct ListenerSet {
     /// TFTP socket (if TFTP feature enabled)
     pub tftp: Option<TftpSocket>,
     /// ICMPv6 raw socket for Router Advertisement (if enabled)
-    pub icmpv6: Option<tokio::net::UdpSocket>,
+    pub icmpv6: Option<RaSocket>,
 }
 
 impl ListenerSet {
@@ -395,7 +392,9 @@ pub struct NetworkService {
     /// Trait object allows runtime polymorphism across Linux (netlink),
     /// BSD (routing sockets), and macOS variants without compile-time dispatch overhead
     /// (platform is known at compile time, but abstraction aids testing).
-    platform: Box<dyn NetworkPlatform>,
+    /// 
+    /// Arc allows sharing with InterfaceManager and ArpCache without cloning the entire platform.
+    platform: Arc<dyn NetworkPlatform>,
     
     /// Configuration specifying network behavior.
     ///
@@ -466,25 +465,32 @@ impl NetworkService {
     /// - `enumerate_interfaces()`: Interface discovery
     /// - `create_bound_listeners()`: Listener setup
     /// - `check_servers()`: Upstream server validation
-    #[instrument(skip(config), fields(interfaces = ?config.interface_names))]
+    #[instrument(skip(config), fields(interfaces = ?config.network.interfaces))]
     pub async fn initialize(config: Arc<Config>) -> Result<Self, NetworkError> {
         info!("Initializing network service");
 
         // Create platform-specific handler
         debug!("Creating platform handler");
-        let platform = create_platform_handler().await.map_err(|e| {
+        let platform_box = create_platform_handler().await.map_err(|e| {
             error!("Failed to create platform handler: {}", e);
-            e
+            NetworkError::InterfaceEnumerationFailed {
+                reason: format!("Platform handler creation failed: {}", e),
+            }
         })?;
+        
+        // Convert Box<dyn NetworkPlatform> to Arc<dyn NetworkPlatform>
+        let platform: Arc<dyn NetworkPlatform> = Arc::from(platform_box);
 
         // Create interface manager and enumerate interfaces
         debug!("Enumerating network interfaces");
-        let interface_manager = InterfaceManager::new(platform.as_ref()).await.map_err(|e| {
-            error!("Failed to enumerate interfaces: {}", e);
-            e
-        })?;
+        let interface_manager = InterfaceManager::new(platform.clone());
 
-        let interfaces = interface_manager.enumerate_interfaces().await?;
+        let interfaces = interface_manager.enumerate_interfaces().await.map_err(|e| {
+            error!("Failed to enumerate interfaces: {}", e);
+            NetworkError::InterfaceEnumerationFailed {
+                reason: format!("Interface enumeration failed: {}", e),
+            }
+        })?;
         info!("Discovered {} network interfaces", interfaces.len());
 
         // Validate that we have usable interfaces
@@ -495,27 +501,35 @@ impl NetworkService {
             debug!("Found {} usable interfaces", usable_count);
         }
 
+        // Initialize helper process for ARP cache script execution
+        debug!("Initializing helper process");
+        let helper = Arc::new(RwLock::new(crate::util::helpers::HelperProcess::new(config.clone())));
+        
         // Initialize ARP cache
         debug!("Initializing ARP cache");
-        let arp_cache = Arc::new(RwLock::new(ArpCache::new()));
+        let arp_cache = Arc::new(RwLock::new(ArpCache::new(
+            platform.clone(),
+            config.clone(),
+            helper.clone(),
+        )));
         
         // Perform initial ARP cache synchronization with kernel tables
         {
             let mut cache = arp_cache.write().await;
-            cache.update_from_kernel(platform.as_ref()).await.map_err(|e| {
+            cache.update_from_kernel().await.map_err(|e| {
                 warn!("Initial ARP cache update failed: {}", e);
                 e
             })?;
         }
 
         // Create socket manager
-        let socket_manager = SocketManager::new(config.clone());
+        let socket_manager = SocketManager::new(Arc::new(config.network.clone()));
 
         // Initialize optional conntrack handler (Linux only, feature-gated)
         #[cfg(all(target_os = "linux", feature = "conntrack"))]
-        let conntrack = if config.conntrack_enabled() {
+        let conntrack = {
             debug!("Initializing conntrack handler");
-            match ConntrackHandler::new().await {
+            match ConntrackHandler::new() {
                 Ok(handler) => {
                     info!("Conntrack integration enabled");
                     Some(handler)
@@ -525,26 +539,22 @@ impl NetworkService {
                     None
                 }
             }
-        } else {
-            None
         };
 
         // Initialize optional firewall backend
         #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
-        let firewall = if config.firewall_enabled() {
+        let firewall = {
             debug!("Initializing firewall backend");
-            match firewall::create_firewall_backend(config.clone()).await {
-                Ok(backend) => {
-                    info!("Firewall integration enabled: {}", backend.backend_type());
+            match firewall::create_firewall_backend(&config) {
+                Some(backend) => {
+                    info!("Firewall integration enabled");
                     Some(backend)
                 }
-                Err(e) => {
-                    warn!("Failed to initialize firewall backend: {}", e);
+                None => {
+                    debug!("No firewall backend configured");
                     None
                 }
             }
-        } else {
-            None
         };
 
         info!("Network service initialized successfully");
@@ -663,54 +673,68 @@ impl NetworkService {
         let mut listeners = ListenerSet::new();
 
         // Create DNS listeners (UDP and TCP)
-        debug!("Creating DNS listeners on port {}", self.config.dns_port());
-        match self.socket_manager.create_dns_listeners(&self.interface_manager).await {
-            Ok((udp_sockets, tcp_listeners)) => {
+        debug!("Creating DNS listeners on port {}", self.config.network.port);
+        
+        // Get the current interface list for listener creation
+        let interfaces = self.interface_manager.enumerate_interfaces().await
+            .map_err(|e| NetworkError::InterfaceEnumerationFailed { 
+                reason: format!("Failed to enumerate interfaces: {}", e) 
+            })?;
+        
+        match self.socket_manager.create_dns_listeners(&interfaces).await {
+            Ok(dns_listener_list) => {
+                // Split the listeners into UDP and TCP based on socket type
+                for listener in dns_listener_list {
+                    match listener.socket {
+                        DnsSocketType::Udp(socket) => {
+                            listeners.dns_udp.push(DnsSocket::new(socket));
+                        }
+                        DnsSocketType::Tcp(socket) => {
+                            listeners.dns_tcp.push(socket);
+                        }
+                    }
+                }
                 info!("Created {} DNS UDP sockets, {} TCP listeners", 
-                      udp_sockets.len(), tcp_listeners.len());
-                listeners.dns_udp = udp_sockets;
-                listeners.dns_tcp = tcp_listeners;
+                      listeners.dns_udp.len(), listeners.dns_tcp.len());
             }
             Err(e) => {
                 error!("Failed to create DNS listeners: {}", e);
-                return Err(e);
+                return Err(NetworkError::SocketFailed { 
+                    address: format!("port {}", self.config.network.port),
+                    reason: format!("DNS listener creation failed: {}", e) 
+                });
             }
         }
 
-        // Create DHCPv4 listener if DHCP ranges configured
-        if self.config.has_dhcp_v4_ranges() {
-            debug!("Creating DHCPv4 listener on port 67");
-            match self.socket_manager.create_dhcp_v4_listener(&self.interface_manager).await {
-                Ok(socket) => {
-                    info!("Created DHCPv4 listener");
-                    listeners.dhcp_v4 = Some(socket);
+        // Create DHCP listeners if DHCP ranges configured
+        if !self.config.dhcp.v4_ranges.is_empty() || !self.config.dhcp.v6_ranges.is_empty() {
+            debug!("Creating DHCP listeners on ports 67 (v4) and 547 (v6)");
+            match self.socket_manager.create_dhcp_listeners().await {
+                Ok((v4_socket, v6_socket)) => {
+                    if !self.config.dhcp.v4_ranges.is_empty() {
+                        info!("Created DHCPv4 listener on port 67");
+                        listeners.dhcp_v4 = Some(v4_socket);
+                    }
+                    if !self.config.dhcp.v6_ranges.is_empty() {
+                        info!("Created DHCPv6 listener on port 547");
+                        listeners.dhcp_v6 = Some(v6_socket);
+                    }
                 }
                 Err(e) => {
-                    error!("Failed to create DHCPv4 listener: {}", e);
-                    return Err(e);
-                }
-            }
-        }
-
-        // Create DHCPv6 listener if DHCPv6 ranges configured
-        if self.config.has_dhcp_v6_ranges() {
-            debug!("Creating DHCPv6 listener on port 547");
-            match self.socket_manager.create_dhcp_v6_listener(&self.interface_manager).await {
-                Ok(socket) => {
-                    info!("Created DHCPv6 listener");
-                    listeners.dhcp_v6 = Some(socket);
-                }
-                Err(e) => {
-                    error!("Failed to create DHCPv6 listener: {}", e);
-                    return Err(e);
+                    error!("Failed to create DHCP listeners: {}", e);
+                    return Err(NetworkError::SocketFailed { 
+                        address: "ports 67/547".to_string(),
+                        reason: format!("DHCP listener creation failed: {}", e) 
+                    });
                 }
             }
         }
 
         // Create TFTP listener if enabled
-        if self.config.tftp_enabled() {
+        #[cfg(feature = "tftp")]
+        if self.config.tftp.tftp_prefix.is_some() {
             debug!("Creating TFTP listener on port 69");
-            match self.socket_manager.create_tftp_listener(&self.interface_manager).await {
+            match self.socket_manager.create_tftp_listener().await {
                 Ok(socket) => {
                     info!("Created TFTP listener");
                     listeners.tftp = Some(socket);
@@ -723,9 +747,9 @@ impl NetworkService {
         }
 
         // Create ICMPv6 raw socket for Router Advertisement if enabled
-        if self.config.router_advertisement_enabled() {
+        if self.config.dhcp.enable_ra {
             debug!("Creating ICMPv6 socket for Router Advertisement");
-            match self.socket_manager.create_icmpv6_socket(&self.interface_manager).await {
+            match self.socket_manager.create_icmpv6_socket().await {
                 Ok(socket) => {
                     info!("Created ICMPv6 socket for Router Advertisement");
                     listeners.icmpv6 = Some(socket);
@@ -800,13 +824,9 @@ impl NetworkService {
         debug!("Refreshing network state");
 
         // Refresh interface list
-        match self.interface_manager.refresh_interfaces(self.platform.as_ref()).await {
-            Ok(changed) => {
-                if changed {
-                    info!("Interface list changed during refresh");
-                } else {
-                    debug!("No interface changes detected");
-                }
+        match self.interface_manager.refresh_interfaces().await {
+            Ok(()) => {
+                debug!("Interface list refreshed successfully");
             }
             Err(e) => {
                 warn!("Interface refresh failed: {}", e);
@@ -817,9 +837,9 @@ impl NetworkService {
         // Update ARP cache from kernel
         {
             let mut cache = self.arp_cache.write().await;
-            match cache.update_from_kernel(self.platform.as_ref()).await {
-                Ok(entries_updated) => {
-                    debug!("ARP cache updated: {} entries", entries_updated);
+            match cache.update_from_kernel().await {
+                Ok(()) => {
+                    debug!("ARP cache updated successfully");
                 }
                 Err(e) => {
                     warn!("ARP cache update failed: {}", e);
@@ -917,33 +937,36 @@ impl NetworkService {
         info!("Handling interface change event: {:?}", event);
 
         match &event {
-            InterfaceEvent::InterfaceAdded { name, index } => {
-                debug!("Interface added: {} (index {})", name, index);
+            InterfaceEvent::LinkUp { interface } => {
+                info!("Interface {} is now UP", interface);
                 // Refresh interface list to pick up new interface
-                self.interface_manager.refresh_interfaces(self.platform.as_ref()).await?;
+                self.interface_manager.refresh_interfaces().await
+                    .map_err(|e| NetworkError::InterfaceEnumerationFailed { reason: format!("Failed to refresh interfaces: {}", e) })?;
                 
                 // Check if we need to rebind based on configuration
-                if self.config.bind_dynamic() {
+                if self.config.network.bind_dynamic {
                     info!("Dynamic binding enabled, will rebind listeners");
                     // Note: Actual rebinding would require coordination with runtime
                     // to close old listeners and create new ones
                 }
             }
             
-            InterfaceEvent::InterfaceRemoved { name, index } => {
-                debug!("Interface removed: {} (index {})", name, index);
+            InterfaceEvent::LinkDown { interface } => {
+                warn!("Interface {} is now DOWN", interface);
                 // Update interface list
-                self.interface_manager.refresh_interfaces(self.platform.as_ref()).await?;
-                warn!("Interface {} removed, listeners may need rebinding", name);
+                self.interface_manager.refresh_interfaces().await
+                    .map_err(|e| NetworkError::InterfaceEnumerationFailed { reason: format!("Failed to refresh interfaces: {}", e) })?;
+                warn!("Interface {} down, listeners may need rebinding", interface);
             }
             
             InterfaceEvent::AddressAdded { interface, address } => {
                 info!("Address added to {}: {}", interface, address);
                 // Refresh interface to pick up new address
-                self.interface_manager.refresh_interfaces(self.platform.as_ref()).await?;
+                self.interface_manager.refresh_interfaces().await
+                    .map_err(|e| NetworkError::InterfaceEnumerationFailed { reason: format!("Failed to refresh interfaces: {}", e) })?;
                 
                 // If bind-interfaces mode, may need to create new listener
-                if self.config.bind_interfaces() || self.config.bind_dynamic() {
+                if self.config.network.bind_interfaces || self.config.network.bind_dynamic {
                     debug!("Interface-specific binding active, rebind may be required");
                 }
             }
@@ -951,30 +974,25 @@ impl NetworkService {
             InterfaceEvent::AddressRemoved { interface, address } => {
                 info!("Address removed from {}: {}", interface, address);
                 // Update interface state
-                self.interface_manager.refresh_interfaces(self.platform.as_ref()).await?;
+                self.interface_manager.refresh_interfaces().await
+                    .map_err(|e| NetworkError::InterfaceEnumerationFailed { reason: format!("Failed to refresh interfaces: {}", e) })?;
                 warn!("Address {} removed from {}, listeners may be affected", address, interface);
             }
             
-            InterfaceEvent::InterfaceUp { name } => {
-                info!("Interface {} is now UP", name);
-                self.interface_manager.refresh_interfaces(self.platform.as_ref()).await?;
-            }
-            
-            InterfaceEvent::InterfaceDown { name } => {
-                warn!("Interface {} is now DOWN", name);
-                self.interface_manager.refresh_interfaces(self.platform.as_ref()).await?;
-            }
-            
-            InterfaceEvent::MtuChanged { interface, old_mtu, new_mtu } => {
-                debug!("MTU changed on {}: {} -> {}", interface, old_mtu, new_mtu);
-                // MTU changes may affect EDNS0 buffer sizes but don't require rebinding
+            InterfaceEvent::RouteChanged { destination, gateway } => {
+                debug!("Route changed: destination={}, gateway={:?}", destination, gateway);
+                // Route changes may affect upstream server reachability
+                // This would typically trigger re-evaluation of which interface to use
+                // for forwarding queries to specific upstream servers
+                self.interface_manager.refresh_interfaces().await
+                    .map_err(|e| NetworkError::InterfaceEnumerationFailed { reason: format!("Failed to refresh interfaces: {}", e) })?;
             }
         }
 
         // Notify ARP cache of potential changes (new interfaces may have new neighbors)
         {
             let mut cache = self.arp_cache.write().await;
-            if let Err(e) = cache.notify_changes(&event).await {
+            if let Err(e) = cache.notify_changes().await {
                 warn!("ARP cache notification failed: {}", e);
             }
         }
