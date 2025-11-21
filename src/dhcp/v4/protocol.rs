@@ -82,6 +82,7 @@ use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 // Internal imports from dependency files
@@ -108,12 +109,12 @@ use crate::types::MacAddress;
 /// # Thread Safety
 ///
 /// All fields are wrapped in Arc for shared immutable access across async tasks.
-/// LeaseManager internally uses RwLock for thread-safe lease database mutations.
+/// LeaseManager is additionally wrapped in RwLock for coordinated access across services.
 pub struct DhcpProtocol {
     /// DHCP configuration with ranges and static leases
     config: Arc<DhcpConfig>,
     /// Lease management coordinator
-    lease_manager: Arc<LeaseManager>,
+    lease_manager: Arc<RwLock<LeaseManager>>,
 }
 
 impl DhcpProtocol {
@@ -133,10 +134,10 @@ impl DhcpProtocol {
     /// ```rust,ignore
     /// let protocol = DhcpProtocol::new(
     ///     Arc::new(dhcp_config),
-    ///     Arc::new(lease_manager),
+    ///     Arc::new(RwLock::new(lease_manager)),
     /// );
     /// ```
-    pub fn new(config: Arc<DhcpConfig>, lease_manager: Arc<LeaseManager>) -> Self {
+    pub fn new(config: Arc<DhcpConfig>, lease_manager: Arc<RwLock<LeaseManager>>) -> Self {
         Self { config, lease_manager }
     }
 
@@ -198,7 +199,7 @@ impl DhcpProtocol {
             static_lease.ip
         } else {
             // Check if client has existing lease
-            if let Some(existing_lease) = self.lease_manager.find_by_mac(&client_mac).await {
+            if let Some(existing_lease) = self.lease_manager.read().await.find_by_mac(&client_mac).await {
                 if !existing_lease.is_expired() {
                     debug!(
                         client_mac = %client_mac,
@@ -457,7 +458,7 @@ impl DhcpProtocol {
         // Note: Full implementation would mark the address with DECLINED flag and set timeout
         // For now, we release any existing lease for this address
         if let Some(existing_lease) =
-            self.lease_manager.find_by_ip(&std::net::IpAddr::V4(*declined_ip)).await
+            self.lease_manager.read().await.find_by_ip(&std::net::IpAddr::V4(*declined_ip)).await
         {
             info!(
                 declined_ip = %declined_ip,
@@ -467,7 +468,7 @@ impl DhcpProtocol {
 
             // Release the lease (marks it available again)
             if let Err(e) =
-                self.lease_manager.release_lease(&std::net::IpAddr::V4(*declined_ip)).await
+                self.lease_manager.read().await.release_lease(&std::net::IpAddr::V4(*declined_ip)).await
             {
                 error!(
                     declined_ip = %declined_ip,
@@ -532,7 +533,7 @@ impl DhcpProtocol {
         }
 
         // Release the lease
-        match self.lease_manager.release_lease(&std::net::IpAddr::V4(ciaddr)).await {
+        match self.lease_manager.read().await.release_lease(&std::net::IpAddr::V4(ciaddr)).await {
             Ok(released_lease) => {
                 info!(
                     client_mac = %client_mac,
@@ -944,6 +945,8 @@ impl DhcpProtocol {
                         // Check if IP is available
                         if self
                             .lease_manager
+                            .read()
+                            .await
                             .find_by_ip(&std::net::IpAddr::V4(*req_ip))
                             .await
                             .is_none()
@@ -972,7 +975,7 @@ impl DhcpProtocol {
                 let candidate_addr = std::net::IpAddr::V4(candidate_ip);
 
                 // Check if this IP is available
-                if self.lease_manager.find_by_ip(&candidate_addr).await.is_none() {
+                if self.lease_manager.read().await.find_by_ip(&candidate_addr).await.is_none() {
                     debug!(
                         client_mac = %client_mac,
                         allocated_ip = %candidate_ip,
@@ -1012,7 +1015,7 @@ impl DhcpProtocol {
 
         // Check if IP is available or already leased to this client
         if let Some(existing_lease) =
-            self.lease_manager.find_by_ip(&std::net::IpAddr::V4(requested_ip)).await
+            self.lease_manager.read().await.find_by_ip(&std::net::IpAddr::V4(requested_ip)).await
         {
             // Verify it's leased to this client
             if existing_lease.mac != Some(client_mac) {
@@ -1038,6 +1041,8 @@ impl DhcpProtocol {
 
         match self
             .lease_manager
+            .read()
+            .await
             .allocate_lease(
                 std::net::IpAddr::V4(requested_ip),
                 Some(client_mac),
@@ -1123,7 +1128,7 @@ impl DhcpProtocol {
 
         // Check if IP is available or leased to this client
         if let Some(existing_lease) =
-            self.lease_manager.find_by_ip(&std::net::IpAddr::V4(requested_ip)).await
+            self.lease_manager.read().await.find_by_ip(&std::net::IpAddr::V4(requested_ip)).await
         {
             if existing_lease.mac != Some(client_mac) {
                 warn!(
@@ -1142,6 +1147,8 @@ impl DhcpProtocol {
 
         match self
             .lease_manager
+            .read()
+            .await
             .allocate_lease(
                 std::net::IpAddr::V4(requested_ip),
                 Some(client_mac),
@@ -1200,7 +1207,7 @@ impl DhcpProtocol {
 
         // Verify lease exists and belongs to this client
         let existing_lease =
-            self.lease_manager.find_by_ip(&std::net::IpAddr::V4(ciaddr)).await.ok_or_else(
+            self.lease_manager.read().await.find_by_ip(&std::net::IpAddr::V4(ciaddr)).await.ok_or_else(
                 || {
                     warn!(
                         client_mac = %client_mac,
@@ -1227,7 +1234,7 @@ impl DhcpProtocol {
         let lease_time = self.calculate_lease_time(context, request);
         let server_id = self.determine_server_id(context, request);
 
-        match self.lease_manager.renew_lease(&std::net::IpAddr::V4(ciaddr), lease_time).await {
+        match self.lease_manager.read().await.renew_lease(&std::net::IpAddr::V4(ciaddr), lease_time).await {
             Ok(_) => {
                 let mut ack = DhcpMessage::new_reply(request);
                 ack.set_yiaddr(ciaddr);

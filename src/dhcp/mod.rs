@@ -240,7 +240,6 @@ pub mod v6;
 // Internal imports from dnsmasq modules
 use crate::config::Config;
 use crate::error::DhcpError;
-use crate::types::IpAddr;
 
 // Re-export public API types for ergonomic library consumption
 pub use common::generate_xid;
@@ -253,7 +252,6 @@ pub use v6::DhcpV6Service;
 // External dependencies
 use std::sync::Arc;
 use tokio::net::UdpSocket;
-use tokio::select;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
@@ -295,45 +293,27 @@ use tracing::{debug, error, info, warn};
 /// - Rust: `tokio::select! { result = socket.recv_from(...) => handle_packet(result) }`
 ///
 /// This provides equivalent performance with better composability and resource efficiency.
-#[derive(Debug)]
 pub struct DhcpService {
     /// DHCPv4 service instance handling RFC 2131 protocol operations.
     ///
     /// Created during initialization if DHCPv4 is enabled in configuration (default).
     /// None if `--no-dhcp` is specified or no DHCPv4 ranges are configured.
+    /// 
+    /// The service owns its socket internally and runs its own event loop.
     v4_service: Option<DhcpV4Service>,
-
-    /// DHCPv4 UDP socket bound to port 67 (DHCP_SERVER_PORT).
-    ///
-    /// Socket options configured:
-    /// - `SO_BROADCAST`: Enable sending to broadcast address 255.255.255.255
-    /// - `SO_REUSEADDR`: Allow multiple instances on same host (bind-interfaces mode)
-    /// - `IP_PKTINFO` (Linux): Receive destination address for proper interface selection
-    ///
-    /// Replaces C: `daemon->dhcpfd = socket(AF_INET, SOCK_DGRAM, 0)`
-    v4_socket: Option<UdpSocket>,
 
     /// DHCPv6 service instance handling RFC 3315 protocol operations.
     ///
     /// Created during initialization if DHCPv6 is enabled (feature flag "dhcp6") and
     /// IPv6 address ranges or prefix delegation is configured.
+    /// 
+    /// The service owns its socket internally and runs its own event loop.
     #[cfg(feature = "dhcp6")]
     v6_service: Option<DhcpV6Service>,
 
-    /// DHCPv6 UDP socket bound to port 547 (DHCPV6_SERVER_PORT).
-    ///
-    /// Socket options configured:
-    /// - `IPV6_V6ONLY`: Disable IPv4-mapped IPv6 addresses
-    /// - `IPV6_RECVPKTINFO`: Receive destination address for interface selection
-    /// - `IPV6_TCLASS`: Set traffic class to CS6 (network control priority)
-    ///
-    /// Replaces C: `daemon->dhcp6fd = socket(AF_INET6, SOCK_DGRAM, 0)`
-    #[cfg(feature = "dhcp6")]
-    v6_socket: Option<UdpSocket>,
-
     /// Unified lease manager coordinating DHCPv4 and DHCPv6 lease operations.
     ///
-    /// Shared via Arc to enable concurrent access from:
+    /// Shared via Arc<RwLock> to enable concurrent access from:
     /// - DHCPv4 service (lease allocation, renewal, release)
     /// - DHCPv6 service (IA_NA allocation, prefix delegation)
     /// - DNS integration (hostname registration from leases)
@@ -341,7 +321,7 @@ pub struct DhcpService {
     /// - D-Bus interface (lease query operations)
     ///
     /// Replaces C global state: `daemon->leases` linked list
-    lease_manager: Arc<LeaseManager>,
+    lease_manager: Arc<RwLock<LeaseManager>>,
 
     /// Daemon configuration including DHCP ranges, options, and server settings.
     ///
@@ -349,26 +329,32 @@ pub struct DhcpService {
     /// restarting the service or losing active leases.
     ///
     /// Replaces C: `daemon->dhcp_conf`, `daemon->dhcp_opts`, etc.
-    config: Arc<Config>,
+    ///
+    /// Note: Prefixed with underscore as currently unused but kept for future
+    /// configuration hot-reload implementation.
+    _config: Arc<Config>,
 }
 
 impl DhcpService {
     /// Create new DHCP service with unified DHCPv4 and DHCPv6 coordination.
     ///
     /// Replaces C functions `dhcp_init()` and `dhcp6_init()` with a unified initialization
-    /// that creates both services, binds sockets, and configures protocol-specific options.
+    /// that creates both services with all required dependencies.
     ///
     /// # Arguments
     ///
     /// * `config` - Daemon configuration with DHCP ranges, options, and server settings
     /// * `lease_manager` - Shared lease database for both DHCPv4 and DHCPv6
+    /// * `dns_cache` - DNS cache for hostname registration from DHCP leases
+    /// * `helper` - Helper process executor for lease change scripts
+    /// * `interface_manager` - Network interface manager for interface-aware DHCP
     ///
     /// # Returns
     ///
-    /// - `Ok(DhcpService)`: Service successfully initialized with sockets bound
+    /// - `Ok(DhcpService)`: Service successfully initialized
     /// - `Err(DhcpError::SocketError)`: Socket creation or binding failed
-    /// - `Err(DhcpError::V4ProtocolError)`: DHCPv4 socket option configuration failed
-    /// - `Err(DhcpError::V6ProtocolError)`: DHCPv6 socket option configuration failed
+    /// - `Err(DhcpError::V4ProtocolError)`: DHCPv4 initialization failed
+    /// - `Err(DhcpError::V6ProtocolError)`: DHCPv6 initialization failed
     ///
     /// # C Equivalence
     ///
@@ -397,53 +383,99 @@ impl DhcpService {
     /// ```rust,ignore
     /// use dnsmasq::dhcp::{DhcpService, LeaseManager};
     /// use dnsmasq::config::Config;
+    /// use dnsmasq::dns::cache::DnsCache;
+    /// use dnsmasq::util::helpers::HelperProcess;
+    /// use dnsmasq::network::interfaces::InterfaceManager;
     /// use std::sync::Arc;
+    /// use tokio::sync::RwLock;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let config = Arc::new(Config::from_file("/etc/dnsmasq.conf").await?);
-    /// let lease_manager = Arc::new(LeaseManager::new(config.clone()).await?);
+    /// let lease_manager = Arc::new(RwLock::new(LeaseManager::new(config.clone(), dns_cache.clone(), 150).await?));
+    /// let dns_cache = Arc::new(RwLock::new(DnsCache::new(config.clone())));
+    /// let helper = Arc::new(HelperProcess::new(config.clone()));
+    /// let interface_manager = Arc::new(InterfaceManager::new().await?);
     ///
-    /// let service = DhcpService::new(config, lease_manager).await?;
+    /// let service = DhcpService::new(config, lease_manager, dns_cache, helper, interface_manager).await?;
     /// # Ok(())
     /// # }
     /// ```
     pub async fn new(
         config: Arc<Config>,
-        lease_manager: Arc<LeaseManager>,
+        lease_manager: Arc<RwLock<LeaseManager>>,
+        dns_cache: Arc<RwLock<crate::dns::cache::DnsCache>>,
+        helper: Arc<crate::util::helpers::HelperProcess>,
+        interface_manager: Arc<crate::network::interfaces::InterfaceManager>,
     ) -> Result<Self, DhcpError> {
         info!("Initializing DHCP service");
 
         // Initialize DHCPv4 service if configured
-        let (v4_service, v4_socket) = if config.enable_dhcpv4() {
+        let v4_service = if !config.dhcp.v4_ranges.is_empty() {
             debug!("Initializing DHCPv4 service");
 
-            // Create DHCPv4 service instance
-            let service = DhcpV4Service::new(config.clone(), lease_manager.clone())
-                .await
-                .map_err(|e| {
-                    error!("Failed to initialize DHCPv4 service: {}", e);
-                    e
-                })?;
-
             // Bind DHCPv4 socket to port 67
-            let socket = Self::bind_v4_socket(&config).await.map_err(|e| {
-                error!("Failed to bind DHCPv4 socket: {}", e);
+            // Use first IPv4 listen address if configured, otherwise bind to all interfaces
+            let bind_addr = config
+                .network
+                .listen_addresses
+                .iter()
+                .find(|addr| matches!(addr, std::net::IpAddr::V4(_)))
+                .map(|addr| format!("{}:67", addr))
+                .unwrap_or_else(|| "0.0.0.0:67".to_string());
+
+            debug!("Binding DHCPv4 socket to {}", bind_addr);
+
+            let udp_socket = UdpSocket::bind(&bind_addr).await.map_err(|e| {
+                DhcpError::SocketError(format!("Failed to bind DHCPv4 socket to {}: {}", bind_addr, e))
+            })?;
+
+            // Enable broadcast (required for DHCPOFFER to 255.255.255.255)
+            udp_socket.set_broadcast(true).map_err(|e| {
+                DhcpError::V4ProtocolError {
+                    reason: format!("Failed to set SO_BROADCAST: {}", e),
+                }
+            })?;
+
+            debug!("DHCPv4 socket successfully bound with broadcast enabled");
+
+            // Wrap socket in DhcpSocket
+            let socket = Arc::new(crate::network::sockets::DhcpSocket::new(udp_socket));
+
+            // Create DHCPv4 protocol handler
+            let protocol = v4::protocol::DhcpProtocol::new(
+                Arc::new(config.dhcp.clone()),
+                lease_manager.clone(),
+            );
+
+            // Create DHCPv4 service instance with all dependencies
+            let service = DhcpV4Service::new(
+                socket,
+                protocol,
+                lease_manager.clone(),
+                dns_cache.clone(),
+                helper.clone(),
+                interface_manager.clone(),
+                config.clone(),
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to initialize DHCPv4 service: {}", e);
                 e
             })?;
 
             info!("DHCPv4 service initialized on port 67");
-            (Some(service), Some(socket))
+            Some(service)
         } else {
             debug!("DHCPv4 disabled by configuration");
-            (None, None)
+            None
         };
 
         // Initialize DHCPv6 service if configured and feature enabled
         #[cfg(feature = "dhcp6")]
-        let (v6_service, v6_socket) = if config.enable_dhcpv6() {
+        let v6_service = if !config.dhcp.v6_ranges.is_empty() {
             debug!("Initializing DHCPv6 service");
 
-            // Create DHCPv6 service instance
+            // DHCPv6 service creates its own socket internally
             let service = DhcpV6Service::new(config.clone(), lease_manager.clone())
                 .await
                 .map_err(|e| {
@@ -451,17 +483,11 @@ impl DhcpService {
                     e
                 })?;
 
-            // Bind DHCPv6 socket to port 547
-            let socket = Self::bind_v6_socket(&config).await.map_err(|e| {
-                error!("Failed to bind DHCPv6 socket: {}", e);
-                e
-            })?;
-
-            info!("DHCPv6 service initialized on port 547");
-            (Some(service), Some(socket))
+            info!("DHCPv6 service initialized");
+            Some(service)
         } else {
             debug!("DHCPv6 disabled by configuration or feature flag");
-            (None, None)
+            None
         };
 
         // Verify at least one DHCP service is enabled
@@ -483,216 +509,25 @@ impl DhcpService {
 
         Ok(Self {
             v4_service,
-            v4_socket,
             #[cfg(feature = "dhcp6")]
             v6_service,
-            #[cfg(feature = "dhcp6")]
-            v6_socket,
             lease_manager,
-            config,
+            _config: config,
         })
     }
 
-    /// Bind DHCPv4 UDP socket to port 67 with appropriate socket options.
-    ///
-    /// Configures the socket for DHCPv4 operation including broadcast sending,
-    /// address reuse for multiple instances, and platform-specific options.
-    ///
-    /// # Socket Options
-    ///
-    /// - `SO_BROADCAST`: Enable sending to 255.255.255.255
-    /// - `SO_REUSEADDR`: Multiple binds in bind-interfaces mode
-    /// - `IP_PKTINFO` (Linux): Receive destination address
-    ///
-    /// Replaces C: `socket(AF_INET, SOCK_DGRAM, 0)` + `setsockopt()` calls
-    async fn bind_v4_socket(config: &Config) -> Result<UdpSocket, DhcpError> {
-        // Determine bind address based on configuration
-        let bind_addr = if let Some(listen_addr) = config.dhcp_listen_address_v4() {
-            format!("{}:67", listen_addr)
-        } else {
-            "0.0.0.0:67".to_string()
-        };
 
-        debug!("Binding DHCPv4 socket to {}", bind_addr);
 
-        // Create and bind socket
-        let socket = UdpSocket::bind(&bind_addr).await.map_err(|e| {
-            DhcpError::SocketError(format!("Failed to bind DHCPv4 socket to {}: {}", bind_addr, e))
-        })?;
 
-        // Enable broadcast (required for DHCPOFFER to 255.255.255.255)
-        socket.set_broadcast(true).map_err(|e| {
-            DhcpError::V4ProtocolError {
-                reason: format!("Failed to set SO_BROADCAST: {}", e),
-            }
-        })?;
-
-        debug!("DHCPv4 socket successfully bound with broadcast enabled");
-        Ok(socket)
-    }
-
-    /// Bind DHCPv6 UDP socket to port 547 with IPv6-specific socket options.
-    ///
-    /// Configures the socket for DHCPv6 operation including IPv6-only mode,
-    /// packet info reception, and traffic class settings.
-    ///
-    /// # Socket Options
-    ///
-    /// - `IPV6_V6ONLY`: Disable IPv4-mapped addresses
-    /// - `IPV6_RECVPKTINFO`: Receive destination address
-    /// - `IPV6_TCLASS`: Set to CS6 for network control priority
-    ///
-    /// Replaces C: `socket(AF_INET6, SOCK_DGRAM, 0)` + `setsockopt()` calls
-    #[cfg(feature = "dhcp6")]
-    async fn bind_v6_socket(config: &Config) -> Result<UdpSocket, DhcpError> {
-        // Determine bind address based on configuration
-        let bind_addr = if let Some(listen_addr) = config.dhcp_listen_address_v6() {
-            format!("[{}]:547", listen_addr)
-        } else {
-            "[::]:547".to_string()
-        };
-
-        debug!("Binding DHCPv6 socket to {}", bind_addr);
-
-        // Create and bind socket
-        let socket = UdpSocket::bind(&bind_addr).await.map_err(|e| {
-            DhcpError::SocketError(format!("Failed to bind DHCPv6 socket to {}: {}", bind_addr, e))
-        })?;
-
-        // Platform-specific socket options would be configured here
-        // (IPV6_V6ONLY, IPV6_RECVPKTINFO, IPV6_TCLASS)
-        // These require platform-specific code via nix crate which would be
-        // conditionally compiled based on target OS
-
-        debug!("DHCPv6 socket successfully bound");
-        Ok(socket)
-    }
 
     /// Receive and dispatch a single DHCP packet from either DHCPv4 or DHCPv6 socket.
-    ///
-    /// This method implements the core event loop multiplexing using `tokio::select!` to
-    /// wait on both DHCPv4 (port 67) and DHCPv6 (port 547) sockets concurrently. When a
-    /// packet arrives on either socket, it is dispatched to the appropriate protocol handler.
-    ///
-    /// Replaces C functions:
-    /// - `dhcp_packet()` for DHCPv4 handling (src/dhcp.c)
-    /// - `dhcp6_packet()` for DHCPv6 handling (src/dhcp6.c)
-    ///
-    /// # C Event Loop Pattern
-    ///
-    /// ```c
-    /// // C implementation (dnsmasq.c main loop)
-    /// while (1) {
-    ///     // Set up poll file descriptors
-    ///     if (daemon->dhcpfd != -1)
-    ///         fds[nfds++].fd = daemon->dhcpfd;
-    ///     if (daemon->dhcp6fd != -1)
-    ///         fds[nfds++].fd = daemon->dhcp6fd;
-    ///     
-    ///     // Block until packet arrives
-    ///     poll(fds, nfds, timeout);
-    ///     
-    ///     // Check which socket has data
-    ///     if (fds[dhcp_idx].revents & POLLIN)
-    ///         dhcp_packet();  // Handle DHCPv4
-    ///     if (fds[dhcp6_idx].revents & POLLIN)
-    ///         dhcp6_packet(); // Handle DHCPv6
-    /// }
-    /// ```
-    ///
-    /// # Rust Async Pattern
-    ///
-    /// ```rust,ignore
-    /// loop {
-    ///     service.receive_and_dispatch().await?;
-    /// }
-    /// ```
-    ///
-    /// # Returns
-    ///
-    /// - `Ok(())`: Packet received and processed successfully
-    /// - `Err(DhcpError)`: Socket error, protocol error, or processing failure
-    ///
-    /// # Async Behavior
-    ///
-    /// This method is cancel-safe: if the future is dropped while waiting for packets,
-    /// no data is lost as the packets remain in the kernel socket buffer.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,ignore
-    /// use dnsmasq::dhcp::DhcpService;
-    ///
-    /// # async fn example(mut service: DhcpService) -> Result<(), Box<dyn std::error::Error>> {
-    /// // Process packets in event loop
-    /// loop {
-    ///     if let Err(e) = service.receive_and_dispatch().await {
-    ///         eprintln!("DHCP error: {}", e);
-    ///     }
-    /// }
-    /// # }
-    /// ```
-    pub async fn receive_and_dispatch(&mut self) -> Result<(), DhcpError> {
-        // Buffer for receiving packets (576 bytes minimum for DHCPv4 per RFC 2131)
-        let mut buf_v4 = vec![0u8; 1500];
-        let mut buf_v6 = vec![0u8; 1500];
 
-        // Use tokio::select! to multiplex both sockets
-        select! {
-            // DHCPv4 packet received on port 67
-            result = async {
-                match &self.v4_socket {
-                    Some(socket) => socket.recv_from(&mut buf_v4).await,
-                    None => std::future::pending().await, // Never resolves if no v4
-                }
-            } => {
-                let (len, src_addr) = result.map_err(|e| {
-                    DhcpError::SocketError(format!("DHCPv4 recv_from error: {}", e))
-                })?;
-
-                debug!("Received {} byte DHCPv4 packet from {}", len, src_addr);
-
-                // Dispatch to DHCPv4 service
-                if let Some(service) = &mut self.v4_service {
-                    service.handle_packet(&buf_v4[..len], src_addr).await.map_err(|e| {
-                        warn!("DHCPv4 packet processing error from {}: {}", src_addr, e);
-                        e
-                    })?;
-                }
-            }
-
-            // DHCPv6 packet received on port 547
-            #[cfg(feature = "dhcp6")]
-            result = async {
-                match &self.v6_socket {
-                    Some(socket) => socket.recv_from(&mut buf_v6).await,
-                    None => std::future::pending().await, // Never resolves if no v6
-                }
-            } => {
-                let (len, src_addr) = result.map_err(|e| {
-                    DhcpError::SocketError(format!("DHCPv6 recv_from error: {}", e))
-                })?;
-
-                debug!("Received {} byte DHCPv6 packet from {}", len, src_addr);
-
-                // Dispatch to DHCPv6 service
-                if let Some(service) = &mut self.v6_service {
-                    service.handle_packet(&buf_v6[..len], src_addr).await.map_err(|e| {
-                        warn!("DHCPv6 packet processing error from {}: {}", src_addr, e);
-                        e
-                    })?;
-                }
-            }
-        }
-
-        Ok(())
-    }
 
     /// Run the DHCP service event loop indefinitely.
     ///
-    /// This is the main entry point for DHCP service operation, continuously receiving
-    /// and processing DHCP packets from both DHCPv4 and DHCPv6 sockets until an
-    /// unrecoverable error occurs or the service is shut down.
+    /// This is the main entry point for DHCP service operation. It spawns separate
+    /// tokio tasks for DHCPv4 and DHCPv6 services (if enabled) and waits for any
+    /// task to complete or error. Each service runs its own event loop independently.
     ///
     /// # Returns
     ///
@@ -701,9 +536,9 @@ impl DhcpService {
     ///
     /// # Error Handling
     ///
-    /// Transient errors (malformed packets, processing failures) are logged but do not
-    /// terminate the loop. Only critical errors (socket failures, resource exhaustion)
-    /// cause the loop to exit.
+    /// If any service task terminates with an error, this method returns that error
+    /// and all other tasks are cancelled. Transient errors within individual services
+    /// are handled internally and logged but do not terminate the service.
     ///
     /// # Examples
     ///
@@ -716,26 +551,119 @@ impl DhcpService {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn run(&mut self) -> Result<(), DhcpError> {
+    pub async fn run(mut self) -> Result<(), DhcpError> {
         info!("DHCP service starting event loop");
 
-        loop {
-            // Process one packet from either DHCPv4 or DHCPv6
-            if let Err(e) = self.receive_and_dispatch().await {
-                // Log error but continue serving
-                error!("DHCP packet processing error: {}", e);
+        // Spawn DHCPv4 service task if available
+        let v4_handle = if let Some(mut v4_service) = self.v4_service.take() {
+            Some(tokio::spawn(async move {
+                info!("DHCPv4 service task starting");
+                v4_service.run().await
+            }))
+        } else {
+            None
+        };
 
-                // Only fatal errors should break the loop
-                match e {
-                    DhcpError::SocketError(_) => {
-                        error!("Fatal socket error, terminating DHCP service");
-                        return Err(e);
+        // Spawn DHCPv6 service task if available
+        #[cfg(feature = "dhcp6")]
+        let v6_handle = if let Some(mut v6_service) = self.v6_service.take() {
+            Some(tokio::spawn(async move {
+                info!("DHCPv6 service task starting");
+                v6_service.run().await
+            }))
+        } else {
+            None
+        };
+
+        #[cfg(not(feature = "dhcp6"))]
+        let v6_handle: Option<tokio::task::JoinHandle<Result<(), DhcpError>>> = None;
+
+        // Wait for any task to complete
+        match (v4_handle, v6_handle) {
+            (Some(v4), Some(v6)) => {
+                tokio::select! {
+                    result = v4 => {
+                        match result {
+                            Ok(Ok(())) => {
+                                warn!("DHCPv4 service unexpectedly terminated normally");
+                                Ok(())
+                            }
+                            Ok(Err(e)) => {
+                                error!("DHCPv4 service terminated with error: {}", e);
+                                Err(e)
+                            }
+                            Err(e) => {
+                                error!("DHCPv4 service task panicked: {}", e);
+                                Err(DhcpError::V4ProtocolError {
+                                    reason: format!("Task panic: {}", e),
+                                })
+                            }
+                        }
                     }
-                    _ => {
-                        // Non-fatal error, continue processing
-                        continue;
+                    result = v6 => {
+                        match result {
+                            Ok(Ok(())) => {
+                                warn!("DHCPv6 service unexpectedly terminated normally");
+                                Ok(())
+                            }
+                            Ok(Err(e)) => {
+                                error!("DHCPv6 service terminated with error: {}", e);
+                                Err(e)
+                            }
+                            Err(e) => {
+                                error!("DHCPv6 service task panicked: {}", e);
+                                Err(DhcpError::V6ProtocolError {
+                                    reason: format!("Task panic: {}", e),
+                                })
+                            }
+                        }
                     }
                 }
+            }
+            (Some(v4), None) => {
+                // Only DHCPv4 enabled
+                match v4.await {
+                    Ok(Ok(())) => {
+                        warn!("DHCPv4 service unexpectedly terminated normally");
+                        Ok(())
+                    }
+                    Ok(Err(e)) => {
+                        error!("DHCPv4 service terminated with error: {}", e);
+                        Err(e)
+                    }
+                    Err(e) => {
+                        error!("DHCPv4 service task panicked: {}", e);
+                        Err(DhcpError::V4ProtocolError {
+                            reason: format!("Task panic: {}", e),
+                        })
+                    }
+                }
+            }
+            (None, Some(v6)) => {
+                // Only DHCPv6 enabled
+                match v6.await {
+                    Ok(Ok(())) => {
+                        warn!("DHCPv6 service unexpectedly terminated normally");
+                        Ok(())
+                    }
+                    Ok(Err(e)) => {
+                        error!("DHCPv6 service terminated with error: {}", e);
+                        Err(e)
+                    }
+                    Err(e) => {
+                        error!("DHCPv6 service task panicked: {}", e);
+                        Err(DhcpError::V6ProtocolError {
+                            reason: format!("Task panic: {}", e),
+                        })
+                    }
+                }
+            }
+            (None, None) => {
+                // No services available - should not happen if new() validation works
+                error!("No DHCP services available to run");
+                Err(DhcpError::V4ProtocolError {
+                    reason: "No DHCP services available".to_string(),
+                })
             }
         }
     }
@@ -783,7 +711,7 @@ impl DhcpService {
 ///
 /// # Returns
 ///
-/// Shared Arc reference to the lease manager.
+/// Shared Arc<RwLock> reference to the lease manager.
 ///
 /// # Examples
 ///
@@ -794,12 +722,12 @@ impl DhcpService {
 /// let lease_manager = get_lease_manager(service);
 ///
 /// // Query leases
-/// let active_leases = lease_manager.list_active().await?;
+/// let active_leases = lease_manager.read().await.list_active().await?;
 /// println!("Active leases: {}", active_leases.len());
 /// # Ok(())
 /// # }
 /// ```
-pub fn get_lease_manager(service: &DhcpService) -> Arc<LeaseManager> {
+pub fn get_lease_manager(service: &DhcpService) -> Arc<RwLock<LeaseManager>> {
     Arc::clone(&service.lease_manager)
 }
 
