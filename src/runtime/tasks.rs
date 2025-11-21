@@ -784,7 +784,7 @@ mod tests {
             "test_periodic".to_string(),
             Duration::from_millis(50),
             BackoffStrategy::None,
-            move |shutdown| {
+            move |_shutdown| {
                 let counter = Arc::clone(&counter_clone);
                 async move {
                     counter.fetch_add(1, Ordering::SeqCst);
