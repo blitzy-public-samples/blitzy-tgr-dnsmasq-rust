@@ -451,7 +451,7 @@ impl TftpServer {
             if let Ok(requested_blksize) = blksize_str.parse::<u16>() {
                 // Clamp to valid range: 8-65464 bytes
                 // Upper limit ensures room for TFTP headers in MTU
-                let clamped_blksize = requested_blksize.max(8).min(65464);
+                let clamped_blksize = requested_blksize.clamp(8, 65464);
                 
                 // Respect MTU limit if configured
                 let mtu_limit = self.config.tftp_mtu.saturating_sub(28); // IP+UDP headers
