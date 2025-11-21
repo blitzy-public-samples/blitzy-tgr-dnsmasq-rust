@@ -45,6 +45,7 @@ pub mod network;
 pub mod platform;
 pub mod radv;
 pub mod runtime;
+#[cfg(feature = "tftp")]
 pub mod tftp;
 pub mod types;
 pub mod util;
