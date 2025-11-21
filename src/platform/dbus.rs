@@ -471,7 +471,7 @@ impl DbusService {
 /// - `DhcpLeaseDeleted(String, String, String)`: Lease expired/released
 /// - `DhcpLeaseUpdated(String, String, String)`: Lease renewed
 #[cfg(feature = "dbus")]
-struct DnsmasqInterface {
+pub struct DnsmasqInterface {
     /// Reference to DNS service for cache and upstream operations
     dns_service: Arc<RwLock<DnsService>>,
     /// Reference to DHCP service for lease management (optional)
