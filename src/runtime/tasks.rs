@@ -420,11 +420,17 @@ struct TaskMetadata {
 /// 3. `wait_for_completion()` - Waits for all tasks to finish cleanup
 ///
 /// This replaces C's global `run` flag and signal-based termination.
+/// Type alias for the task list storage to reduce type complexity.
+type TaskList = Arc<RwLock<Vec<(TaskMetadata, JoinHandle<Result<()>>)>>>;
+
+/// Task management system for coordinating background operations.
+///
+/// Provides structured concurrency for periodic maintenance tasks.
 pub struct TaskManager {
     /// Broadcast sender for shutdown coordination.
     shutdown_tx: broadcast::Sender<()>,
     /// Join handles for all spawned tasks.
-    tasks: Arc<RwLock<Vec<(TaskMetadata, JoinHandle<Result<()>>)>>>,
+    tasks: TaskList,
     /// Channel for task completion notifications.
     completion_tx: mpsc::UnboundedSender<String>,
     /// Channel receiver for task completion.
