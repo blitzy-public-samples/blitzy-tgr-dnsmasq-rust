@@ -221,7 +221,7 @@
 //! - [`dnssec`]: DNSSEC validation subsystem (feature-gated)
 //! - [`auth`]: Authoritative zone serving (feature-gated)
 
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, instrument, warn};
@@ -254,6 +254,7 @@ use protocol::message::Question;
 // Import required types from other crates
 use crate::config::types::DnsConfig;
 use crate::error::{DnsError, Result};
+use crate::types::DomainName;
 // Types are used in methods and documentation
 
 #[cfg(feature = "auth")]
@@ -653,6 +654,155 @@ impl DnsService {
         // 3. AuthService::reload_zones() method (if auth feature)
 
         warn!("Configuration reload not yet implemented - restart required for config changes");
+    }
+
+    /// Clear all upstream servers from the pool.
+    ///
+    /// Removes all configured upstream DNS servers. Called by D-Bus `SetServers` method
+    /// before adding new server list.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// dns_service.clear_upstream_servers().await;
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn clear_upstream_servers(&self) {
+        let mut pool = self.upstream_pool.write().await;
+        pool.clear();
+    }
+
+    /// Add an upstream DNS server to the pool.
+    ///
+    /// # Arguments
+    ///
+    /// * `addr` - IP address of the upstream server
+    /// * `domain` - Optional domain restriction (None for general-purpose server)
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// dns_service.add_upstream_server("8.8.8.8".parse()?, None).await?;
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn add_upstream_server(&self, addr: IpAddr, domain: Option<String>) -> Result<()> {
+        use upstream::{ServerFlags, UpstreamServer};
+
+        let socket_addr = SocketAddr::new(addr, 53);
+        let mut flags = ServerFlags::empty();
+
+        // Set address family flag
+        match addr {
+            IpAddr::V4(_) => flags |= ServerFlags::IPV4_ADDR,
+            IpAddr::V6(_) => flags |= ServerFlags::IPV6_ADDR,
+        }
+
+        // Convert domain String to DomainName if provided
+        let domain_name = if let Some(d) = domain {
+            flags |= ServerFlags::DOMAIN_SPECIFIC;
+            Some(DomainName::new(d)?)
+        } else {
+            None
+        };
+
+        let server = UpstreamServer::new(socket_addr, domain_name, flags);
+
+        let mut pool = self.upstream_pool.write().await;
+        pool.add_server(server);
+
+        Ok(())
+    }
+
+    /// Get the number of upstream servers in the pool.
+    ///
+    /// # Returns
+    ///
+    /// The count of configured upstream servers.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let count = dns_service.upstream_server_count().await;
+    /// println!("Configured {} upstream servers", count);
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn upstream_server_count(&self) -> usize {
+        let pool = self.upstream_pool.read().await;
+        pool.server_count()
+    }
+
+    /// Get statistics for all upstream servers.
+    ///
+    /// Returns performance and health metrics for each configured upstream server,
+    /// including query counts, failure rates, and response times.
+    ///
+    /// # Returns
+    ///
+    /// Vector of `ServerStats` containing metrics for each server.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let stats = dns_service.get_upstream_server_stats().await;
+    /// for stat in stats {
+    ///     println!("Server {}: {} queries, {} failures",
+    ///              stat.addr, stat.queries, stat.failures);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn get_upstream_server_stats(&self) -> Vec<upstream::ServerStats> {
+        let pool = self.upstream_pool.read().await;
+        pool.get_server_stats()
+    }
+
+    /// Get all upstream server addresses.
+    ///
+    /// Returns a list of all configured upstream server addresses.
+    ///
+    /// # Returns
+    ///
+    /// Vector of server socket addresses.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let servers = dns_service.get_upstream_servers().await;
+    /// for server in servers {
+    ///     println!("Upstream server: {}", server);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn get_upstream_servers(&self) -> Vec<SocketAddr> {
+        let pool = self.upstream_pool.read().await;
+        pool.get_server_stats().iter().map(|s| s.addr).collect()
+    }
+
+    /// Get addresses of servers detected in forwarding loops.
+    ///
+    /// When dnsmasq detects that queries are being forwarded in a loop
+    /// (e.g., dnsmasq forwards to itself), it marks those servers with
+    /// the LOOP flag. This method returns the list of such servers.
+    ///
+    /// # Returns
+    ///
+    /// Vector of socket addresses for servers with LOOP flag set.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let loop_servers = dns_service.get_loop_servers().await;
+    /// for server in loop_servers {
+    ///     println!("Server in loop: {}", server);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn get_loop_servers(&self) -> Vec<SocketAddr> {
+        let pool = self.upstream_pool.read().await;
+        pool.get_server_stats()
+            .iter()
+            .filter(|s| s.flags.contains(upstream::ServerFlags::LOOP))
+            .map(|s| s.addr)
+            .collect()
     }
 }
 
