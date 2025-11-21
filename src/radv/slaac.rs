@@ -89,7 +89,6 @@ use crate::dhcp::lease::Lease;
 use crate::error::NetworkError;
 use crate::network::sockets::RaSocket;
 use crate::radv::protocol::ICMP6_ECHO_REQUEST;
-use crate::types::DomainName;
 use std::net::Ipv6Addr;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
@@ -120,6 +119,7 @@ pub const CONTEXT_OLD: u32 = 0x4000;
 /// is either confirmed (if echo reply received) or timed out (if no reply).
 ///
 /// Corresponds to C PING_BACKOFF in slaac.c line 423.
+#[allow(dead_code)]
 const PING_BACKOFF_INITIAL: u8 = 6;
 
 /// Wait time in seconds between ping attempts for SLAAC duplicate detection.
@@ -128,6 +128,7 @@ const PING_BACKOFF_INITIAL: u8 = 6;
 /// or backoff counter reaches 0.
 ///
 /// Corresponds to C ping timing logic in slaac.c line 527.
+#[allow(dead_code)]
 const PING_WAIT_SECS: u64 = 10;
 
 /// ICMPv6 Echo Reply message type constant.
@@ -242,22 +243,22 @@ pub enum SlaacError {
 pub fn eui64_from_mac(mac: &[u8; 6], prefix: &Ipv6Addr) -> Ipv6Addr {
     // Get prefix segments (first 4 u16 values, total 64 bits)
     let prefix_segments = prefix.segments();
-    
+
     // Construct EUI-64 interface identifier
     // Modified EUI-64: insert 0xFFFE in middle and flip U/L bit
-    let byte0 = mac[0] ^ 0x02;  // Flip universal/local bit (RFC 4291)
+    let byte0 = mac[0] ^ 0x02; // Flip universal/local bit (RFC 4291)
     let byte1 = mac[1];
     let byte2 = mac[2];
     let byte3 = mac[3];
     let byte4 = mac[4];
     let byte5 = mac[5];
-    
+
     // Build interface identifier as 4 u16 segments
     let iid_seg0 = u16::from_be_bytes([byte0, byte1]);
     let iid_seg1 = u16::from_be_bytes([byte2, 0xFF]);
     let iid_seg2 = u16::from_be_bytes([0xFE, byte3]);
     let iid_seg3 = u16::from_be_bytes([byte4, byte5]);
-    
+
     // Combine prefix (64 bits) + interface identifier (64 bits) = full IPv6
     Ipv6Addr::new(
         prefix_segments[0],
@@ -322,9 +323,7 @@ pub async fn slaac_add_addrs(
         Some(mac) => mac.octets(),
         None => {
             debug!("Lease has no MAC address, cannot derive SLAAC addresses");
-            return Err(SlaacError::MacConversionFailed(
-                "Lease has no MAC address".to_string(),
-            ));
+            return Err(SlaacError::MacConversionFailed("Lease has no MAC address".to_string()));
         }
     };
 
@@ -332,7 +331,7 @@ pub async fn slaac_add_addrs(
     if lease.slaac_addresses.is_none() {
         lease.slaac_addresses = Some(Vec::new());
     }
-    
+
     let slaac_addrs = lease.slaac_addresses.as_mut().unwrap();
     let mut added_count = 0;
 
@@ -345,10 +344,7 @@ pub async fn slaac_add_addrs(
 
         // Skip old contexts unless force=true (C code: line 432)
         if !force && (context.flags & CONTEXT_OLD) != 0 {
-            debug!(
-                "Skipping old context for prefix {:?} (force={})",
-                context.start6, force
-            );
+            debug!("Skipping old context for prefix {:?} (force={})", context.start6, force);
             continue;
         }
 
@@ -390,10 +386,10 @@ pub async fn slaac_add_addrs(
         };
 
         // Derive SLAAC address using EUI-64 conversion
-        let slaac_addr = eui64_from_mac(&mac, &prefix);
+        let slaac_addr = eui64_from_mac(mac, &prefix);
 
         // Check if this address already exists in the list
-        let already_exists = slaac_addrs.iter().any(|addr| *addr == slaac_addr);
+        let already_exists = slaac_addrs.contains(&slaac_addr);
         if already_exists {
             debug!("SLAAC address {} already exists for lease", slaac_addr);
             continue;
@@ -412,10 +408,7 @@ pub async fn slaac_add_addrs(
     }
 
     if added_count > 0 {
-        info!(
-            "Added {} SLAAC address(es) for lease on interface {}",
-            added_count, lease.interface
-        );
+        info!("Added {} SLAAC address(es) for lease on interface {}", added_count, lease.interface);
     }
 
     Ok(())
@@ -461,8 +454,8 @@ fn calculate_icmpv6_checksum(src: Ipv6Addr, dst: Ipv6Addr, packet: &[u8]) -> u16
 
     // Add ICMPv6 length (upper layer packet length)
     let length = packet.len() as u32;
-    sum += (length >> 16) & 0xFFFF;  // Upper 16 bits
-    sum += length & 0xFFFF;          // Lower 16 bits
+    sum += (length >> 16) & 0xFFFF; // Upper 16 bits
+    sum += length & 0xFFFF; // Lower 16 bits
 
     // Add next header (ICMPv6 = 58 = 0x3A)
     sum += 58u32;
@@ -518,7 +511,7 @@ fn calculate_icmpv6_checksum(src: Ipv6Addr, dst: Ipv6Addr, packet: &[u8]) -> u16
 fn construct_icmpv6_echo_request(src: Ipv6Addr, target: Ipv6Addr) -> Vec<u8> {
     // Get next ping identifier (atomic increment)
     let ping_id = PING_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
-    
+
     // ICMPv6 Echo Request structure:
     // - Type: 1 byte = 128 (ICMP6_ECHO_REQUEST)
     // - Code: 1 byte = 0
@@ -527,33 +520,33 @@ fn construct_icmpv6_echo_request(src: Ipv6Addr, target: Ipv6Addr) -> Vec<u8> {
     // - Sequence: 2 bytes = 0
     // - Data: 0 bytes (minimal ping)
     let mut packet = vec![0u8; 8];
-    
+
     // Type = Echo Request
     packet[0] = ICMP6_ECHO_REQUEST;
-    
+
     // Code = 0
     packet[1] = 0;
-    
+
     // Checksum = 0 initially (will be calculated)
     packet[2] = 0;
     packet[3] = 0;
-    
+
     // Identifier (big-endian)
     packet[4..6].copy_from_slice(&ping_id.to_be_bytes());
-    
+
     // Sequence = 0 (big-endian)
     packet[6] = 0;
     packet[7] = 0;
-    
+
     // Calculate and insert checksum
     let checksum = calculate_icmpv6_checksum(src, target, &packet);
     packet[2..4].copy_from_slice(&checksum.to_be_bytes());
-    
+
     debug!(
         "Constructed ICMPv6 Echo Request: id={} target={} checksum=0x{:04x}",
         ping_id, target, checksum
     );
-    
+
     packet
 }
 
@@ -605,7 +598,7 @@ pub async fn periodic_slaac(
     leases: Arc<RwLock<Vec<Lease>>>,
     socket: Arc<RaSocket>,
 ) -> Result<(), SlaacError> {
-    let now = Instant::now();
+    let _now = Instant::now();
     let mut leases_write = leases.write().await;
     let mut total_pings_sent = 0;
 
@@ -617,32 +610,31 @@ pub async fn periodic_slaac(
         };
 
         // We need to track addresses to remove (those with expired backoff)
-        let mut addresses_to_remove: Vec<usize> = Vec::new();
+        let _addresses_to_remove: Vec<usize> = Vec::new();
 
         // Check each SLAAC address
-        for (idx, slaac_addr) in slaac_addrs_vec.iter().enumerate() {
+        for slaac_addr in slaac_addrs_vec.iter() {
             // C code lines 527-528: Check if enough time elapsed since last ping
             // In Rust version with Vec<Ipv6Addr>, we'll need to maintain separate state
             // For now, simplified: ping all addresses on each iteration
-            
+
             // C code logic: Create SLAAC address entry if not exists, send ping,
             // decrement backoff. We track this via removed indices approach.
-            
+
             // For the simplified Rust version without full state tracking:
             // Just send ping for each address and let reply handler deal with confirmation
-            
+
             // Construct source address (link-local from lease interface)
             // For simplicity, use unspecified address - kernel will select source
             let src_addr = Ipv6Addr::UNSPECIFIED;
-            
+
             // Construct and send ICMPv6 Echo Request
             let packet = construct_icmpv6_echo_request(src_addr, *slaac_addr);
-            
+
             // Send to target address (use std socket addr with arbitrary port)
-            let target_sock_addr = std::net::SocketAddr::V6(
-                std::net::SocketAddrV6::new(*slaac_addr, 0, 0, 0)
-            );
-            
+            let target_sock_addr =
+                std::net::SocketAddr::V6(std::net::SocketAddrV6::new(*slaac_addr, 0, 0, 0));
+
             match socket.send_ra(&packet, target_sock_addr).await {
                 Ok(_) => {
                     debug!("Sent ICMPv6 Echo Request to {}", slaac_addr);
@@ -660,10 +652,7 @@ pub async fn periodic_slaac(
     }
 
     if total_pings_sent > 0 {
-        info!(
-            "SLAAC periodic check: sent {} ping(s) for duplicate detection",
-            total_pings_sent
-        );
+        info!("SLAAC periodic check: sent {} ping(s) for duplicate detection", total_pings_sent);
     }
 
     Ok(())
@@ -709,33 +698,21 @@ pub async fn periodic_slaac(
 ///
 /// Based on: src/slaac.c slaac_ping_reply() function lines 551-606
 #[instrument(skip(packet))]
-pub async fn slaac_ping_reply(
-    packet: &[u8],
-    src: Ipv6Addr,
-) -> Result<bool, SlaacError> {
+pub async fn slaac_ping_reply(packet: &[u8], src: Ipv6Addr) -> Result<bool, SlaacError> {
     // Validate packet length (minimum: type + code + checksum + id + seq = 8 bytes)
     if packet.len() < 8 {
-        return Err(SlaacError::InvalidPacket(format!(
-            "Packet too short: {} bytes",
-            packet.len()
-        )));
+        return Err(SlaacError::InvalidPacket(format!("Packet too short: {} bytes", packet.len())));
     }
 
     // Validate ICMPv6 type (must be Echo Reply = 129)
     if packet[0] != ICMP6_ECHO_REPLY {
-        return Err(SlaacError::InvalidPacket(format!(
-            "Not an Echo Reply: type={}",
-            packet[0]
-        )));
+        return Err(SlaacError::InvalidPacket(format!("Not an Echo Reply: type={}", packet[0])));
     }
 
     // Extract identifier from packet
     let reply_id = u16::from_be_bytes([packet[4], packet[5]]);
 
-    debug!(
-        "Received ICMPv6 Echo Reply from {}: id={}",
-        src, reply_id
-    );
+    debug!("Received ICMPv6 Echo Reply from {}: id={}", src, reply_id);
 
     // Note: In the C implementation, slaac_ping_reply() has access to
     // daemon->leases to find which lease this address belongs to, and
@@ -753,10 +730,7 @@ pub async fn slaac_ping_reply(
     //
     // C equivalent: src/slaac.c lines 571-596
 
-    info!(
-        "SLAAC echo reply received from {} - address confirmation pending",
-        src
-    );
+    info!("SLAAC echo reply received from {} - address confirmation pending", src);
 
     // Return true to indicate a valid echo reply was received
     // Caller should handle lease lookup and DNS registration

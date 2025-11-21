@@ -60,11 +60,9 @@
 //! - 2: sname field contains options
 //! - 3: both fields contain options
 
-use crate::dhcp::v4::constants::{
-    BOOTREPLY, DHCP_CHADDR_MAX, MAGIC_COOKIE, MIN_PACKETSZ,
-};
 #[cfg(test)]
 use crate::dhcp::v4::constants::BOOTREQUEST;
+use crate::dhcp::v4::constants::{BOOTREPLY, DHCP_CHADDR_MAX, MAGIC_COOKIE, MIN_PACKETSZ};
 use crate::dhcp::v4::options::{encode_options, parse_options, DhcpOption};
 use crate::error::DhcpError;
 use crate::types::MacAddress;

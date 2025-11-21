@@ -34,10 +34,10 @@ use crate::error::PlatformError;
 use crate::util::metrics::MetricsCollector;
 
 // Imports only used when libubus is available
-#[cfg(has_libubus)]
-use crate::util::metrics::get_metric_name;
 #[cfg(all(has_libubus, feature = "conntrack"))]
 use crate::network::conntrack::ConnmarkAllowlist;
+#[cfg(has_libubus)]
+use crate::util::metrics::get_metric_name;
 #[cfg(has_libubus)]
 use libc::{c_char, c_int, c_void};
 #[cfg(has_libubus)]
@@ -66,96 +66,99 @@ use tracing::{debug, instrument, warn};
 mod ffi {
     use super::*;
 
-/// Opaque pointer to ubus context (C struct ubus_context)
-#[repr(C)]
-pub(super) struct UbusContext {
-    _private: [u8; 0],
-}
+    /// Opaque pointer to ubus context (C struct ubus_context)
+    #[repr(C)]
+    pub(super) struct UbusContext {
+        _private: [u8; 0],
+    }
 
-/// Opaque pointer to ubus object (C struct ubus_object)
-#[repr(C)]
-#[allow(dead_code)]
-pub(super) struct UbusObject {
-    _private: [u8; 0],
-}
+    /// Opaque pointer to ubus object (C struct ubus_object)
+    #[repr(C)]
+    #[allow(dead_code)]
+    pub(super) struct UbusObject {
+        _private: [u8; 0],
+    }
 
-/// Opaque pointer to ubus request (C struct ubus_request_data)
-#[repr(C)]
-#[allow(dead_code)]
-pub(super) struct UbusRequestData {
-    _private: [u8; 0],
-}
+    /// Opaque pointer to ubus request (C struct ubus_request_data)
+    #[repr(C)]
+    #[allow(dead_code)]
+    pub(super) struct UbusRequestData {
+        _private: [u8; 0],
+    }
 
-/// Opaque pointer to blob buffer (C struct blob_buf)
-#[repr(C)]
-#[allow(dead_code)]
-pub(super) struct BlobBuf {
-    _private: [u8; 0],
-}
+    /// Opaque pointer to blob buffer (C struct blob_buf)
+    #[repr(C)]
+    #[allow(dead_code)]
+    pub(super) struct BlobBuf {
+        _private: [u8; 0],
+    }
 
-/// Opaque pointer to blob attribute (C struct blob_attr)
-#[repr(C)]
-#[allow(dead_code)]
-pub(super) struct BlobAttr {
-    _private: [u8; 0],
-}
+    /// Opaque pointer to blob attribute (C struct blob_attr)
+    #[repr(C)]
+    #[allow(dead_code)]
+    pub(super) struct BlobAttr {
+        _private: [u8; 0],
+    }
 
-/// Ubus method handler callback type
-#[allow(dead_code)]
-pub(super) type UbusMethodHandler = unsafe extern "C" fn(
-    ctx: *mut UbusContext,
-    obj: *mut UbusObject,
-    req: *mut UbusRequestData,
-    method: *const c_char,
-    msg: *mut BlobAttr,
-) -> c_int;
-
-#[allow(dead_code)]
-extern "C" {
-    // Connection management
-    pub(super) fn ubus_connect(path: *const c_char) -> *mut UbusContext;
-    pub(super) fn ubus_free(ctx: *mut UbusContext);
-    pub(super) fn ubus_reconnect(ctx: *mut UbusContext, path: *const c_char) -> c_int;
-
-    // Object registration
-    pub(super) fn ubus_add_object(ctx: *mut UbusContext, obj: *mut UbusObject) -> c_int;
-    pub(super) fn ubus_remove_object(ctx: *mut UbusContext, obj: *mut UbusObject) -> c_int;
-
-    // Event loop integration
-    pub(super) fn ubus_handle_event(ctx: *mut UbusContext) -> c_int;
-
-    // File descriptor access for async integration
-    pub(super) fn ubus_get_fd(ctx: *mut UbusContext) -> c_int;
-
-    // Response sending
-    pub(super) fn ubus_send_reply(
-        ctx: *mut UbusContext,
-        req: *mut UbusRequestData,
-        buf: *mut BlobBuf,
-    ) -> c_int;
-
-    // Event broadcasting
-    pub(super) fn ubus_notify(
+    /// Ubus method handler callback type
+    #[allow(dead_code)]
+    pub(super) type UbusMethodHandler = unsafe extern "C" fn(
         ctx: *mut UbusContext,
         obj: *mut UbusObject,
-        event_type: *const c_char,
-        msg: *mut BlobBuf,
-        timeout: c_int,
+        req: *mut UbusRequestData,
+        method: *const c_char,
+        msg: *mut BlobAttr,
     ) -> c_int;
 
-    // Blob buffer management (libubox)
-    pub(super) fn blob_buf_init(buf: *mut BlobBuf, id: c_int);
-    pub(super) fn blob_buf_free(buf: *mut BlobBuf);
-    pub(super) fn blobmsg_add_u32(buf: *mut BlobBuf, name: *const c_char, val: u32);
-    pub(super) fn blobmsg_add_string(buf: *mut BlobBuf, name: *const c_char, val: *const c_char);
-    pub(super) fn blobmsg_add_table(buf: *mut BlobBuf, name: *const c_char) -> *mut c_void;
-    pub(super) fn blobmsg_close_table(buf: *mut BlobBuf, cookie: *mut c_void);
+    #[allow(dead_code)]
+    extern "C" {
+        // Connection management
+        pub(super) fn ubus_connect(path: *const c_char) -> *mut UbusContext;
+        pub(super) fn ubus_free(ctx: *mut UbusContext);
+        pub(super) fn ubus_reconnect(ctx: *mut UbusContext, path: *const c_char) -> c_int;
 
-    // Blob parsing
-    pub(super) fn blobmsg_get_u32(attr: *mut BlobAttr) -> u32;
-    pub(super) fn blobmsg_get_string(attr: *mut BlobAttr) -> *const c_char;
-}
+        // Object registration
+        pub(super) fn ubus_add_object(ctx: *mut UbusContext, obj: *mut UbusObject) -> c_int;
+        pub(super) fn ubus_remove_object(ctx: *mut UbusContext, obj: *mut UbusObject) -> c_int;
 
+        // Event loop integration
+        pub(super) fn ubus_handle_event(ctx: *mut UbusContext) -> c_int;
+
+        // File descriptor access for async integration
+        pub(super) fn ubus_get_fd(ctx: *mut UbusContext) -> c_int;
+
+        // Response sending
+        pub(super) fn ubus_send_reply(
+            ctx: *mut UbusContext,
+            req: *mut UbusRequestData,
+            buf: *mut BlobBuf,
+        ) -> c_int;
+
+        // Event broadcasting
+        pub(super) fn ubus_notify(
+            ctx: *mut UbusContext,
+            obj: *mut UbusObject,
+            event_type: *const c_char,
+            msg: *mut BlobBuf,
+            timeout: c_int,
+        ) -> c_int;
+
+        // Blob buffer management (libubox)
+        pub(super) fn blob_buf_init(buf: *mut BlobBuf, id: c_int);
+        pub(super) fn blob_buf_free(buf: *mut BlobBuf);
+        pub(super) fn blobmsg_add_u32(buf: *mut BlobBuf, name: *const c_char, val: u32);
+        pub(super) fn blobmsg_add_string(
+            buf: *mut BlobBuf,
+            name: *const c_char,
+            val: *const c_char,
+        );
+        pub(super) fn blobmsg_add_table(buf: *mut BlobBuf, name: *const c_char) -> *mut c_void;
+        pub(super) fn blobmsg_close_table(buf: *mut BlobBuf, cookie: *mut c_void);
+
+        // Blob parsing
+        pub(super) fn blobmsg_get_u32(attr: *mut BlobAttr) -> u32;
+        pub(super) fn blobmsg_get_string(attr: *mut BlobAttr) -> *const c_char;
+    }
 } // end of cfg(has_libubus) ffi module
 
 // Use FFI types when available

@@ -184,9 +184,9 @@ use crate::error::DhcpError;
 
 // External dependencies from crates.io
 use hex;
-use std::path::PathBuf;
 #[cfg(feature = "lua-scripts")]
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::process::Command;

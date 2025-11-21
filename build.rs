@@ -44,7 +44,7 @@ fn main() {
                     }
                 }
             }
-            
+
             // Enable cfg flag to indicate libubus is available
             println!("cargo:rustc-cfg=has_libubus");
         } else {

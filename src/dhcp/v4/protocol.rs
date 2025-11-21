@@ -85,9 +85,7 @@ use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
 // Internal imports from dependency files
-use super::constants::{
-    OPTION_DNS_SERVER, OPTION_DOMAIN_NAME, OPTION_NETMASK, OPTION_ROUTER,
-};
+use super::constants::{OPTION_DNS_SERVER, OPTION_DOMAIN_NAME, OPTION_NETMASK, OPTION_ROUTER};
 use super::message::DhcpMessage;
 use super::options::{DhcpOption, MessageType};
 

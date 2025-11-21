@@ -142,7 +142,7 @@ use std::collections::HashSet;
 use tracing::{debug, error, info, warn};
 
 #[cfg(unix)]
-use nix::unistd::{User, Group};
+use nix::unistd::{Group, User};
 
 // ============================================================================
 // PRIVILEGE MANAGER TRAIT
