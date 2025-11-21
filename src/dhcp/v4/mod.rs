@@ -18,3 +18,6 @@ pub mod options;
 
 /// DHCPv4 protocol implementation (RFC 2131)
 pub mod protocol;
+
+/// DHCPv4 server core implementation
+pub mod server;

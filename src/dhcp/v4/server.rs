@@ -97,30 +97,30 @@
 //! self.contexts.iter().find(|ctx| ctx.contains(addr))
 //! ```
 
-use crate::config::types::{Config, DhcpConfig, DhcpRange, StaticLease};
-use crate::dhcp::common::{generate_xid, log_tags, match_netid};
-use crate::dhcp::lease::mod::{Lease, LeaseManager};
+use crate::config::types::Config;
+// use crate::dhcp::common::{generate_xid, log_tags, match_netid}; // Unused for now
+use crate::dhcp::lease::LeaseManager;
 use crate::dhcp::v4::constants::{
-    MAGIC_COOKIE, MIN_PACKETSZ, MSG_TYPE_ACK, MSG_TYPE_DECLINE, MSG_TYPE_DISCOVER,
-    MSG_TYPE_INFORM, MSG_TYPE_NAK, MSG_TYPE_OFFER, MSG_TYPE_RELEASE, MSG_TYPE_REQUEST,
-    PORT_SERVER,
+    BROADCAST_FLAG, MIN_PACKETSZ, MSG_TYPE_DECLINE, MSG_TYPE_DISCOVER,
+    MSG_TYPE_INFORM, MSG_TYPE_RELEASE, MSG_TYPE_REQUEST,
 };
-use crate::dhcp::v4::message::{parse_dhcp_message, serialize_dhcp_message, DhcpMessage};
+use crate::dhcp::v4::message::DhcpMessage;
+use crate::dhcp::v4::options::{DhcpOption, MessageType};
 use crate::dhcp::v4::protocol::DhcpProtocol;
 use crate::dns::cache::DnsCache;
 use crate::error::DhcpError;
 use crate::network::interfaces::InterfaceManager;
 use crate::network::sockets::DhcpSocket;
-use crate::types::{DomainName, MacAddress, Timestamp};
-use crate::util::helpers::{HelperProcess, ScriptEvent};
+use crate::types::MacAddress;
+use crate::util::helpers::HelperProcess;
 
-use std::collections::HashMap;
-use std::net::{Ipv4Addr, SocketAddr};
+// use std::collections::HashMap; // Unused for now
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime};
-use tokio::net::UdpSocket;
+use std::time::Duration;
+// use tokio::net::UdpSocket; // Unused - using DhcpSocket abstraction
 use tokio::sync::RwLock;
-use tokio::time::{sleep, timeout};
+use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, warn};
 
 /// DHCPv4 server service providing async message handling and address allocation
@@ -434,7 +434,9 @@ impl DhcpV4Service {
             .socket
             .recv_from(&mut buffer)
             .await
-            .map_err(|e| DhcpError::NetworkError(format!("Failed to receive packet: {}", e)))?;
+            .map_err(|e| DhcpError::V4ProtocolError {
+                reason: format!("Failed to receive packet: {}", e),
+            })?;
 
         debug!(
             source = %source,
@@ -450,29 +452,30 @@ impl DhcpV4Service {
                 min_size = MIN_PACKETSZ,
                 "Packet too small, discarding"
             );
-            return Err(DhcpError::PacketTooSmall);
+            return Err(DhcpError::ParseFailed {
+                reason: format!("Packet too small: {} bytes (minimum {})", len, MIN_PACKETSZ),
+            });
         }
 
         // Truncate buffer to actual received length
         buffer.truncate(len);
 
         // Parse DHCP message
-        let message = parse_dhcp_message(&buffer).map_err(|e| {
+        let message = DhcpMessage::parse_dhcp_message(&buffer).map_err(|e| {
             warn!(
                 source = %source,
                 error = %e,
                 "Failed to parse DHCP message"
             );
-            DhcpError::InvalidPacket(format!("Parse error: {}", e))
+            e
         })?;
 
         // Extract message type from options
         let message_type = message
-            .options
-            .iter()
-            .find_map(|(code, value)| {
-                if *code == 53 && !value.is_empty() {
-                    Some(value[0])
+            .get_option(|opt| matches!(opt, DhcpOption::MessageType(_)))
+            .and_then(|opt| {
+                if let DhcpOption::MessageType(mt) = opt {
+                    Some(mt.to_u8())
                 } else {
                     None
                 }
@@ -480,59 +483,58 @@ impl DhcpV4Service {
             .ok_or_else(|| {
                 warn!(
                     source = %source,
-                    xid = message.transaction_id,
+                    xid = message.transaction_id(),
                     "No message type option found"
                 );
-                DhcpError::InvalidPacket("Missing message type option".to_string())
+                DhcpError::ParseFailed {
+                    reason: "Missing message type option".to_string(),
+                }
             })?;
 
         debug!(
             source = %source,
-            xid = message.transaction_id,
+            xid = message.transaction_id(),
             message_type = message_type,
-            client_mac = %MacAddress::from_bytes(&message.client_hardware_addr[..message.hardware_addr_len as usize])?,
+            client_mac = %message.client_hardware_addr()?,
             "Processing DHCPv4 message"
         );
 
         // Dispatch to protocol handler based on message type
-        let response = match message_type {
+        match message_type {
             MSG_TYPE_DISCOVER => {
                 debug!("Processing DHCPDISCOVER");
-                self.handle_discover(&message, source).await?
+                let response = self.handle_discover(&message, source).await?;
+                self.send_response(&response, source).await?;
             }
             MSG_TYPE_REQUEST => {
                 debug!("Processing DHCPREQUEST");
-                self.handle_request(&message, source).await?
+                let response = self.handle_request(&message, source).await?;
+                self.send_response(&response, source).await?;
             }
             MSG_TYPE_DECLINE => {
                 debug!("Processing DHCPDECLINE");
                 self.handle_decline(&message, source).await?;
-                return Ok(()); // No response for DECLINE
+                // No response for DECLINE per RFC 2131
             }
             MSG_TYPE_RELEASE => {
                 debug!("Processing DHCPRELEASE");
                 self.handle_release(&message, source).await?;
-                return Ok(()); // No response for RELEASE
+                // No response for RELEASE per RFC 2131
             }
             MSG_TYPE_INFORM => {
                 debug!("Processing DHCPINFORM");
-                self.handle_inform(&message, source).await?
+                let response = self.handle_inform(&message, source).await?;
+                self.send_response(&response, source).await?;
             }
             _ => {
                 warn!(
                     message_type = message_type,
                     "Unknown or unsupported message type, discarding"
                 );
-                return Err(DhcpError::InvalidPacket(format!(
-                    "Unknown message type: {}",
-                    message_type
-                )));
+                return Err(DhcpError::ParseFailed {
+                    reason: format!("Unknown message type: {}", message_type),
+                });
             }
-        };
-
-        // Send response if generated
-        if let Some(response_msg) = response {
-            self.send_response(&response_msg, source).await?;
         }
 
         Ok(())
@@ -553,39 +555,29 @@ impl DhcpV4Service {
     /// - `Ok(Some(DhcpMessage))` - DHCPOFFER response to send
     /// - `Ok(None)` - No suitable address available, no response
     /// - `Err(DhcpError)` - Processing error
-    #[instrument(skip(self, message), fields(xid = message.transaction_id))]
+    #[instrument(skip(self, message))]
     async fn handle_discover(
         &mut self,
         message: &DhcpMessage,
         source: SocketAddr,
-    ) -> Result<Option<DhcpMessage>, DhcpError> {
-        let client_mac = MacAddress::from_bytes(
-            &message.client_hardware_addr[..message.hardware_addr_len as usize],
-        )?;
+    ) -> Result<DhcpMessage, DhcpError> {
+        let client_mac = message.client_hardware_addr()?;
 
         debug!(
             mac = %client_mac,
-            xid = message.transaction_id,
+            xid = message.transaction_id(),
             "Processing DHCPDISCOVER"
         );
 
         // Delegate to protocol handler
-        let response = self.protocol.handle_discover(message, &self.config).await?;
+        let response = self.protocol.handle_discover(message).await?;
 
-        if let Some(ref resp) = response {
-            info!(
-                mac = %client_mac,
-                offered_ip = %resp.your_ip_addr,
-                xid = message.transaction_id,
-                "Sending DHCPOFFER"
-            );
-        } else {
-            warn!(
-                mac = %client_mac,
-                xid = message.transaction_id,
-                "No address available for DHCPOFFER"
-            );
-        }
+        info!(
+            mac = %client_mac,
+            offered_ip = %response.yiaddr(),
+            xid = message.transaction_id(),
+            "Sending DHCPOFFER"
+        );
 
         Ok(response)
     }
@@ -602,47 +594,43 @@ impl DhcpV4Service {
     ///
     /// # Returns
     ///
-    /// - `Ok(Some(DhcpMessage))` - DHCPACK or DHCPNAK response
+    /// - `Ok(DhcpMessage)` - DHCPACK or DHCPNAK response
     /// - `Err(DhcpError)` - Processing error
-    #[instrument(skip(self, message), fields(xid = message.transaction_id))]
+    #[instrument(skip(self, message))]
     async fn handle_request(
         &mut self,
         message: &DhcpMessage,
         source: SocketAddr,
-    ) -> Result<Option<DhcpMessage>, DhcpError> {
-        let client_mac = MacAddress::from_bytes(
-            &message.client_hardware_addr[..message.hardware_addr_len as usize],
-        )?;
+    ) -> Result<DhcpMessage, DhcpError> {
+        let client_mac = message.client_hardware_addr()?;
 
         debug!(
             mac = %client_mac,
-            xid = message.transaction_id,
+            xid = message.transaction_id(),
             "Processing DHCPREQUEST"
         );
 
         // Delegate to protocol handler
-        let response = self.protocol.handle_request(message, &self.config).await?;
+        let response = self.protocol.handle_request(message).await?;
 
-        if let Some(ref resp) = response {
-            let is_ack = resp
-                .options
-                .iter()
-                .any(|(code, value)| *code == 53 && !value.is_empty() && value[0] == MSG_TYPE_ACK);
+        let is_ack = response
+            .options()
+            .iter()
+            .any(|opt| matches!(opt, DhcpOption::MessageType(MessageType::Ack)));
 
-            if is_ack {
-                info!(
-                    mac = %client_mac,
-                    ip = %resp.your_ip_addr,
-                    xid = message.transaction_id,
-                    "Sending DHCPACK"
-                );
-            } else {
-                warn!(
-                    mac = %client_mac,
-                    xid = message.transaction_id,
-                    "Sending DHCPNAK"
-                );
-            }
+        if is_ack {
+            info!(
+                mac = %client_mac,
+                ip = %response.yiaddr(),
+                xid = message.transaction_id(),
+                "Sending DHCPACK"
+            );
+        } else {
+            warn!(
+                mac = %client_mac,
+                xid = message.transaction_id(),
+                "Sending DHCPNAK"
+            );
         }
 
         Ok(response)
@@ -662,25 +650,23 @@ impl DhcpV4Service {
     ///
     /// - `Ok(())` - DECLINE processed (no response sent per RFC 2131)
     /// - `Err(DhcpError)` - Processing error
-    #[instrument(skip(self, message), fields(xid = message.transaction_id))]
+    #[instrument(skip(self, message))]
     async fn handle_decline(
         &mut self,
         message: &DhcpMessage,
         source: SocketAddr,
     ) -> Result<(), DhcpError> {
-        let client_mac = MacAddress::from_bytes(
-            &message.client_hardware_addr[..message.hardware_addr_len as usize],
-        )?;
+        let client_mac = message.client_hardware_addr()?;
 
         warn!(
             mac = %client_mac,
-            declined_ip = %message.requested_ip_addr.unwrap_or(Ipv4Addr::UNSPECIFIED),
-            xid = message.transaction_id,
+            declined_ip = %message.requested_ip_address().unwrap_or(Ipv4Addr::UNSPECIFIED),
+            xid = message.transaction_id(),
             "Client declined address (conflict detected)"
         );
 
         // Delegate to protocol handler
-        self.protocol.handle_decline(message, &self.config).await?;
+        self.protocol.handle_decline(message).await?;
 
         Ok(())
     }
@@ -699,25 +685,23 @@ impl DhcpV4Service {
     ///
     /// - `Ok(())` - RELEASE processed (no response sent per RFC 2131)
     /// - `Err(DhcpError)` - Processing error
-    #[instrument(skip(self, message), fields(xid = message.transaction_id))]
+    #[instrument(skip(self, message))]
     async fn handle_release(
         &mut self,
         message: &DhcpMessage,
         source: SocketAddr,
     ) -> Result<(), DhcpError> {
-        let client_mac = MacAddress::from_bytes(
-            &message.client_hardware_addr[..message.hardware_addr_len as usize],
-        )?;
+        let client_mac = message.client_hardware_addr()?;
 
         info!(
             mac = %client_mac,
-            released_ip = %message.client_ip_addr,
-            xid = message.transaction_id,
+            released_ip = %message.ciaddr(),
+            xid = message.transaction_id(),
             "Client released address"
         );
 
         // Delegate to protocol handler
-        self.protocol.handle_release(message, &self.config).await?;
+        self.protocol.handle_release(message).await?;
 
         Ok(())
     }
@@ -735,36 +719,32 @@ impl DhcpV4Service {
     ///
     /// # Returns
     ///
-    /// - `Ok(Some(DhcpMessage))` - DHCPACK with configuration options
+    /// - `Ok(DhcpMessage)` - DHCPACK with configuration options
     /// - `Err(DhcpError)` - Processing error
-    #[instrument(skip(self, message), fields(xid = message.transaction_id))]
+    #[instrument(skip(self, message))]
     async fn handle_inform(
         &mut self,
         message: &DhcpMessage,
         source: SocketAddr,
-    ) -> Result<Option<DhcpMessage>, DhcpError> {
-        let client_mac = MacAddress::from_bytes(
-            &message.client_hardware_addr[..message.hardware_addr_len as usize],
-        )?;
+    ) -> Result<DhcpMessage, DhcpError> {
+        let client_mac = message.client_hardware_addr()?;
 
         debug!(
             mac = %client_mac,
-            client_ip = %message.client_ip_addr,
-            xid = message.transaction_id,
+            client_ip = %message.ciaddr(),
+            xid = message.transaction_id(),
             "Processing DHCPINFORM"
         );
 
         // Delegate to protocol handler
-        let response = self.protocol.handle_inform(message, &self.config).await?;
+        let response = self.protocol.handle_inform(message).await?;
 
-        if response.is_some() {
-            info!(
-                mac = %client_mac,
-                client_ip = %message.client_ip_addr,
-                xid = message.transaction_id,
-                "Sending DHCPACK for INFORM"
-            );
-        }
+        info!(
+            mac = %client_mac,
+            client_ip = %message.ciaddr(),
+            xid = message.transaction_id(),
+            "Sending DHCPACK for INFORM"
+        );
 
         Ok(response)
     }
@@ -833,26 +813,32 @@ impl DhcpV4Service {
         // Check static reservations first
         for static_lease in self.config.dhcp.static_leases.iter() {
             if &static_lease.mac == client_mac {
-                info!(
-                    mac = %client_mac,
-                    static_ip = %static_lease.ip,
-                    "Using static reservation"
-                );
-                return Ok(static_lease.ip);
+                // Extract IPv4 address from IpAddr enum
+                if let std::net::IpAddr::V4(ipv4) = static_lease.ip {
+                    info!(
+                        mac = %client_mac,
+                        static_ip = %ipv4,
+                        "Using static reservation"
+                    );
+                    return Ok(ipv4);
+                }
             }
         }
 
         // Check existing lease for this client
         let lease_manager = self.lease_manager.read().await;
         if let Some(existing_lease) = lease_manager.find_by_mac(client_mac).await {
-            // Check if existing lease is in this context's range
-            if Self::ip_in_range(existing_lease.ip, context.start, context.end) {
-                debug!(
-                    mac = %client_mac,
-                    existing_ip = %existing_lease.ip,
-                    "Reusing existing lease"
-                );
-                return Ok(existing_lease.ip);
+            // Extract IPv4 address from IpAddr enum
+            if let std::net::IpAddr::V4(ipv4) = existing_lease.ip {
+                // Check if existing lease is in this context's range
+                if Self::ip_in_range(ipv4, context.start, context.end) {
+                    debug!(
+                        mac = %client_mac,
+                        existing_ip = %ipv4,
+                        "Reusing existing lease"
+                    );
+                    return Ok(ipv4);
+                }
             }
         }
         drop(lease_manager);
@@ -932,7 +918,9 @@ impl DhcpV4Service {
             "Address pool exhausted"
         );
 
-        Err(DhcpError::AddressPoolExhausted)
+        Err(DhcpError::NoAddressAvailable {
+            pool_name: format!("{}-{}", context.start, context.end),
+        })
     }
 
     /// Tests if an IP address is in use via ICMP echo request
@@ -1079,32 +1067,25 @@ impl DhcpV4Service {
     ///
     /// - `Ok(())` - Response sent successfully
     /// - `Err(DhcpError)` - Serialization or send failure
-    #[instrument(skip(self, message), fields(xid = message.transaction_id))]
+    #[instrument(skip(self, message))]
     pub async fn send_response(
         &self,
         message: &DhcpMessage,
         source: SocketAddr,
     ) -> Result<(), DhcpError> {
         // Serialize message to bytes
-        let response_bytes = serialize_dhcp_message(message).map_err(|e| {
-            error!(
-                xid = message.transaction_id,
-                error = %e,
-                "Failed to serialize DHCP response"
-            );
-            DhcpError::SerializationError(format!("Failed to serialize response: {}", e))
-        })?;
+        let response_bytes = message.serialize_dhcp_message();
 
         // Determine destination address
-        let dest_addr = if message.broadcast_flag {
+        let dest_addr = if (message.flags() & BROADCAST_FLAG) != 0 {
             // Broadcast to all clients
             SocketAddr::from(([255, 255, 255, 255], 68))
-        } else if message.client_ip_addr != Ipv4Addr::UNSPECIFIED {
+        } else if message.ciaddr() != Ipv4Addr::UNSPECIFIED {
             // Unicast to client's current IP (RENEWING/REBINDING)
-            SocketAddr::from((message.client_ip_addr, 68))
+            SocketAddr::from((message.ciaddr(), 68))
         } else {
             // Unicast to offered address
-            SocketAddr::from((message.your_ip_addr, 68))
+            SocketAddr::from((message.yiaddr(), 68))
         };
 
         // Send response
@@ -1113,16 +1094,18 @@ impl DhcpV4Service {
             .await
             .map_err(|e| {
                 error!(
-                    xid = message.transaction_id,
+                    xid = message.transaction_id(),
                     dest = %dest_addr,
                     error = %e,
                     "Failed to send DHCP response"
                 );
-                DhcpError::NetworkError(format!("Failed to send response: {}", e))
+                DhcpError::V4ProtocolError {
+                    reason: format!("Failed to send DHCP response: {}", e),
+                }
             })?;
 
         debug!(
-            xid = message.transaction_id,
+            xid = message.transaction_id(),
             dest = %dest_addr,
             length = response_bytes.len(),
             "Sent DHCP response"
@@ -1167,7 +1150,9 @@ impl DhcpV4Service {
             .enumerate_interfaces()
             .await
             .map_err(|e| {
-                DhcpError::ConfigurationError(format!("Failed to enumerate interfaces: {}", e))
+                DhcpError::V4ProtocolError {
+                    reason: format!("Failed to enumerate interfaces: {}", e),
+                }
             })?;
 
         debug!(
@@ -1178,7 +1163,7 @@ impl DhcpV4Service {
         // Build contexts from configuration
         let mut contexts = Vec::new();
 
-        for range in &self.config.dhcp.ranges {
+        for range in &self.config.dhcp.v4_ranges {
             // Find matching interface
             let interface = interfaces
                 .iter()
@@ -1187,23 +1172,52 @@ impl DhcpV4Service {
                         || range.interface.as_ref() == Some(&iface.name)
                 })
                 .ok_or_else(|| {
-                    DhcpError::ConfigurationError(format!(
-                        "No interface found for range {:?}",
-                        range.interface
-                    ))
+                    DhcpError::V4ProtocolError {
+                        reason: format!(
+                            "No interface found for range {:?}",
+                            range.interface
+                        ),
+                    }
                 })?;
 
+            // Extract IPv4 addresses from IpAddr enums
+            let start_v4 = match range.start {
+                std::net::IpAddr::V4(ipv4) => ipv4,
+                _ => continue, // Skip non-IPv4 ranges
+            };
+            let end_v4 = match range.end {
+                std::net::IpAddr::V4(ipv4) => ipv4,
+                _ => continue,
+            };
+
+            // Extract netmask or use default /24
+            let netmask_v4 = match range.netmask {
+                Some(std::net::IpAddr::V4(ipv4)) => ipv4,
+                _ => Ipv4Addr::new(255, 255, 255, 0), // Default /24
+            };
+
+            // Calculate broadcast address from network and netmask
+            let network_bits = u32::from(start_v4) & u32::from(netmask_v4);
+            let host_bits = !u32::from(netmask_v4);
+            let broadcast_v4 = Ipv4Addr::from(network_bits | host_bits);
+
+            // Convert lease time from Duration to u32 seconds
+            let lease_time_secs = range
+                .lease_time_override
+                .unwrap_or(self.config.dhcp.lease_time)
+                .as_secs() as u32;
+
             let context = DhcpContext {
-                start: range.start,
-                end: range.end,
+                start: start_v4,
+                end: end_v4,
                 interface: interface.name.clone(),
                 interface_index: interface.index,
-                netmask: range.netmask,
-                broadcast: range.broadcast,
-                router: range.router,
-                dns_servers: range.dns_servers.clone(),
-                lease_time: range.lease_time.unwrap_or(self.config.dhcp.default_lease_time),
-                tags: range.tags.clone(),
+                netmask: netmask_v4,
+                broadcast: broadcast_v4,
+                router: None, // TODO: Configure from global DHCP options
+                dns_servers: Vec::new(), // TODO: Configure from global DHCP options
+                lease_time: lease_time_secs,
+                tags: Vec::new(), // TODO: Implement tag support
             };
 
             info!(
@@ -1301,10 +1315,13 @@ impl DhcpV4Service {
         let lease_manager = self.lease_manager.read().await;
 
         // Check if address is leased to another client
-        if let Some(existing_lease) = lease_manager.find_by_ip(addr).await {
-            if &existing_lease.mac != client_mac {
-                // Leased to different client
-                return Ok(false);
+        let ip_addr = IpAddr::V4(addr);
+        if let Some(existing_lease) = lease_manager.find_by_ip(&ip_addr).await {
+            if let Some(ref mac) = existing_lease.mac {
+                if mac != client_mac {
+                    // Leased to different client
+                    return Ok(false);
+                }
             }
         }
 
