@@ -97,14 +97,13 @@
 //! ```
 
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use bytes::{Bytes, BytesMut};
+// bytes crate imports removed - using Vec<u8> for packet building
 use nom::{
     bytes::complete::{tag, take_until},
-    combinator::{map, opt},
     multi::many0,
     sequence::tuple,
     IResult,
@@ -112,16 +111,15 @@ use nom::{
 use tokio::fs::File;
 use tokio::net::UdpSocket;
 use tokio::sync::RwLock;
-use tokio::time::{sleep, timeout, Duration, Instant};
+use tokio::time::{sleep, timeout, Duration};
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::constants::{TFTP_MAX_CONNECTIONS, TFTP_MAX_WINDOW, TFTP_TRANSFER_TIME};
+use crate::constants::{TFTP_MAX_CONNECTIONS, TFTP_MAX_WINDOW};
 use crate::config::types::TftpConfig;
-use crate::error::{Result, TftpError};
+use crate::error::{DnsmasqError, Result, TftpError};
 use crate::network::sockets::TftpSocket;
 use crate::tftp::transfer::TransferState;
-use crate::types::Timestamp;
-use crate::util::helpers::queue_tftp;
+// Timestamp and queue_tftp not needed in current implementation
 
 /// TFTP protocol opcodes per RFC 1350.
 ///
@@ -241,6 +239,17 @@ pub struct TftpRrq {
     pub options: HashMap<String, String>,
 }
 
+/// Active TFTP transfer combining state and socket.
+///
+/// The socket is managed by the server (not by TransferState) as documented in
+/// the transfer module comments. This struct pairs them together for convenient management.
+struct ActiveTransfer {
+    /// Transfer state tracking file position, blocks, and timeouts
+    state: TransferState,
+    /// Dedicated UDP socket for this transfer (ephemeral port)
+    socket: UdpSocket,
+}
+
 /// TFTP server managing listener socket and active file transfers.
 ///
 /// The server maintains:
@@ -263,7 +272,7 @@ pub struct TftpServer {
     /// TFTP configuration (root directories, security settings, limits)
     config: Arc<TftpConfig>,
     /// Active file transfers with dedicated sockets
-    active_transfers: Arc<RwLock<Vec<TransferState>>>,
+    active_transfers: Arc<RwLock<Vec<ActiveTransfer>>>,
     /// Main listener socket on UDP port 69
     listener_socket: TftpSocket,
 }
@@ -415,9 +424,8 @@ impl TftpServer {
             Err(e) => {
                 warn!("File permission check failed for '{}': {}", file_path.display(), e);
                 let (error_code, msg) = match e {
-                    TftpError::FileNotFound { .. } => (TftpErrorCode::FileNotFound, "File not found"),
-                    TftpError::AccessViolation { .. } => (TftpErrorCode::AccessViolation, "Access denied"),
-                    TftpError::PermissionDenied { .. } => (TftpErrorCode::AccessViolation, "Permission denied"),
+                    DnsmasqError::Tftp(TftpError::FileNotFound { .. }) => (TftpErrorCode::FileNotFound, "File not found"),
+                    DnsmasqError::Tftp(TftpError::AccessViolation { .. }) => (TftpErrorCode::AccessViolation, "Access denied"),
                     _ => (TftpErrorCode::Undefined, "File error"),
                 };
                 self.send_error(peer, error_code, msg).await?;
@@ -426,11 +434,10 @@ impl TftpServer {
         };
 
         // Get file metadata for tsize option
-        let file_metadata = file.metadata().await.map_err(|e| TftpError::IoError {
+        let file_metadata = file.metadata().await.map_err(|e| DnsmasqError::Tftp(TftpError::IoError {
             path: file_path.to_string_lossy().to_string(),
-            operation: "metadata".to_string(),
-            source: e,
-        })?;
+            reason: format!("Failed to get metadata: {}", e),
+        }))?;
         let file_size = file_metadata.len();
 
         // Negotiate options
@@ -481,24 +488,21 @@ impl TftpServer {
         }
 
         // Create dedicated transfer socket on ephemeral port
-        let transfer_socket = UdpSocket::bind("0.0.0.0:0").await.map_err(|e| TftpError::IoError {
+        let transfer_socket = UdpSocket::bind("0.0.0.0:0").await.map_err(|e| DnsmasqError::Tftp(TftpError::IoError {
             path: "0.0.0.0:0".to_string(),
-            operation: "bind transfer socket".to_string(),
-            source: e,
-        })?;
+            reason: format!("Failed to bind transfer socket: {}", e),
+        }))?;
 
         // Connect to peer for this specific transfer
-        transfer_socket.connect(peer).await.map_err(|e| TftpError::IoError {
+        transfer_socket.connect(peer).await.map_err(|e| DnsmasqError::Tftp(TftpError::IoError {
             path: peer.to_string(),
-            operation: "connect transfer socket".to_string(),
-            source: e,
-        })?;
+            reason: format!("Failed to connect transfer socket: {}", e),
+        }))?;
 
-        let local_addr = transfer_socket.local_addr().map_err(|e| TftpError::IoError {
+        let local_addr = transfer_socket.local_addr().map_err(|e| DnsmasqError::Tftp(TftpError::IoError {
             path: "transfer socket".to_string(),
-            operation: "get local address".to_string(),
-            source: e,
-        })?;
+            reason: format!("Failed to get local address: {}", e),
+        }))?;
 
         info!(
             "Created transfer socket {} -> {} for file '{}'",
@@ -508,46 +512,50 @@ impl TftpServer {
         );
 
         // Create transfer state
-        let mut transfer = TransferState::new(
+        let netascii = matches!(rrq.mode, TransferMode::Netascii);
+        let transfer_timeout = Duration::from_secs(timeout_secs as u64);
+        let state = TransferState::new(
             file,
-            transfer_socket,
             peer,
-            rrq.mode,
-            blksize as usize,
-            windowsize as usize,
-        )
-        .await?;
+            blksize,
+            windowsize,
+            transfer_timeout,
+            netascii,
+            file_path.clone(),
+        );
+        
+        let mut transfer = ActiveTransfer {
+            state,
+            socket: transfer_socket,
+        };
 
         // Send OACK if options were negotiated, otherwise send first DATA block
         if !negotiated_options.is_empty() {
             let oack_packet = build_oack_packet(&negotiated_options);
             transfer
-                .socket()
+                .socket
                 .send(&oack_packet)
                 .await
-                .map_err(|e| TftpError::IoError {
+                .map_err(|e| DnsmasqError::Tftp(TftpError::IoError {
                     path: peer.to_string(),
-                    operation: "send OACK".to_string(),
-                    source: e,
-                })?;
+                    reason: format!("Failed to send OACK: {}", e),
+                }))?;
             debug!("Sent OACK to {} with options: {:?}", peer, negotiated_options);
         } else {
             // No options, send first DATA block immediately
-            if let Some(data_packet) = transfer.get_block().await? {
-                transfer
-                    .socket()
-                    .send(&data_packet)
-                    .await
-                    .map_err(|e| TftpError::IoError {
-                        path: peer.to_string(),
-                        operation: "send first DATA".to_string(),
-                        source: e,
-                    })?;
-                debug!("Sent first DATA block to {}", peer);
-            } else {
-                // Empty file
-                warn!("File is empty: {}", rrq.filename);
-            }
+            let block_data = transfer.state.get_block(1).await?;
+            let data_packet = build_data_packet(1, &block_data);
+            
+            transfer
+                .socket
+                .send(&data_packet)
+                .await
+                .map_err(|e| DnsmasqError::Tftp(TftpError::IoError {
+                    path: peer.to_string(),
+                    reason: format!("Failed to send first DATA: {}", e),
+                }))?;
+            
+            debug!("Sent first DATA block ({} bytes) to {}", block_data.len(), peer);
         }
 
         // Add transfer to active list
@@ -618,21 +626,21 @@ impl TftpServer {
         
         for (idx, transfer) in transfers.iter_mut().enumerate() {
             // Check for timeout
-            if transfer.is_timeout() {
-                warn!("Transfer timeout for peer {}", transfer.peer_addr());
+            if transfer.state.is_timeout() {
+                warn!("Transfer timeout for peer {}", transfer.state.peer());
                 completed_indices.push(idx);
                 continue;
             }
             
             // Check if transfer is complete
-            if transfer.is_complete() {
-                info!("Transfer complete to {}", transfer.peer_addr());
+            if transfer.state.is_complete() {
+                info!("Transfer complete to {}", transfer.state.peer());
                 completed_indices.push(idx);
                 continue;
             }
             
             // Poll socket for ACK packets (non-blocking)
-            match timeout(Duration::from_millis(1), transfer.socket().recv(&mut buf)).await {
+            match timeout(Duration::from_millis(1), transfer.socket.recv(&mut buf)).await {
                 Ok(Ok(n)) => {
                     // Received ACK packet, process it
                     if let Err(e) = self.handle_tftp_packet(transfer, &buf[..n]).await {
@@ -653,7 +661,7 @@ impl TftpServer {
         // Remove completed transfers in reverse order to preserve indices
         for idx in completed_indices.into_iter().rev() {
             let transfer = transfers.remove(idx);
-            info!("Removed transfer for peer {}", transfer.peer_addr());
+            info!("Removed transfer for peer {}", transfer.state.peer());
         }
         
         Ok(())
@@ -679,12 +687,12 @@ impl TftpServer {
     /// # C Implementation Reference
     ///
     /// Replaces `handle_tftp()` from src/tftp.c lines 439-576
-    async fn handle_tftp_packet(&self, transfer: &mut TransferState, buf: &[u8]) -> Result<()> {
+    async fn handle_tftp_packet(&self, transfer: &mut ActiveTransfer, buf: &[u8]) -> Result<()> {
         if buf.len() < 2 {
             warn!("TFTP packet too short: {} bytes", buf.len());
             return Err(TftpError::IllegalOperation {
                 reason: "Packet too short".to_string(),
-            });
+            }.into());
         }
 
         let opcode_val = u16::from_be_bytes([buf[0], buf[1]]);
@@ -698,26 +706,46 @@ impl TftpServer {
                 if buf.len() < 4 {
                     return Err(TftpError::IllegalOperation {
                         reason: "ACK packet too short".to_string(),
-                    });
+                    }.into());
                 }
                 
                 let ack_block = u16::from_be_bytes([buf[2], buf[3]]);
-                debug!("Received ACK for block {}", ack_block);
+                debug!("Received ACK for block {} from {}", ack_block, transfer.state.peer());
                 
-                // Process ACK and get next blocks to send
-                let blocks_to_send = transfer.handle_ack(ack_block).await?;
+                // Process ACK to update transfer state
+                transfer.state.handle_ack(ack_block)?;
                 
-                // Send next data blocks in window
-                for block_data in blocks_to_send {
+                // Calculate next blocks to send based on window
+                // windowsize determines how many blocks ahead we can send
+                let windowsize = transfer.state.windowsize();
+                let block_high = transfer.state.block_high();
+                let next_block = block_high + 1;
+                
+                // Send next data blocks up to windowsize ahead
+                for offset in 0..windowsize {
+                    let block_num = next_block + offset;
+                    
+                    // Get block data
+                    let block_data = transfer.state.get_block(block_num).await?;
+                    
+                    // Build DATA packet
+                    let data_packet = build_data_packet(block_num, &block_data);
+                    
                     transfer
-                        .socket()
-                        .send(&block_data)
+                        .socket
+                        .send(&data_packet)
                         .await
-                        .map_err(|e| TftpError::IoError {
-                            path: transfer.peer_addr().to_string(),
-                            operation: "send DATA".to_string(),
-                            source: e,
-                        })?;
+                        .map_err(|e| DnsmasqError::Tftp(TftpError::IoError {
+                            path: transfer.state.peer().to_string(),
+                            reason: format!("Failed to send DATA block {}: {}", block_num, e),
+                        }))?;
+                    
+                    debug!("Sent DATA block {} to {}", block_num, transfer.state.peer());
+                    
+                    // If we reached EOF, stop sending
+                    if transfer.state.is_complete() {
+                        break;
+                    }
                 }
                 
                 Ok(())
@@ -727,7 +755,7 @@ impl TftpServer {
                 if buf.len() < 4 {
                     return Err(TftpError::IllegalOperation {
                         reason: "ERROR packet too short".to_string(),
-                    });
+                    }.into());
                 }
                 
                 let error_code = u16::from_be_bytes([buf[2], buf[3]]);
@@ -739,20 +767,20 @@ impl TftpServer {
                 
                 warn!(
                     "Client {} sent ERROR {}: {}",
-                    transfer.peer_addr(),
+                    transfer.state.peer(),
                     error_code,
                     error_msg
                 );
                 
-                Err(TftpError::TransferAborted {
+                Err(TftpError::IllegalOperation {
                     reason: format!("Client error {}: {}", error_code, error_msg),
-                })
+                }.into())
             }
             _ => {
                 warn!("Unexpected opcode {} on transfer socket", opcode_val);
                 Err(TftpError::IllegalOperation {
                     reason: format!("Unexpected opcode: {}", opcode_val),
-                })
+                }.into())
             }
         }
     }
@@ -790,34 +818,32 @@ impl TftpServer {
             Ok(p) => p,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 debug!("File not found: {}", path.display());
-                return Err(TftpError::FileNotFound {
+                return Err(DnsmasqError::Tftp(TftpError::FileNotFound {
                     path: path.to_string_lossy().to_string(),
-                });
+                }));
             }
             Err(e) => {
                 error!("Error canonicalizing path {}: {}", path.display(), e);
-                return Err(TftpError::IoError {
+                return Err(DnsmasqError::Tftp(TftpError::IoError {
                     path: path.to_string_lossy().to_string(),
-                    operation: "canonicalize".to_string(),
-                    source: e,
-                });
+                    reason: format!("Failed to canonicalize: {}", e),
+                }));
             }
         };
 
         // Get TFTP root directory for security checks
         let root_dir = self
             .get_root_directory(peer)
-            .ok_or_else(|| TftpError::AccessViolation {
+            .ok_or_else(|| DnsmasqError::Tftp(TftpError::AccessViolation {
                 path: path.to_string_lossy().to_string(),
                 reason: "No TFTP root configured".to_string(),
-            })?;
+            }))?;
 
         let canonical_root = tokio::fs::canonicalize(&root_dir).await.map_err(|e| {
-            TftpError::IoError {
+            DnsmasqError::Tftp(TftpError::IoError {
                 path: root_dir.to_string_lossy().to_string(),
-                operation: "canonicalize root".to_string(),
-                source: e,
-            }
+                reason: format!("Failed to canonicalize root: {}", e),
+            })
         })?;
 
         // Verify canonical path is within TFTP root (no directory traversal)
@@ -828,34 +854,33 @@ impl TftpServer {
                 canonical_path.display(),
                 canonical_root.display()
             );
-            return Err(TftpError::AccessViolation {
+            return Err(DnsmasqError::Tftp(TftpError::AccessViolation {
                 path: path.to_string_lossy().to_string(),
                 reason: "Path outside TFTP root".to_string(),
-            });
+            }));
         }
 
         // Get file metadata
         let metadata = tokio::fs::metadata(&canonical_path).await.map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
-                TftpError::FileNotFound {
+                DnsmasqError::Tftp(TftpError::FileNotFound {
                     path: canonical_path.to_string_lossy().to_string(),
-                }
+                })
             } else {
-                TftpError::IoError {
+                DnsmasqError::Tftp(TftpError::IoError {
                     path: canonical_path.to_string_lossy().to_string(),
-                    operation: "metadata".to_string(),
-                    source: e,
-                }
+                    reason: format!("Failed to get metadata: {}", e),
+                })
             }
         })?;
 
         // Verify it's a regular file
         if !metadata.is_file() {
             warn!("Attempted access to non-file: {}", canonical_path.display());
-            return Err(TftpError::AccessViolation {
+            return Err(DnsmasqError::Tftp(TftpError::AccessViolation {
                 path: canonical_path.to_string_lossy().to_string(),
                 reason: "Not a regular file".to_string(),
-            });
+            }));
         }
 
         // Secure mode: Check file ownership (only on Unix platforms)
@@ -874,26 +899,25 @@ impl TftpServer {
                     file_uid,
                     our_uid
                 );
-                return Err(TftpError::PermissionDenied {
+                return Err(DnsmasqError::Tftp(TftpError::AccessViolation {
                     path: canonical_path.to_string_lossy().to_string(),
                     reason: "File not owned by dnsmasq user".to_string(),
-                });
+                }));
             }
         }
 
         // Open file for reading
         let file = File::open(&canonical_path).await.map_err(|e| {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
-                TftpError::PermissionDenied {
+                DnsmasqError::Tftp(TftpError::AccessViolation {
                     path: canonical_path.to_string_lossy().to_string(),
                     reason: "Permission denied".to_string(),
-                }
+                })
             } else {
-                TftpError::IoError {
+                DnsmasqError::Tftp(TftpError::IoError {
                     path: canonical_path.to_string_lossy().to_string(),
-                    operation: "open".to_string(),
-                    source: e,
-                }
+                    reason: format!("Failed to open file: {}", e),
+                })
             }
         })?;
 
@@ -921,11 +945,10 @@ impl TftpServer {
         self.listener_socket
             .send_to(&error_packet, peer)
             .await
-            .map_err(|e| TftpError::IoError {
+            .map_err(|e| DnsmasqError::Tftp(TftpError::IoError {
                 path: peer.to_string(),
-                operation: "send ERROR".to_string(),
-                source: e,
-            })?;
+                reason: format!("Failed to send ERROR: {}", e),
+            }))?;
         Ok(())
     }
 }
@@ -1027,6 +1050,31 @@ fn build_error_packet(error_code: TftpErrorCode, message: &str) -> Vec<u8> {
     // Error message
     packet.extend_from_slice(message.as_bytes());
     packet.push(0);
+    
+    packet
+}
+
+/// Builds DATA packet per RFC 1350.
+///
+/// # Wire Format
+///
+/// ```text
+/// 2 bytes   2 bytes   n bytes
+/// ----------------------------
+/// | DATA | Block # | Data |
+/// ----------------------------
+/// ```
+fn build_data_packet(block: u16, data: &[u8]) -> Vec<u8> {
+    let mut packet = Vec::new();
+    
+    // Opcode (DATA = 3)
+    packet.extend_from_slice(&3u16.to_be_bytes());
+    
+    // Block number
+    packet.extend_from_slice(&block.to_be_bytes());
+    
+    // Data payload
+    packet.extend_from_slice(data);
     
     packet
 }
