@@ -678,6 +678,31 @@ impl DhcpService {
     pub fn v6_service_mut(&mut self) -> Option<&mut DhcpV6Service> {
         self.v6_service.as_mut()
     }
+
+    /// Get access to the lease manager.
+    ///
+    /// Returns a reference to the shared `LeaseManager` instance used by this DHCP service.
+    /// The lease manager is shared between `DHCPv4` and `DHCPv6` services and handles all
+    /// lease persistence, allocation tracking, and DNS registration.
+    ///
+    /// # Returns
+    ///
+    /// An `Arc<RwLock<LeaseManager>>` allowing thread-safe shared access to lease data.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use dnsmasq::dhcp::DhcpService;
+    ///
+    /// # async fn example(service: &DhcpService) {
+    /// let lease_manager = service.get_lease_manager();
+    /// let active_leases = lease_manager.read().await.list_active();
+    /// println!("Active leases: {}", active_leases.len());
+    /// # }
+    /// ```
+    pub fn get_lease_manager(&self) -> Arc<RwLock<LeaseManager>> {
+        Arc::clone(&self.lease_manager)
+    }
 }
 
 /// Get shared reference to lease manager from DHCP service.
