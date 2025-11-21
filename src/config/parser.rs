@@ -1214,6 +1214,7 @@ impl ConfigParser {
             interface,
             lease_time,
             is_ipv6,
+            prefix_len: 0, // Not a prefix delegation pool (regular address range)
         };
 
         // Push to correct vector based on IP version

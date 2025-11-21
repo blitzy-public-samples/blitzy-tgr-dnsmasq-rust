@@ -454,6 +454,25 @@ pub enum DhcpError {
         /// The IP address of the lease that was not found
         ip: String,
     },
+
+    /// Socket operation failed.
+    #[error("Socket error: {0}")]
+    SocketError(String),
+
+    /// Required DHCP option is missing from message.
+    #[error("Missing required DHCP option {option_code}")]
+    MissingOption {
+        /// The numeric code of the missing option
+        option_code: u16,
+    },
+}
+
+impl From<anyhow::Error> for DhcpError {
+    fn from(err: anyhow::Error) -> Self {
+        DhcpError::V6ProtocolError {
+            reason: err.to_string(),
+        }
+    }
 }
 
 /// DNSSEC validation errors with detailed failure diagnostics.

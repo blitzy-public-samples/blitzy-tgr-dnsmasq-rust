@@ -838,6 +838,16 @@ pub struct DhcpRange {
     ///
     /// Computed from start address being IPv6.
     pub is_ipv6: bool,
+
+    /// Prefix length for DHCPv6 prefix delegation (IPv6 only).
+    ///
+    /// Replaces C `int prefix` from `struct dhcp_context`.
+    /// When set to a value > 0, this range is used for prefix delegation (IA_PD)
+    /// instead of or in addition to address allocation (IA_NA).
+    /// Typical values: 48, 56, 60, 64 (for /48, /56, /60, /64 prefixes).
+    /// 
+    /// For address allocation ranges (not PD), this should be 0.
+    pub prefix_len: u8,
 }
 
 /// DHCP context metadata for DHCPv6 ranges.
@@ -1516,6 +1526,7 @@ impl ConfigBuilder {
             interface: None,
             lease_time: None,
             is_ipv6,
+            prefix_len: 0, // Not a prefix delegation pool
         });
         self
     }

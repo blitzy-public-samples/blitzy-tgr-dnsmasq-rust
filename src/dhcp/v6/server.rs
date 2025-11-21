@@ -141,21 +141,17 @@ use bytes::BytesMut;
 use tokio::net::UdpSocket;
 use tokio::select;
 use tokio::sync::{mpsc, RwLock};
-use tokio::time::{interval, sleep};
+use tokio::time::interval;
 use tracing::{debug, error, info, instrument, trace, warn};
 
 // Internal imports from depends_on_files
-use crate::config::types::DhcpContext;
+use crate::config::types::DhcpRange;
 use crate::config::Config;
-use crate::dhcp::common::generate_xid;
 use crate::dhcp::lease::LeaseManager;
 use crate::dhcp::v6::constants::*;
 use crate::dhcp::v6::message::DhcpV6Message;
-use crate::dhcp::v6::options::OptionBuilder;
-use crate::dhcp::v6::protocol::DhcpV6StateMachine;
+use crate::dhcp::v6::protocol::{DhcpV6StateMachine, RequestContext};
 use crate::error::DhcpError;
-use crate::network::sockets::DhcpSocket;
-use crate::types::IpAddr as CustomIpAddr;
 
 /// Default DHCPv6 lease time in seconds (24 hours = 86400 seconds).
 ///
@@ -167,7 +163,7 @@ const DEFAULT_LEASE_TIME: u32 = 86400;
 ///
 /// DHCPv6 typically uses 1232 bytes as the conservative MTU to avoid fragmentation
 /// on most networks (1280 IPv6 minimum MTU - 48 bytes headers).
-const MAX_PACKET_SIZE: usize = 1500;
+const _MAX_PACKET_SIZE: usize = 1500;
 
 /// Receive buffer size for DHCPv6 packets.
 ///
@@ -207,7 +203,7 @@ pub struct DhcpV6Server {
     socket: UdpSocket,
     
     /// Shared configuration (immutable after startup)
-    config: Arc<Config>,
+    _config: Arc<Config>,
     
     /// Shared lease database (mutable, protected by RwLock)
     lease_manager: Arc<RwLock<LeaseManager>>,
@@ -216,10 +212,10 @@ pub struct DhcpV6Server {
     protocol: DhcpV6StateMachine,
     
     /// Address pool contexts indexed by interface name for O(1) lookup
-    address_pools: HashMap<String, Vec<DhcpContext>>,
+    address_pools: HashMap<String, Vec<DhcpRange>>,
     
     /// This server's DUID (DHCPv6 Unique Identifier) for SERVER_ID option
-    server_id: Vec<u8>,
+    _server_id: Vec<u8>,
     
     /// Shutdown signal sender
     shutdown_tx: mpsc::Sender<()>,
@@ -297,25 +293,29 @@ impl DhcpV6Server {
         );
 
         // Build address pool index by interface for fast lookups
-        let address_pools = Self::index_address_pools(&config.dhcp.contexts)?;
+        let address_pools = Self::index_address_pools(&config.dhcp.v6_ranges)?;
         info!(
             pool_count = address_pools.len(),
             "Indexed DHCPv6 address pools by interface"
         );
 
         // Create protocol state machine
-        let protocol = DhcpV6StateMachine::new(config.clone());
+        let protocol = DhcpV6StateMachine::new(
+            config.clone(),
+            lease_manager.clone(),
+            server_id.clone(),
+        );
 
         // Create shutdown channel
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
         Ok(Self {
             socket,
-            config,
+            _config: config,
             lease_manager,
             protocol,
             address_pools,
-            server_id,
+            _server_id: server_id,
             shutdown_tx,
             shutdown_rx,
         })
@@ -422,11 +422,9 @@ impl DhcpV6Server {
                 // Periodic lease expiration check
                 _ = lease_check_interval.tick() => {
                     debug!("Running periodic lease expiration check");
-                    if let Err(e) = self.lease_manager.write().await.prune_expired().await {
-                        warn!(
-                            error = %e,
-                            "Failed to prune expired leases"
-                        );
+                    let pruned_count = self.lease_manager.write().await.prune_expired().await;
+                    if pruned_count > 0 {
+                        debug!(count = pruned_count, "Pruned expired leases");
                     }
                 }
 
@@ -435,10 +433,10 @@ impl DhcpV6Server {
                     info!("Received shutdown signal, stopping DHCPv6 server");
                     
                     // Flush lease database to disk
-                    if let Err(e) = self.lease_manager.write().await.flush().await {
+                    if let Err(e) = self.lease_manager.write().await.save_leases().await {
                         error!(
                             error = %e,
-                            "Failed to flush lease database during shutdown"
+                            "Failed to save lease database during shutdown"
                         );
                     }
                     
@@ -518,32 +516,85 @@ impl DhcpV6Server {
 
         // Extract CLIENT_ID option (required per RFC 3315)
         let client_id = message.get_option(OPTION_CLIENT_ID)
-            .ok_or_else(|| DhcpError::MissingOption("CLIENT_ID".to_string()))?;
+            .ok_or_else(|| DhcpError::MissingOption { option_code: OPTION_CLIENT_ID })?
+            .to_vec();
+
+        // Extract IA (Identity Association) information
+        // Try IA_NA first (most common), then IA_TA, then IA_PD
+        let (iaid, ia_type) = if let Some(ia_na) = message.get_option(OPTION_IA_NA) {
+            // IA_NA format: IAID (4 bytes) + T1 (4 bytes) + T2 (4 bytes) + options
+            if ia_na.len() >= 4 {
+                let iaid = u32::from_be_bytes([ia_na[0], ia_na[1], ia_na[2], ia_na[3]]);
+                (iaid, OPTION_IA_NA)
+            } else {
+                (0, OPTION_IA_NA)
+            }
+        } else if let Some(ia_ta) = message.get_option(OPTION_IA_TA) {
+            // IA_TA format: IAID (4 bytes) + options
+            if ia_ta.len() >= 4 {
+                let iaid = u32::from_be_bytes([ia_ta[0], ia_ta[1], ia_ta[2], ia_ta[3]]);
+                (iaid, OPTION_IA_TA)
+            } else {
+                (0, OPTION_IA_TA)
+            }
+        } else if let Some(ia_pd) = message.get_option(OPTION_IA_PD) {
+            // IA_PD format: IAID (4 bytes) + T1 (4 bytes) + T2 (4 bytes) + options
+            if ia_pd.len() >= 4 {
+                let iaid = u32::from_be_bytes([ia_pd[0], ia_pd[1], ia_pd[2], ia_pd[3]]);
+                (iaid, OPTION_IA_PD)
+            } else {
+                (0, OPTION_IA_PD)
+            }
+        } else {
+            // No IA option found - use default values
+            (0, OPTION_IA_NA)
+        };
+
+        // Determine if destination was multicast
+        // ff02::1:2 is the All_DHCP_Relay_Agents_and_Servers multicast address
+        let multicast_dest = if let SocketAddr::V6(addr) = peer {
+            let ip = addr.ip();
+            ip.is_multicast() || ip == &Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 1, 2)
+        } else {
+            false
+        };
+
+        // Build request context for protocol handlers
+        // TODO: Determine actual interface from socket/routing table
+        let interface = "eth0".to_string(); // Placeholder - should be determined from actual interface
+        let ctx = RequestContext::new(
+            client_id,
+            *xid,  // Dereference array reference
+            interface,
+            iaid,
+            ia_type,
+            multicast_dest,
+        );
 
         // Dispatch based on message type
         let response_opt = match msg_type {
             MSG_SOLICIT => {
-                Some(self.protocol.handle_solicit(&message, &client_id).await?)
+                Some(self.protocol.handle_solicit(&ctx, &message).await?)
             }
             MSG_REQUEST => {
-                Some(self.protocol.handle_request(&message, &client_id).await?)
+                Some(self.protocol.handle_request(&ctx, &message).await?)
             }
             MSG_RENEW => {
-                Some(self.protocol.handle_renew(&message, &client_id).await?)
+                Some(self.protocol.handle_renew(&ctx, &message).await?)
             }
             MSG_REBIND => {
-                Some(self.protocol.handle_rebind(&message, &client_id).await?)
+                Some(self.protocol.handle_rebind(&ctx, &message).await?)
             }
             MSG_RELEASE => {
-                self.protocol.handle_release(&message, &client_id).await?;
+                self.protocol.handle_release(&ctx, &message).await?;
                 None // No response for RELEASE
             }
             MSG_DECLINE => {
-                self.protocol.handle_decline(&message, &client_id).await?;
+                self.protocol.handle_decline(&ctx, &message).await?;
                 None // No response for DECLINE
             }
             MSG_INFORMATION_REQUEST => {
-                Some(self.protocol.handle_information_request(&message).await?)
+                Some(self.protocol.handle_information_request(&ctx, &message).await?)
             }
             _ => {
                 warn!(
@@ -626,7 +677,7 @@ impl DhcpV6Server {
     pub async fn allocate_address(
         &self,
         client_id: &[u8],
-        ia_id: u32,
+        _ia_id: u32,
         interface: &str,
         requested_addr: Option<Ipv6Addr>,
     ) -> Result<Ipv6Addr, DhcpError> {
@@ -634,11 +685,13 @@ impl DhcpV6Server {
 
         // Find address pools for this interface
         let pools = self.address_pools.get(interface)
-            .ok_or_else(|| DhcpError::NoAddressPool(interface.to_string()))?;
+            .ok_or_else(|| DhcpError::NoAddressAvailable {
+                pool_name: format!("interface {}", interface)
+            })?;
 
-        // Check for existing lease
+        // Check for existing lease using client identifier (DUID)
         let lease_mgr = self.lease_manager.read().await;
-        if let Some(existing_lease) = lease_mgr.find_by_mac(client_id).await {
+        if let Some(existing_lease) = lease_mgr.find_by_client_id(client_id).await {
             if let IpAddr::V6(ipv6_addr) = existing_lease.ip {
                 info!(
                     address = %ipv6_addr,
@@ -658,11 +711,12 @@ impl DhcpV6Server {
                     drop(lease_mgr);
                     
                     // Allocate the requested address
-                    let mut lease_mgr = self.lease_manager.write().await;
+                    let lease_mgr = self.lease_manager.write().await;
                     lease_mgr.allocate_lease(
                         IpAddr::V6(req_addr),
-                        Some(client_id.to_vec()),
+                        None, // DHCPv6 doesn't use MAC addresses
                         None, // hostname set later from CLIENT_FQDN option
+                        Some(client_id.to_vec()), // client_id (DUID)
                         interface,
                         Duration::from_secs(DEFAULT_LEASE_TIME as u64),
                     ).await?;
@@ -678,9 +732,11 @@ impl DhcpV6Server {
 
         // Iterate through pools to find available address
         for pool in pools {
-            // Generate candidate addresses in pool range
-            let start = pool.start6;
-            let end = pool.end6;
+            // Extract IPv6 addresses from pool range
+            let (start, end) = match (pool.start, pool.end) {
+                (IpAddr::V6(s), IpAddr::V6(e)) => (s, e),
+                _ => continue, // Skip non-IPv6 pools
+            };
             
             // Simple linear search through range
             // TODO: Could optimize with bitmap or skip list for large pools
@@ -693,11 +749,12 @@ impl DhcpV6Server {
                     drop(lease_mgr);
                     
                     // Allocate this address
-                    let mut lease_mgr = self.lease_manager.write().await;
+                    let lease_mgr = self.lease_manager.write().await;
                     lease_mgr.allocate_lease(
                         IpAddr::V6(candidate),
-                        Some(client_id.to_vec()),
-                        None,
+                        None, // DHCPv6 doesn't use MAC addresses
+                        None, // hostname set later from CLIENT_FQDN option
+                        Some(client_id.to_vec()), // client_id (DUID)
                         interface,
                         Duration::from_secs(DEFAULT_LEASE_TIME as u64),
                     ).await?;
@@ -721,7 +778,9 @@ impl DhcpV6Server {
         }
 
         // No addresses available in any pool
-        Err(DhcpError::NoAddressesAvailable)
+        Err(DhcpError::NoAddressAvailable {
+            pool_name: format!("interface {}", interface)
+        })
     }
 
     /// Handles DHCPv6 prefix delegation (IA_PD) requests.
@@ -763,19 +822,21 @@ impl DhcpV6Server {
     /// ).await?;
     /// println!("Delegated prefix: {}/{}", prefix, prefix_len);
     /// ```
-    #[instrument(skip(self, client_id), fields(ia_pd_id, interface = %interface), level = "debug")]
+    #[instrument(skip(self, _client_id), fields(ia_pd_id, interface = %interface), level = "debug")]
     pub async fn handle_prefix_delegation(
         &self,
-        client_id: &[u8],
-        ia_pd_id: u32,
+        _client_id: &[u8],
+        _ia_pd_id: u32,
         interface: &str,
-        requested_prefix: Option<(Ipv6Addr, u8)>,
+        _requested_prefix: Option<(Ipv6Addr, u8)>,
     ) -> Result<(Ipv6Addr, u8), DhcpError> {
         debug!("Handling prefix delegation request");
 
         // Find pools with prefix delegation enabled for this interface
         let pools = self.address_pools.get(interface)
-            .ok_or_else(|| DhcpError::NoAddressPool(interface.to_string()))?;
+            .ok_or_else(|| DhcpError::PrefixDelegationFailed {
+                reason: format!("No pools configured for interface {}", interface)
+            })?;
 
         // Filter for PD-enabled contexts
         let pd_pools: Vec<_> = pools.iter()
@@ -783,14 +844,21 @@ impl DhcpV6Server {
             .collect();
 
         if pd_pools.is_empty() {
-            return Err(DhcpError::NoPrefixAvailable);
+            return Err(DhcpError::PrefixDelegationFailed {
+                reason: format!("No prefix delegation pools configured for interface {}", interface)
+            });
         }
 
         // For simplicity, allocate from first PD pool
         // Production implementation would track PD allocations separately
         let pd_pool = pd_pools[0];
         
-        let prefix_addr = pd_pool.start6;
+        let prefix_addr = match pd_pool.start {
+            IpAddr::V6(addr) => addr,
+            _ => return Err(DhcpError::PrefixDelegationFailed {
+                reason: "Prefix delegation pool has non-IPv6 address".to_string()
+            }),
+        };
         let prefix_len = pd_pool.prefix_len;
 
         info!(
@@ -842,10 +910,9 @@ impl DhcpV6Server {
     /// let config = Config::default();
     /// let socket = DhcpV6Server::bind_socket(&config).await?;
     /// ```
-    #[instrument(skip(config), level = "info")]
-    async fn bind_socket(config: &Config) -> Result<UdpSocket, DhcpError> {
+    #[instrument(skip(_config), level = "info")]
+    async fn bind_socket(_config: &Config) -> Result<UdpSocket, DhcpError> {
         use socket2::{Domain, Protocol, Socket, Type};
-        use std::os::unix::io::IntoRawFd;
 
         info!("Binding DHCPv6 socket to port {}", PORT_SERVER);
 
@@ -862,11 +929,14 @@ impl DhcpV6Server {
             .map_err(|e| DhcpError::SocketError(format!("Failed to set SO_REUSEADDR: {}", e)))?;
 
         // Set SO_REUSEPORT if supported (Linux, BSD, macOS)
-        #[cfg(all(unix, not(target_os = "solaris")))]
-        {
-            socket.set_reuse_port(true)
-                .map_err(|e| DhcpError::SocketError(format!("Failed to set SO_REUSEPORT: {}", e)))?;
-        }
+        // NOTE: socket2 0.5 doesn't expose set_reuse_port method directly.
+        // This optional optimization would allow multiple processes to bind to the same port.
+        // Can be implemented using raw setsockopt if needed in the future.
+        // #[cfg(all(unix, not(target_os = "solaris")))]
+        // {
+        //     socket.set_reuse_port(true)
+        //         .map_err(|e| DhcpError::SocketError(format!("Failed to set SO_REUSEPORT: {}", e)))?;
+        // }
 
         // Bind to [::]:547 (all interfaces)
         let bind_addr = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, PORT_SERVER, 0, 0);
@@ -906,7 +976,9 @@ impl DhcpV6Server {
         
         self.shutdown_tx.send(())
             .await
-            .map_err(|_| DhcpError::ShutdownError("Shutdown channel closed".to_string()))?;
+            .map_err(|_| DhcpError::V6ProtocolError {
+                reason: "Shutdown channel closed unexpectedly".to_string()
+            })?;
         
         Ok(())
     }
@@ -947,40 +1019,44 @@ impl DhcpV6Server {
     ///
     /// # Arguments
     ///
-    /// * `contexts` - All DHCP contexts from configuration
+    /// * `ranges` - All DHCP ranges from configuration
     ///
     /// # Returns
     ///
-    /// HashMap mapping interface name to vector of contexts for that interface
+    /// HashMap mapping interface name to vector of ranges for that interface
     fn index_address_pools(
-        contexts: &[DhcpContext],
-    ) -> Result<HashMap<String, Vec<DhcpContext>>, DhcpError> {
-        let mut pools: HashMap<String, Vec<DhcpContext>> = HashMap::new();
+        ranges: &[DhcpRange],
+    ) -> Result<HashMap<String, Vec<DhcpRange>>, DhcpError> {
+        let mut pools: HashMap<String, Vec<DhcpRange>> = HashMap::new();
         
-        for context in contexts {
-            // Only include DHCPv6 contexts (start6/end6 configured)
-            if context.start6.is_unspecified() {
+        for range in ranges {
+            // Only include DHCPv6 ranges (IPv6 addresses)
+            if !range.is_ipv6 {
                 continue;
             }
             
-            let interface = context.interface.clone().unwrap_or_else(|| "default".to_string());
-            pools.entry(interface).or_insert_with(Vec::new).push(context.clone());
+            let interface = range.interface.clone().unwrap_or_else(|| "default".to_string());
+            pools.entry(interface).or_insert_with(Vec::new).push(range.clone());
         }
         
         Ok(pools)
     }
 
     /// Checks if an IPv6 address falls within any of the provided address pools.
-    fn is_address_in_pools(addr: &Ipv6Addr, pools: &[DhcpContext]) -> bool {
-        pools.iter().any(|pool| {
-            *addr >= pool.start6 && *addr <= pool.end6
+    fn is_address_in_pools(addr: &Ipv6Addr, pools: &[DhcpRange]) -> bool {
+        pools.iter().any(|range| {
+            if let (IpAddr::V6(start), IpAddr::V6(end)) = (range.start, range.end) {
+                *addr >= start && *addr <= end
+            } else {
+                false
+            }
         })
     }
 
     /// Increments an IPv6 address by 1.
     ///
     /// Used for iterating through address ranges during allocation.
-    fn increment_ipv6_addr(mut addr: Ipv6Addr) -> Ipv6Addr {
+    fn increment_ipv6_addr(addr: Ipv6Addr) -> Ipv6Addr {
         let mut octets = addr.octets();
         
         // Add 1 to the address (big-endian)
@@ -1028,10 +1104,17 @@ mod tests {
 
     #[test]
     fn test_is_address_in_pools() {
-        let pool = DhcpContext {
-            start6: Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 100),
-            end6: Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 200),
-            ..Default::default()
+        use crate::config::types::DhcpRange;
+        
+        let pool = DhcpRange {
+            start: IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 100)),
+            end: IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 200)),
+            lease_time_override: None,
+            netmask: None,
+            interface: None,
+            lease_time: None,
+            is_ipv6: true,
+            prefix_len: 0,  // Not a prefix delegation pool
         };
         
         let addr_in = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 150);
