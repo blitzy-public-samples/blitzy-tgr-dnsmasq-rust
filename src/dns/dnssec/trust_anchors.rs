@@ -829,6 +829,35 @@ impl TrustAnchorStore {
         Ok(())
     }
 
+    /// Parses and adds a trust anchor from a configuration string.
+    ///
+    /// Accepts trust anchor specifications in the format:
+    /// `trust-anchor=domain,keytag,algorithm,digest_type,digest`
+    /// or simply: `domain,keytag,algorithm,digest_type,digest`
+    ///
+    /// The optional "trust-anchor=" prefix is automatically stripped.
+    ///
+    /// # Arguments
+    ///
+    /// * `line` - Configuration line containing trust anchor specification
+    ///
+    /// # Returns
+    ///
+    /// Result indicating success or detailed parsing error.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use dnsmasq::dns::dnssec::trust_anchors::TrustAnchorStore;
+    ///
+    /// let mut store = TrustAnchorStore::new();
+    /// store.parse_and_add_anchor(".,IN,20326,8,2,E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D")?;
+    /// ```
+    pub fn parse_and_add_anchor(&mut self, line: &str) -> Result<()> {
+        let anchor = self.parse_trust_anchor_line(line, 0, "configuration")?;
+        self.add_anchor(anchor)
+    }
+
     /// Removes a specific trust anchor from the store.
     ///
     /// Removes trust anchor matching domain and keytag. Used for RFC 5011 automated

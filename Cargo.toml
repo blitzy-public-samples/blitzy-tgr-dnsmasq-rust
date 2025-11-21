@@ -33,6 +33,7 @@ tokio-util = { version = "0.7", features = ["codec"] }
 tokio-stream = "0.1"
 futures = "0.3"
 async-trait = "0.1"
+async-recursion = "1.1"
 
 # DNS protocol implementation - replaces src/rfc1035.c and related files
 hickory-proto = "0.25"
@@ -45,6 +46,7 @@ ring = { version = "0.17", optional = true }
 
 # Random number generation - SURF RNG implementation
 getrandom = "0.2"
+rand = "0.8"
 
 # Parsing and serialization
 nom = "7.1"
@@ -147,6 +149,9 @@ default = ["dnssec", "idn", "dumpfile", "dhcp6"]
 # HAVE_DNSSEC - DNSSEC validation support
 dnssec = ["ring"]
 
+# HAVE_AUTH - Authoritative zone serving
+auth = []
+
 # HAVE_DUMPFILE - Packet capture to libpcap format for debugging
 dumpfile = []
 
@@ -190,6 +195,7 @@ doh = ["rustls", "webpki"]
 # Note: 'ubus' requires OpenWrt libubus library and should be explicitly enabled on OpenWrt
 all-features = [
     "dnssec",
+    "auth",
     "dbus",
     "lua-scripts",
     "idn",

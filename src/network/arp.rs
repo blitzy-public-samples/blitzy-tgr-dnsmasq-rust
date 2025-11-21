@@ -466,7 +466,7 @@ impl ArpCache {
                 _ => {
                     // Return MAC address if available
                     debug!("Found ARP entry for {}: mac={:?}, status={:?}", ip, entry.mac, entry.status);
-                    return Ok(entry.mac.clone());
+                    return Ok(entry.mac);
                 }
             }
         }
@@ -571,7 +571,7 @@ impl ArpCache {
                 if entry.status == ArpStatus::Empty {
                     // Empty entry now has MAC address - promote to new
                     debug!("Empty entry for {} now has MAC {}, promoting to New", kernel_ip, kernel_mac);
-                    entry.mac = Some(kernel_mac.clone());
+                    entry.mac = Some(kernel_mac);
                     entry.status = ArpStatus::New;
                     entry.last_seen = now;
                     new_count += 1;
@@ -585,7 +585,7 @@ impl ArpCache {
                         // MAC changed - mark as new
                         debug!("MAC changed for {}: {} -> {}, marking as New", 
                             kernel_ip, existing_mac, kernel_mac);
-                        entry.mac = Some(kernel_mac.clone());
+                        entry.mac = Some(kernel_mac);
                         entry.status = ArpStatus::New;
                         entry.last_seen = now;
                         updated_count += 1;
@@ -677,7 +677,7 @@ impl ArpCache {
                 if let Some(mac) = deleted_entry.mac {
                     info!("Notifying script: device disappeared - {} ({})", deleted_entry.ip, mac);
                     let helper = self.helper.read().await;
-                    queue_arp(&*helper, mac, deleted_entry.ip, false)
+                    queue_arp(&helper, mac, deleted_entry.ip, false)
                         .map_err(|e| {
                             error!("Failed to queue ARP deletion script: {}", e);
                             NetworkError::RoutingFailed {
@@ -697,7 +697,7 @@ impl ArpCache {
                     if let Some(ref mac) = entry.mac {
                         info!("Notifying script: new device discovered - {} ({})", entry.ip, mac);
                         let helper = self.helper.read().await;
-                        queue_arp(&*helper, mac.clone(), entry.ip, true)
+                        queue_arp(&helper, *mac, entry.ip, true)
                             .map_err(|e| {
                                 error!("Failed to queue ARP addition script: {}", e);
                                 NetworkError::RoutingFailed {

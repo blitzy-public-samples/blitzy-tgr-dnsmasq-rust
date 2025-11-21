@@ -198,7 +198,7 @@ pub enum DnsmasqError {
 ///     # todo!()
 /// }
 /// ```
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum DnsError {
     /// DNS query forwarding to upstream server failed.
     #[error("Failed to forward query to upstream server '{server}': {reason}")]
@@ -296,6 +296,34 @@ pub enum DnsError {
         /// The DNS query that caused the forwarding loop
         query: String,
     },
+
+    /// Network I/O error.
+    #[error("Network error: {0}")]
+    NetworkError(String),
+
+    /// DNS message parsing error.
+    #[error("Parse error: {0}")]
+    ParseError(String),
+
+    /// Query not found in pending query tracking.
+    #[error("Query ID {0} not found")]
+    QueryNotFound(u16),
+
+    /// DNS message serialization error.
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
+
+    /// All upstream DNS servers are unreachable.
+    #[error("All upstream DNS servers are unreachable")]
+    UpstreamUnreachable,
+
+    /// DNSSEC validation failed for response.
+    #[error("DNSSEC validation failed: {0}")]
+    ValidationFailed(String),
+
+    /// Configuration error.
+    #[error("Configuration error: {0}")]
+    ConfigurationError(String),
 }
 
 /// DHCP lease allocation and management errors.

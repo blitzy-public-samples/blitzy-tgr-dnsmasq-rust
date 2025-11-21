@@ -400,6 +400,7 @@ impl AuthoritativeZone {
 ///     .answer_auth_query(&query, client_addr)
 ///     .await?;
 /// ```
+#[derive(Debug)]
 pub struct AuthService {
     /// Configured authoritative zones.
     zones: Vec<AuthoritativeZone>,

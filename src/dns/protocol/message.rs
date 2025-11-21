@@ -841,6 +841,11 @@ impl DnsResponse {
         Self { message }
     }
 
+    /// Create response from an existing DNS message.
+    pub fn from_message(message: DnsMessage) -> Self {
+        Self { message }
+    }
+
     /// Get underlying message.
     pub fn to_message(self) -> DnsMessage {
         self.message

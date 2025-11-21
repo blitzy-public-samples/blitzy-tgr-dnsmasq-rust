@@ -134,9 +134,9 @@ use crate::dns::cache::{CacheEntry, DnsCache};
 use crate::dns::edns0::Edns0Handler;
 use crate::dns::protocol::message::{DnsMessage as ProtocolMessage, DnsQuery, DnsResponse};
 use crate::dns::upstream::UpstreamPool;
-use crate::error::{DnsError, Result};
+use crate::error::{DnsError, DnsmasqError, Result};
 use crate::network::sockets::DnsSocket;
-use crate::types::{DomainName, IpAddr, RecordType, Timestamp};
+use crate::types::{DomainName, IpAddr, Timestamp};
 
 use bytes::{Bytes, BytesMut};
 use std::collections::HashMap;
@@ -146,7 +146,7 @@ use std::time::{Duration, Instant};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::sync::RwLock;
 use tokio::time::timeout;
-use tracing::{debug, error, info, instrument, span, trace, warn};
+use tracing::{debug, error, info, instrument, trace, warn};
 
 // ============================================================================
 // HELPER TYPES
@@ -165,12 +165,14 @@ use tracing::{debug, error, info, instrument, span, trace, warn};
 const QUERY_TIMEOUT: Duration = Duration::from_secs(TIMEOUT as u64);
 
 /// Maximum UDP payload size for DNS messages (RFC 1035 recommended).
+#[allow(dead_code)]
 const MAX_UDP_PAYLOAD: usize = 512;
 
 /// Maximum UDP payload size with EDNS0 support (RFC 6891).
 const MAX_EDNS_PAYLOAD: usize = 4096;
 
 /// Maximum number of retry attempts for failed queries.
+#[allow(dead_code)]
 const MAX_RETRY_ATTEMPTS: usize = 3;
 
 /// TCP query prefix length (2 bytes for message length).
@@ -242,7 +244,7 @@ pub enum QueryState {
     /// Coordinates with dnssec module for signature verification.
     Validating {
         /// Upstream response awaiting validation
-        response: DnsMessage,
+        response: ProtocolMessage,
     },
 
     /// Query processing completed successfully with a valid response.
@@ -250,7 +252,7 @@ pub enum QueryState {
     /// Response ready to be sent back to the client.
     Completed {
         /// Final DNS response to return to client
-        response: DnsMessage,
+        response: ProtocolMessage,
     },
 
     /// Query processing failed due to timeout, error, or validation failure.
@@ -415,9 +417,9 @@ impl OutstandingQuery {
     }
 
     /// Transition to completed state with final response.
-    pub fn mark_completed(&mut self, mut response: DnsMessage) {
+    pub fn mark_completed(&mut self, mut response: ProtocolMessage) {
         // Restore original client query ID
-        response.set_id(self.original_id);
+        response.header.id = self.original_id;
         self.state = QueryState::Completed { response };
     }
 
@@ -458,6 +460,7 @@ impl OutstandingQuery {
 /// // Process query from client
 /// forwarder.receive_query(query_bytes, client_addr, socket).await?;
 /// ```
+#[derive(Debug)]
 pub struct DnsForwarder {
     /// Active query tracking map: query_id -> OutstandingQuery.
     ///
@@ -561,10 +564,10 @@ impl DnsForwarder {
         // Parse message and look for OPT record in additional section
         if let Ok(message) = ProtocolMessage::from_bytes(query_bytes) {
             // Create EDNS0 handler and check for OPT record
-            let mut handler = Edns0Handler::new();
+            let handler = Edns0Handler::new();
             
-            // Look for OPT pseudo-RR in additional section
-            if handler.find_opt_record(&message).is_some() {
+            // Look for OPT pseudo-RR in additional section using the new helper method
+            if handler.find_opt_in_message(&message).is_some() {
                 return Some(handler);
             }
         }
@@ -585,6 +588,7 @@ impl DnsForwarder {
     /// # Returns
     ///
     /// Modified query bytes with EDNS0 options added
+    #[allow(dead_code)]
     fn add_edns0_to_query(
         query_bytes: &mut Vec<u8>,
         edns0_handler: Option<&Edns0Handler>,
@@ -592,14 +596,31 @@ impl DnsForwarder {
         if let Some(handler) = edns0_handler {
             // Parse message to add OPT record
             if let Ok(mut message) = ProtocolMessage::from_bytes(&Bytes::copy_from_slice(query_bytes)) {
-                // Add OPT pseudo-RR to additional section
-                handler.add_opt_record(&mut message)?;
-                
-                // Set DNSSEC OK bit if client supports it
-                handler.set_do_bit(&mut message, true)?;
-                
-                // Serialize back to bytes
-                *query_bytes = message.to_bytes()?;
+                // Check if message already has an OPT record
+                if handler.find_opt_in_message(&message).is_none() {
+                    // Create OPT record with 4096 byte UDP payload size and DNSSEC enabled
+                    use crate::dns::protocol::name::DomainName;
+                    use crate::dns::protocol::record::{ResourceRecord, RData};
+                    use crate::types::RecordType;
+                    
+                    // Create OPT pseudo-RR
+                    // - name: root domain (".")
+                    // - class: UDP payload size (4096)
+                    // - ttl: extended RCODE and flags (DO bit = 0x8000 in upper 16 bits)
+                    let opt_rr = ResourceRecord::new(
+                        DomainName::new(".").unwrap_or_else(|_| DomainName::new("").unwrap()),
+                        RecordType::OPT,
+                        4096, // UDP payload size in class field
+                        0x00008000, // DO bit set in TTL extended flags
+                        RData::Opt(Vec::new()), // No additional EDNS0 options for now
+                    );
+                    
+                    // Add to additional section
+                    message.additional.push(opt_rr);
+                    
+                    // Serialize back to bytes
+                    *query_bytes = message.to_bytes()?;
+                }
             }
         }
         
@@ -618,12 +639,13 @@ impl DnsForwarder {
     /// # Returns
     ///
     /// Socket address of selected upstream server or error if none available
+    #[allow(dead_code)]
     async fn select_available_upstream(&self, domain_name: &DomainName) -> Result<SocketAddr> {
-        let pool = self.upstream_pool.read().await;
+        let mut pool = self.upstream_pool.write().await;
         
         // Try to select an available server using round-robin
         if let Some(server) = pool.select_server(domain_name, false) {
-            let addr = server.addr();
+            let addr = server.addr;
             
             // Double-check server is available (not in failure cooldown)
             if pool.is_available(addr) {
@@ -632,7 +654,7 @@ impl DnsForwarder {
         }
         
         // No available servers
-        Err(DnsError::NoUpstreamServers)
+        Err(DnsmasqError::Dns(DnsError::NoUpstreamServers))
     }
 
     /// Create cache entry from upstream response with proper TTL tracking.
@@ -652,7 +674,7 @@ impl DnsForwarder {
     fn create_cache_entry(
         query: &DnsQuery,
         response: &ProtocolMessage,
-        received_at: Timestamp,
+        _received_at: Timestamp,
     ) -> Result<CacheEntry> {
         // Get minimum TTL from all answer records
         // If no answers or all have TTL 0, use default 5-minute TTL
@@ -662,11 +684,26 @@ impl DnsForwarder {
             .min()
             .unwrap_or(300);
         
-        // Calculate expiration timestamp
-        let expires_at = received_at + ttl as u64;
+        // Extract IP address from first answer record (if it's an A or AAAA record)
+        let ip_addr = response.answers.first().and_then(|rr| {
+            match rr.rdata() {
+                crate::dns::protocol::record::RData::A(addr) => Some(IpAddr::V4(*addr)),
+                crate::dns::protocol::record::RData::AAAA(addr) => Some(IpAddr::V6(*addr)),
+                _ => None,
+            }
+        });
         
-        // Create cache entry with response data
-        CacheEntry::from_response(query, response, ttl)
+        // Create cache entry with FORWARD flag (since this is from upstream forwarding)
+        use crate::types::CacheFlags;
+        let flags = CacheFlags::FORWARD;
+        
+        Ok(CacheEntry::new(
+            query.name.clone(),
+            query.qtype,
+            ip_addr,
+            ttl,
+            flags,
+        ))
     }
 
     /// Receive and process a DNS query from a client.
@@ -697,32 +734,39 @@ impl DnsForwarder {
     /// # Example
     ///
     /// ```rust,ignore
+    /// let socket = Arc::new(DnsSocket::new(udp_socket));
     /// let (query_bytes, client_addr) = socket.recv_from(&mut buf).await?;
-    /// forwarder.receive_query(query_bytes, client_addr, &socket).await?;
+    /// forwarder.receive_query(query_bytes, client_addr, socket).await?;
     /// ```
     #[instrument(skip(self, query_bytes, socket), fields(client = %client_addr))]
     pub async fn receive_query(
         &self,
         query_bytes: Bytes,
         client_addr: SocketAddr,
-        socket: &DnsSocket,
+        socket: Arc<DnsSocket>,
     ) -> Result<()> {
         // Parse incoming DNS message
         let message = ProtocolMessage::from_bytes(&query_bytes)
-            .map_err(|e| DnsError::ParseError(format!("Invalid DNS query: {}", e)))?;
+            .map_err(|e| DnsError::ParseFailed {
+                server: client_addr.to_string(),
+                reason: format!("Invalid DNS query: {}", e),
+            })?;
 
         let original_id = message.id();
         
         trace!(
             query_id = original_id,
-            questions = message.questions().len(),
+            questions = message.questions.len(),
             "Received DNS query"
         );
 
         // Extract first question (DNS queries typically have one question)
         // Extract DnsQuery from message (uses protocol module's standard extraction)
         let query = DnsQuery::from_message(&message)
-            .ok_or_else(|| DnsError::ParseError("Query has no questions".to_string()))?;
+            .ok_or_else(|| DnsError::ParseFailed {
+                server: client_addr.to_string(),
+                reason: "Query has no questions".to_string(),
+            })?;
 
         debug!(
             name = %query.name,
@@ -732,8 +776,8 @@ impl DnsForwarder {
 
         // Check cache for existing entry
         let cache_entry = {
-            let cache = self.cache.read().await;
-            cache.find_by_name(&query.name, query.qtype).await
+            let mut cache = self.cache.write().await;
+            cache.find_by_name(&query.name, query.qtype)
         };
 
         if let Some(entry) = cache_entry {
@@ -744,13 +788,11 @@ impl DnsForwarder {
             );
 
             // Build response from cache
-            let response = self.build_response_from_cache(&message, entry).await?;
-            let response_bytes = response.to_bytes()
-                .map_err(|e| DnsError::SerializationError(format!("Response serialization failed: {}", e)))?;
+            let response = self.build_response_from_cache(&message, (*entry).clone()).await?;
+            let response_bytes = response.to_bytes()?;
 
             // Send response back to client
-            socket.send_to(&response_bytes, client_addr).await
-                .map_err(|e| DnsError::NetworkError(format!("Failed to send response: {}", e)))?;
+            socket.send_to(&response_bytes, client_addr).await?;
 
             return Ok(());
         }
@@ -803,14 +845,16 @@ impl DnsForwarder {
         original_id: u16,
         client_addr: SocketAddr,
         query_bytes: Bytes,
-        socket: &DnsSocket,
+        socket: Arc<DnsSocket>,
     ) -> Result<()> {
         // Select upstream server using round-robin with failure tracking
         let upstream_server = {
-            let pool = self.upstream_pool.read().await;
-            pool.select_server(&query.name, false)
-                .ok_or_else(|| DnsError::NoUpstreamServers)?
-                .addr()
+            let mut pool = self.upstream_pool.write().await;
+            // Convert protocol::name::DomainName to types::DomainName
+            let domain_name = crate::types::DomainName::new(query.name.as_str())?;
+            pool.select_server(&domain_name, false)
+                .ok_or(DnsError::NoUpstreamServers)?
+                .addr
         };
 
         // Extract IP address from upstream server for logging and metrics
@@ -838,19 +882,17 @@ impl DnsForwarder {
             edns0,
         );
 
-        // Rewrite query with new ID
-        let mut forward_bytes = query_bytes.clone();
+        // Rewrite query with new ID (Bytes is immutable, so convert to mutable Vec)
+        let mut forward_bytes = query_bytes.to_vec();
         if forward_bytes.len() >= 2 {
             forward_bytes[0] = (new_query_id >> 8) as u8;
             forward_bytes[1] = (new_query_id & 0xFF) as u8;
         }
 
         // Send query to upstream server via UDP
-        let upstream_socket = UdpSocket::bind("0.0.0.0:0").await
-            .map_err(|e| DnsError::NetworkError(format!("Failed to create upstream socket: {}", e)))?;
+        let upstream_socket = UdpSocket::bind("0.0.0.0:0").await?;
 
-        upstream_socket.send_to(&forward_bytes, upstream_server).await
-            .map_err(|e| DnsError::NetworkError(format!("Failed to send to upstream: {}", e)))?;
+        upstream_socket.send_to(&forward_bytes, upstream_server).await?;
 
         info!(
             upstream = %upstream_server,
@@ -870,7 +912,7 @@ impl DnsForwarder {
 
         // Spawn task to receive upstream response with timeout
         let forwarder = self.clone();
-        let socket_clone = socket.clone();
+        let socket_clone = Arc::clone(&socket);
         tokio::spawn(async move {
             match timeout(
                 QUERY_TIMEOUT,
@@ -881,7 +923,12 @@ impl DnsForwarder {
                 }
                 Ok(Err(e)) => {
                     error!(query_id = new_query_id, error = %e, "Error processing upstream response");
-                    forwarder.handle_query_error(new_query_id, e).await;
+                    // Convert DnsmasqError to DnsError for error handler
+                    let dns_error = match e {
+                        DnsmasqError::Dns(de) => de,
+                        other => DnsError::NetworkError(format!("Upstream error: {}", other)),
+                    };
+                    forwarder.handle_query_error(new_query_id, dns_error).await;
                 }
                 Err(_) => {
                     warn!(query_id = new_query_id, "Query timeout");
@@ -907,7 +954,7 @@ impl DnsForwarder {
         &self,
         query_id: u16,
         upstream_socket: UdpSocket,
-        client_socket: DnsSocket,
+        client_socket: Arc<DnsSocket>,
     ) -> Result<()> {
         let mut buf = vec![0u8; MAX_EDNS_PAYLOAD];
         
@@ -951,12 +998,13 @@ impl DnsForwarder {
     /// - Response parsing fails
     /// - Cache insertion fails
     /// - Client response send fails
+    #[async_recursion::async_recursion]
     #[instrument(skip(self, response_bytes, socket), fields(query_id = query_id))]
     pub async fn reply_query(
         &self,
         query_id: u16,
         response_bytes: Bytes,
-        socket: DnsSocket,
+        socket: Arc<DnsSocket>,
     ) -> Result<()> {
         // Parse upstream response
         let response_message = ProtocolMessage::from_bytes(&response_bytes)
@@ -966,13 +1014,13 @@ impl DnsForwarder {
         let outstanding = {
             let mut queries = self.outstanding_queries.write().await;
             queries.remove(&query_id)
-                .ok_or_else(|| DnsError::QueryNotFound(query_id))?
+                .ok_or(DnsError::QueryNotFound(query_id))?
         };
 
         // Verify response has QR bit set (indicating it's a response, not a query)
         if !response_message.flags().qr() {
             warn!(query_id = query_id, "Upstream sent query instead of response");
-            return Err(DnsError::ParseError("Invalid response: QR bit not set".to_string()));
+            return Err(DnsmasqError::Dns(DnsError::ParseError("Invalid response: QR bit not set".to_string())));
         }
 
         debug!(
@@ -1028,10 +1076,7 @@ impl DnsForwarder {
         
         if let Some(ttl) = min_ttl {
                 // Get current timestamp for TTL tracking
-                let received_at = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
+                let received_at = Timestamp::now();
                 
                 // Create cache entry with proper timestamp tracking
                 let cache_entry = Self::create_cache_entry(
@@ -1041,20 +1086,19 @@ impl DnsForwarder {
                 )?;
                 
                 let mut cache = self.cache.write().await;
-                cache.insert(cache_entry).await?;
+                cache.insert(cache_entry)?;
                 
                 trace!(
                     name = %outstanding.query.name,
                     ttl = ttl,
-                    received_at = received_at,
+                    received_at = received_at.as_secs(),
                     "Cached response with timestamp"
                 );
             }
-        }
 
         // Restore original client query ID
-        let mut final_response = response_message;
-        final_response.set_id(outstanding.original_id);
+        let mut final_response = response_message.clone();
+        final_response.header.id = outstanding.original_id;
 
         // Send response to client
         let response_bytes = final_response.to_bytes()
@@ -1096,6 +1140,7 @@ impl DnsForwarder {
     ///     // Receive response with 2-byte length prefix
     /// }
     /// ```
+    #[async_recursion::async_recursion]
     #[instrument(skip(self, query_bytes, socket), fields(
         upstream = %upstream_addr,
         name = %query.name
@@ -1107,7 +1152,7 @@ impl DnsForwarder {
         client_addr: SocketAddr,
         query_bytes: Bytes,
         upstream_addr: SocketAddr,
-        socket: DnsSocket,
+        socket: Arc<DnsSocket>,
     ) -> Result<()> {
         debug!("Establishing TCP connection for truncated query");
 
@@ -1118,8 +1163,8 @@ impl DnsForwarder {
         // Generate new query ID for TCP request
         let tcp_query_id = self.generate_query_id().await;
 
-        // Rewrite query with TCP query ID
-        let mut tcp_query_bytes = query_bytes.clone();
+        // Rewrite query with TCP query ID (Bytes is immutable, so convert to mutable Vec)
+        let mut tcp_query_bytes = query_bytes.to_vec();
         if tcp_query_bytes.len() >= 2 {
             tcp_query_bytes[0] = (tcp_query_id >> 8) as u8;
             tcp_query_bytes[1] = (tcp_query_id & 0xFF) as u8;
@@ -1172,8 +1217,9 @@ impl DnsForwarder {
     /// ```rust,ignore
     /// // Main event loop
     /// loop {
+    ///     let socket = Arc::new(socket);
     ///     let (query, addr) = socket.recv_from(&mut buf).await?;
-    ///     forwarder.process_query(query, addr, &socket).await?;
+    ///     forwarder.process_query(query, addr, socket).await?;
     /// }
     /// ```
     #[instrument(skip(self, query_bytes, socket))]
@@ -1181,7 +1227,7 @@ impl DnsForwarder {
         &self,
         query_bytes: Bytes,
         client_addr: SocketAddr,
-        socket: &DnsSocket,
+        socket: Arc<DnsSocket>,
     ) -> Result<()> {
         self.receive_query(query_bytes, client_addr, socket).await
     }
@@ -1205,7 +1251,7 @@ impl DnsForwarder {
     async fn build_response_from_cache(
         &self,
         query_message: &ProtocolMessage,
-        cache_entry: CacheEntry,
+        _cache_entry: CacheEntry,
     ) -> Result<ProtocolMessage> {
         // Use DnsResponse wrapper for type-safe response construction
         let mut response = DnsResponse::from_query(query_message);
@@ -1292,6 +1338,8 @@ impl Clone for DnsForwarder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::RecordType;
+    use crate::dns::protocol::name::DomainName;
 
     #[test]
     fn test_query_state_transitions() {
@@ -1312,7 +1360,7 @@ mod tests {
     fn test_outstanding_query_creation() {
         // Test basic query creation with protocol DnsQuery type
         let query = DnsQuery {
-            name: DomainName::default(),
+            name: DomainName::new("example.com").expect("valid domain"),
             qtype: RecordType::A,
             qclass: 1,
         };
@@ -1375,7 +1423,7 @@ mod tests {
     #[test]
     fn test_outstanding_query_state_transitions() {
         let query = DnsQuery {
-            name: DomainName::default(),
+            name: DomainName::new("example.com").expect("valid domain"),
             qtype: RecordType::A,
             qclass: 1,
         };

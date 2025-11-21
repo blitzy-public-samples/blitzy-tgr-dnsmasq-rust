@@ -950,6 +950,44 @@ impl Edns0Handler {
             _ => true, // All other options accepted
         }
     }
+
+    /// Checks if a parsed DNS message contains an OPT record in its additional section.
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - Parsed DNS message to check
+    ///
+    /// # Returns
+    ///
+    /// `Some(index)` if an OPT record is found, `None` otherwise
+    pub fn find_opt_in_message(&self, message: &crate::dns::protocol::message::DnsMessage) -> Option<usize> {
+        for (idx, rr) in message.additional.iter().enumerate() {
+            if rr.rtype() == crate::types::RecordType::OPT {
+                return Some(idx);
+            }
+        }
+        None
+    }
+
+    /// Creates a new OPT record to add to a DNS message.
+    ///
+    /// # Arguments
+    ///
+    /// * `udp_size` - Maximum UDP payload size
+    /// * `enable_dnssec` - Whether to set the DNSSEC OK (DO) bit
+    ///
+    /// # Returns
+    ///
+    /// A new OptRecord configured with the specified parameters
+    #[allow(dead_code)]
+    pub fn create_opt_record(&self, udp_size: u16, enable_dnssec: bool) -> OptRecord {
+        let mut opt = OptRecord::new();
+        opt.udp_payload_size = udp_size;
+        if enable_dnssec {
+            opt.set_do_bit(true);
+        }
+        opt
+    }
 }
 
 impl Default for Edns0Handler {

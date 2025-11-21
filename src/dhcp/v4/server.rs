@@ -191,12 +191,14 @@ pub struct DhcpV4Service {
     ///
     /// Automatically registers allocated hostnames in DNS cache for name resolution.
     /// Replaces C cache_add_dhcp_entry() calls with async cache updates.
+    #[allow(dead_code)]
     dns_cache: Arc<RwLock<DnsCache>>,
 
     /// Helper process for external script execution on lease events
     ///
     /// Executes scripts with DNSMASQ_* environment variables on add/old/del events.
     /// Replaces C queue_script() and helper.c privilege-separated execution.
+    #[allow(dead_code)]
     helper: Arc<HelperProcess>,
 
     /// Interface manager for enumeration and monitoring
@@ -445,7 +447,7 @@ impl DhcpV4Service {
         );
 
         // Validate minimum packet size
-        if len < MIN_PACKETSZ as usize {
+        if len < MIN_PACKETSZ {
             warn!(
                 source = %source,
                 length = len,
@@ -845,21 +847,21 @@ impl DhcpV4Service {
 
         // Honor requested address if in range and available
         if let Some(req_addr) = requested {
-            if Self::ip_in_range(req_addr, context.start, context.end) {
-                if self.is_address_available(req_addr, client_mac).await? {
-                    if !self.ping_test(req_addr).await? {
-                        info!(
-                            mac = %client_mac,
-                            requested_ip = %req_addr,
-                            "Allocated requested address"
-                        );
-                        return Ok(req_addr);
-                    } else {
-                        warn!(
-                            requested_ip = %req_addr,
-                            "Requested address failed ping test (in use)"
-                        );
-                    }
+            if Self::ip_in_range(req_addr, context.start, context.end)
+                && self.is_address_available(req_addr, client_mac).await?
+            {
+                if !self.ping_test(req_addr).await? {
+                    info!(
+                        mac = %client_mac,
+                        requested_ip = %req_addr,
+                        "Allocated requested address"
+                    );
+                    return Ok(req_addr);
+                } else {
+                    warn!(
+                        requested_ip = %req_addr,
+                        "Requested address failed ping test (in use)"
+                    );
                 }
             }
         }

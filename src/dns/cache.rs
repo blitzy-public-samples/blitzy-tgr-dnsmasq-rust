@@ -279,6 +279,11 @@ impl CacheEntry {
         self.ip_addr
     }
 
+    /// Returns a reference to the resource record.
+    pub fn record(&self) -> &ResourceRecord {
+        &self.record
+    }
+
     /// Returns the TTL in seconds remaining until expiry.
     pub fn ttl(&self) -> u32 {
         let now = Timestamp::now();
@@ -399,6 +404,7 @@ pub struct CacheStats {
 /// let mut cache_write = cache.write().await;
 /// cache_write.insert(entry).await?;
 /// ```
+#[derive(Debug)]
 pub struct DnsCache {
     /// Hash table for O(1) lookups by domain name + record type
     entries: AHashMap<CacheKey, Arc<CacheEntry>>,
