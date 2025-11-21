@@ -20,6 +20,7 @@
 //! - RFC 6106: IPv6 Router Advertisement Options for DNS Configuration
 
 pub mod protocol;
+pub mod slaac;
 
 // Re-export commonly used types for convenience
 pub use protocol::{
@@ -46,3 +47,6 @@ pub use protocol::{
     // Neighbor Discovery option types
     SOURCE_MAC_OPT,
 };
+
+// Re-export SLAAC functionality
+pub use slaac::{eui64_from_mac, periodic_slaac, slaac_add_addrs, slaac_ping_reply, SlaacAddress};

@@ -239,7 +239,7 @@ pub enum SlaacError {
 ///
 /// Based on: src/slaac.c lines 453-467
 #[instrument(skip(mac, prefix))]
-fn eui64_from_mac(mac: &[u8; 6], prefix: &Ipv6Addr) -> Ipv6Addr {
+pub fn eui64_from_mac(mac: &[u8; 6], prefix: &Ipv6Addr) -> Ipv6Addr {
     // Get prefix segments (first 4 u16 values, total 64 bits)
     let prefix_segments = prefix.segments();
     
@@ -319,7 +319,7 @@ pub async fn slaac_add_addrs(
 ) -> Result<(), SlaacError> {
     // Extract MAC address from lease
     let mac = match &lease.mac {
-        Some(mac) => mac.as_bytes(),
+        Some(mac) => mac.octets(),
         None => {
             debug!("Lease has no MAC address, cannot derive SLAAC addresses");
             return Err(SlaacError::MacConversionFailed(
@@ -617,7 +617,7 @@ pub async fn periodic_slaac(
         };
 
         // We need to track addresses to remove (those with expired backoff)
-        let mut addresses_to_remove = Vec::new();
+        let mut addresses_to_remove: Vec<usize> = Vec::new();
 
         // Check each SLAAC address
         for (idx, slaac_addr) in slaac_addrs_vec.iter().enumerate() {
