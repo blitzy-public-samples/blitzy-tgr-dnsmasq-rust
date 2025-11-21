@@ -1023,6 +1023,7 @@ pub async fn create_icmpv6_socket(config: Arc<NetworkConfig>) -> Result<RaSocket
 /// # Errors
 ///
 /// Returns NetworkError if socket creation or binding fails
+#[allow(dead_code)]
 pub(crate) async fn create_dns_socket(addr: SocketAddr) -> Result<UdpSocket> {
     let socket = Socket::new(
         if addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 },
@@ -1082,6 +1083,7 @@ pub(crate) async fn create_dns_socket(addr: SocketAddr) -> Result<UdpSocket> {
 /// # Errors
 ///
 /// Returns NetworkError if socket creation or binding fails
+#[allow(dead_code)]
 pub(crate) async fn create_dhcp_socket(addr: SocketAddr) -> Result<UdpSocket> {
     let socket = Socket::new(
         if addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 },
