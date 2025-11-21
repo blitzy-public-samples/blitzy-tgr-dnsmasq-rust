@@ -6,6 +6,7 @@
 //! This build script handles platform-specific library linking requirements,
 //! particularly for optional features that depend on C libraries.
 
+#[cfg(feature = "ubus")]
 use std::process::Command;
 
 fn main() {

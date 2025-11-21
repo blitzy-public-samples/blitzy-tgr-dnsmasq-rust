@@ -139,8 +139,11 @@ use mlua::{Lua, Table};
 // Standard library imports
 use std::collections::HashMap;
 use std::net::IpAddr;
+#[cfg(feature = "lua-scripts")]
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+#[cfg(feature = "lua-scripts")]
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 // ============================================================================
