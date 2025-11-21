@@ -39,7 +39,7 @@
 //! use dnsmasq::platform::dbus::DbusDaemon;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let mut dbus = DbusDaemon::new().await?;
+//! let mut dbus = DbusDaemon::new()?;
 //! dbus.start().await?;
 //!
 //! // D-Bus interface is now active and listening for method calls
@@ -305,9 +305,9 @@ impl DnsmasqInterface {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_dbus_daemon_creation() {
-        let result = DbusDaemon::new().await;
+    #[test]
+    fn test_dbus_daemon_creation() {
+        let result = DbusDaemon::new();
         assert!(result.is_ok());
     }
 
