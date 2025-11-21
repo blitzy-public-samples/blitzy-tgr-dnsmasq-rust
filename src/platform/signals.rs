@@ -401,7 +401,7 @@ impl SignalHandlers {
         
         // Flush and rotate logs
         let mut logging_service = self.logging_service.write().await;
-        match flush_log(&mut *logging_service).await {
+        match flush_log(&mut logging_service).await {
             Ok(()) => {
                 info!("Log rotation completed successfully");
                 Ok(())
