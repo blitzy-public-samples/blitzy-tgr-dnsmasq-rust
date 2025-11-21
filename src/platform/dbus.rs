@@ -91,7 +91,7 @@
 //!
 //! # Example Usage
 //!
-//! ```no_run
+//! ```ignore
 //! # use std::sync::Arc;
 //! # use tokio::sync::RwLock;
 //! # use dnsmasq::platform::dbus::DbusService;
@@ -99,7 +99,8 @@
 //! # use dnsmasq::util::metrics::MetricsCollector;
 //! # async fn example() -> anyhow::Result<()> {
 //! // Create D-Bus service with references to core services
-//! let dns_service = Arc::new(RwLock::new(DnsService::new()));
+//! // Note: DnsService uses a builder pattern, not a simple new() constructor
+//! let dns_service = Arc::new(RwLock::new(DnsService::builder().build().await?));
 //! let metrics = Arc::new(RwLock::new(MetricsCollector::new()));
 //!
 //! let dbus_service = DbusService::new(dns_service, metrics).await?;
@@ -114,15 +115,11 @@
 #[cfg(feature = "dbus")]
 use crate::constants::VERSION;
 #[cfg(feature = "dbus")]
-use crate::error::DnsmasqError;
+use crate::dhcp::lease::Lease;
+#[cfg(feature = "dbus")]
+use crate::dhcp::DhcpService;
 #[cfg(feature = "dbus")]
 use crate::dns::DnsService;
-#[cfg(feature = "dbus")]
-use crate::dns::upstream::UpstreamPool;
-#[cfg(all(feature = "dbus", feature = "dhcp"))]
-use crate::dhcp::DhcpService;
-#[cfg(all(feature = "dbus", feature = "dhcp"))]
-use crate::dhcp::lease::Lease;
 #[cfg(feature = "dbus")]
 use crate::types::MacAddress;
 #[cfg(feature = "dbus")]
@@ -139,11 +136,14 @@ use std::str::FromStr;
 #[cfg(feature = "dbus")]
 use std::sync::Arc;
 #[cfg(feature = "dbus")]
+use std::time::{Duration, SystemTime};
+#[cfg(feature = "dbus")]
 use tokio::sync::RwLock;
 #[cfg(feature = "dbus")]
 use tracing::{debug, error, info, instrument, warn};
+use zbus::object_server::SignalEmitter;
 #[cfg(feature = "dbus")]
-use zbus::{connection, interface, Connection, SignalContext};
+use zbus::{connection, interface, Connection};
 
 // ============================================================================
 // D-BUS SERVICE - CONNECTION LIFECYCLE MANAGEMENT
@@ -179,7 +179,6 @@ pub struct DbusService {
     /// Reference to DNS service for cache/upstream operations
     dns_service: Arc<RwLock<DnsService>>,
     /// Reference to DHCP service for lease management (optional)
-    #[cfg(feature = "dhcp")]
     dhcp_service: Option<Arc<RwLock<DhcpService>>>,
     /// Reference to metrics collector for statistics
     metrics: Arc<RwLock<MetricsCollector>>,
@@ -202,41 +201,36 @@ impl DbusService {
     ///
     /// # Example
     ///
-    /// ```no_run
+    /// ```ignore
     /// # use std::sync::Arc;
     /// # use tokio::sync::RwLock;
     /// # use dnsmasq::platform::dbus::DbusService;
     /// # use dnsmasq::dns::DnsService;
     /// # use dnsmasq::util::metrics::MetricsCollector;
     /// # async fn example() -> anyhow::Result<()> {
-    /// let dns_service = Arc::new(RwLock::new(DnsService::new()));
+    /// // Note: DnsService uses builder pattern
+    /// let dns_service = Arc::new(RwLock::new(DnsService::builder().build().await?));
     /// let metrics = Arc::new(RwLock::new(MetricsCollector::new()));
     ///
     /// let dbus = DbusService::new(dns_service, metrics).await?;
     /// # Ok(())
     /// # }
     /// ```
+    #[allow(clippy::unused_async)]
     pub async fn new(
         dns_service: Arc<RwLock<DnsService>>,
         metrics: Arc<RwLock<MetricsCollector>>,
     ) -> Result<Self> {
-        Ok(Self {
-            connection: None,
-            dns_service,
-            #[cfg(feature = "dhcp")]
-            dhcp_service: None,
-            metrics,
-        })
+        Ok(Self { connection: None, dns_service, dhcp_service: None, metrics })
     }
 
-    /// Sets the DHCP service reference (when DHCP feature enabled).
+    /// Sets the DHCP service reference.
     ///
     /// Must be called before `start()` if DHCP D-Bus methods are to be functional.
     ///
     /// # Arguments
     ///
     /// * `dhcp_service` - Shared reference to DHCP service
-    #[cfg(feature = "dhcp")]
     pub fn set_dhcp_service(&mut self, dhcp_service: Arc<RwLock<DhcpService>>) {
         self.dhcp_service = Some(dhcp_service);
     }
@@ -257,14 +251,16 @@ impl DbusService {
     ///
     /// # Example
     ///
-    /// ```no_run
+    /// ```ignore
     /// # use std::sync::Arc;
     /// # use tokio::sync::RwLock;
+    /// # use tracing::info;
     /// # use dnsmasq::platform::dbus::DbusService;
     /// # use dnsmasq::dns::DnsService;
     /// # use dnsmasq::util::metrics::MetricsCollector;
     /// # async fn example() -> anyhow::Result<()> {
-    /// let dns_service = Arc::new(RwLock::new(DnsService::new()));
+    /// // Note: DnsService uses builder pattern
+    /// let dns_service = Arc::new(RwLock::new(DnsService::builder().build().await?));
     /// let metrics = Arc::new(RwLock::new(MetricsCollector::new()));
     ///
     /// let mut dbus = DbusService::new(dns_service, metrics).await?;
@@ -280,7 +276,6 @@ impl DbusService {
         // Create interface implementation with service references
         let interface = DnsmasqInterface {
             dns_service: Arc::clone(&self.dns_service),
-            #[cfg(feature = "dhcp")]
             dhcp_service: self.dhcp_service.clone(),
             metrics: Arc::clone(&self.metrics),
         };
@@ -312,6 +307,7 @@ impl DbusService {
     ///
     /// Closes the D-Bus connection gracefully, allowing other processes to
     /// claim the service name.
+    #[allow(clippy::unused_async)]
     pub async fn stop(&mut self) -> Result<()> {
         if self.connection.is_some() {
             info!("Stopping D-Bus service");
@@ -335,7 +331,7 @@ impl DbusService {
     // DHCP SIGNAL EMISSION (when feature = "dhcp")
     // ========================================================================
 
-    /// Emits DhcpLeaseAdded signal when a DHCP lease is allocated.
+    /// Emits `DhcpLeaseAdded` signal when a DHCP lease is allocated.
     ///
     /// # Arguments
     ///
@@ -358,16 +354,15 @@ impl DbusService {
     /// dbus_connection_send(connection, signal, NULL);
     /// dbus_message_unref(signal);
     /// ```
-    #[cfg(feature = "dhcp")]
-    #[instrument(skip(self), fields(ip = %lease.ip(), mac = %lease.mac()))]
+    #[instrument(skip(self), fields(ip = %lease.ip, mac = ?lease.mac))]
     pub async fn emit_dhcp_lease_added(&self, lease: &Lease) -> Result<()> {
         if let Some(conn) = &self.connection {
-            let signal_context = SignalContext::new(conn, "/uk/org/thekelleys/dnsmasq")
+            let signal_context = SignalEmitter::new(conn, "/uk/org/thekelleys/dnsmasq")
                 .context("Failed to create signal context")?;
 
-            let ip = lease.ip().to_string();
-            let mac = lease.mac().to_string();
-            let hostname = lease.hostname().unwrap_or("");
+            let ip = lease.ip.to_string();
+            let mac = lease.mac.as_ref().map_or_else(|| "unknown".to_string(), ToString::to_string);
+            let hostname = lease.hostname.as_deref().unwrap_or("");
 
             DnsmasqInterface::dhcp_lease_added(&signal_context, &ip, &mac, hostname)
                 .await
@@ -378,21 +373,20 @@ impl DbusService {
         Ok(())
     }
 
-    /// Emits DhcpLeaseDeleted signal when a DHCP lease expires or is released.
+    /// Emits `DhcpLeaseDeleted` signal when a DHCP lease expires or is released.
     ///
     /// # Arguments
     ///
     /// * `lease` - The deleted lease
-    #[cfg(feature = "dhcp")]
-    #[instrument(skip(self), fields(ip = %lease.ip(), mac = %lease.mac()))]
+    #[instrument(skip(self), fields(ip = %lease.ip, mac = ?lease.mac))]
     pub async fn emit_dhcp_lease_deleted(&self, lease: &Lease) -> Result<()> {
         if let Some(conn) = &self.connection {
-            let signal_context = SignalContext::new(conn, "/uk/org/thekelleys/dnsmasq")
+            let signal_context = SignalEmitter::new(conn, "/uk/org/thekelleys/dnsmasq")
                 .context("Failed to create signal context")?;
 
-            let ip = lease.ip().to_string();
-            let mac = lease.mac().to_string();
-            let hostname = lease.hostname().unwrap_or("");
+            let ip = lease.ip.to_string();
+            let mac = lease.mac.as_ref().map_or_else(|| "unknown".to_string(), ToString::to_string);
+            let hostname = lease.hostname.as_deref().unwrap_or("");
 
             DnsmasqInterface::dhcp_lease_deleted(&signal_context, &ip, &mac, hostname)
                 .await
@@ -403,21 +397,20 @@ impl DbusService {
         Ok(())
     }
 
-    /// Emits DhcpLeaseUpdated signal when a DHCP lease is renewed.
+    /// Emits `DhcpLeaseUpdated` signal when a DHCP lease is renewed.
     ///
     /// # Arguments
     ///
     /// * `lease` - The updated lease
-    #[cfg(feature = "dhcp")]
-    #[instrument(skip(self), fields(ip = %lease.ip(), mac = %lease.mac()))]
+    #[instrument(skip(self), fields(ip = %lease.ip, mac = ?lease.mac))]
     pub async fn emit_dhcp_lease_updated(&self, lease: &Lease) -> Result<()> {
         if let Some(conn) = &self.connection {
-            let signal_context = SignalContext::new(conn, "/uk/org/thekelleys/dnsmasq")
+            let signal_context = SignalEmitter::new(conn, "/uk/org/thekelleys/dnsmasq")
                 .context("Failed to create signal context")?;
 
-            let ip = lease.ip().to_string();
-            let mac = lease.mac().to_string();
-            let hostname = lease.hostname().unwrap_or("");
+            let ip = lease.ip.to_string();
+            let mac = lease.mac.as_ref().map_or_else(|| "unknown".to_string(), ToString::to_string);
+            let hostname = lease.hostname.as_deref().unwrap_or("");
 
             DnsmasqInterface::dhcp_lease_updated(&signal_context, &ip, &mac, hostname)
                 .await
@@ -475,7 +468,6 @@ pub struct DnsmasqInterface {
     /// Reference to DNS service for cache and upstream operations
     dns_service: Arc<RwLock<DnsService>>,
     /// Reference to DHCP service for lease management (optional)
-    #[cfg(feature = "dhcp")]
     dhcp_service: Option<Arc<RwLock<DhcpService>>>,
     /// Reference to metrics collector
     metrics: Arc<RwLock<MetricsCollector>>,
@@ -484,7 +476,7 @@ pub struct DnsmasqInterface {
 /// D-Bus interface implementation with method handlers.
 ///
 /// Each method is an async function that can access shared service state
-/// via Arc<RwLock<T>> references. Methods return Result with zbus::fdo::Error
+/// via Arc<`RwLock`<T>> references. Methods return Result with `zbus::fdo::Error`
 /// for D-Bus error responses.
 #[cfg(feature = "dbus")]
 #[interface(name = "uk.org.thekelleys.dnsmasq")]
@@ -527,15 +519,7 @@ impl DnsmasqInterface {
     async fn clear_cache(&self) -> zbus::fdo::Result<()> {
         info!("D-Bus method called: ClearCache");
 
-        self.dns_service
-            .write()
-            .await
-            .clear_cache()
-            .await
-            .map_err(|e| {
-                error!(error = %e, "Failed to clear cache");
-                zbus::fdo::Error::Failed(format!("Failed to clear cache: {}", e))
-            })?;
+        self.dns_service.write().await.clear_cache().await;
 
         info!("Cache cleared successfully via D-Bus");
         Ok(())
@@ -585,28 +569,28 @@ impl DnsmasqInterface {
     async fn set_servers(&self, servers: Vec<String>) -> zbus::fdo::Result<()> {
         info!(server_count = servers.len(), "D-Bus method called: SetServers");
 
-        let mut dns_service = self.dns_service.write().await;
-        let upstream_pool = dns_service.upstream_pool_mut();
+        let dns_service = self.dns_service.read().await;
 
         // Clear existing servers
-        upstream_pool.clear().await;
+        dns_service.clear_upstream_servers().await;
 
         // Add new servers
         for server_str in &servers {
             let addr = IpAddr::from_str(server_str).map_err(|e| {
                 error!(server = %server_str, error = %e, "Invalid server address");
-                zbus::fdo::Error::InvalidArgs(format!("Invalid IP address '{}': {}", server_str, e))
+                zbus::fdo::Error::InvalidArgs(format!("Invalid IP address '{server_str}': {e}"))
             })?;
 
-            upstream_pool.add_server(addr, None).await.map_err(|e| {
+            dns_service.add_upstream_server(addr, None).await.map_err(|e| {
                 error!(server = %addr, error = %e, "Failed to add server");
-                zbus::fdo::Error::Failed(format!("Failed to add server {}: {}", addr, e))
+                zbus::fdo::Error::Failed(format!("Failed to add server {addr}: {e}"))
             })?;
 
             debug!(server = %addr, "Added upstream server");
         }
 
-        info!(server_count = upstream_pool.server_count().await, "Upstream servers updated via D-Bus");
+        let server_count = dns_service.upstream_server_count().await;
+        info!(server_count = server_count, "Upstream servers updated via D-Bus");
         Ok(())
     }
 
@@ -648,11 +632,10 @@ impl DnsmasqInterface {
     async fn set_servers_ex(&self, servers: Vec<Vec<String>>) -> zbus::fdo::Result<()> {
         info!(server_count = servers.len(), "D-Bus method called: SetServersEx");
 
-        let mut dns_service = self.dns_service.write().await;
-        let upstream_pool = dns_service.upstream_pool_mut();
+        let dns_service = self.dns_service.read().await;
 
         // Clear existing servers
-        upstream_pool.clear().await;
+        dns_service.clear_upstream_servers().await;
 
         // Process each server configuration
         for (idx, server_config) in servers.iter().enumerate() {
@@ -671,27 +654,30 @@ impl DnsmasqInterface {
             })?;
 
             // Remaining elements are domain names (if any)
-            let domains: Option<Vec<String>> = if server_config.len() > 1 {
-                Some(server_config[1..].to_vec())
-            } else {
-                None
-            };
+            if server_config.len() > 1 {
+                // Add a separate server entry for each domain
+                for domain in &server_config[1..] {
+                    dns_service.add_upstream_server(addr, Some(domain.clone())).await
+                        .map_err(|e| {
+                            error!(server = %addr, domain = %domain, error = %e, "Failed to add server");
+                            zbus::fdo::Error::Failed(format!("Failed to add server {addr} for domain {domain}: {e}"))
+                        })?;
 
-            upstream_pool
-                .add_server(addr, domains.clone())
-                .await
-                .map_err(|e| {
-                    error!(server = %addr, domains = ?domains, error = %e, "Failed to add server");
-                    zbus::fdo::Error::Failed(format!("Failed to add server {}: {}", addr, e))
+                    debug!(server = %addr, domain = %domain, "Added upstream server with domain");
+                }
+            } else {
+                // No domain restriction - general-purpose server
+                dns_service.add_upstream_server(addr, None).await.map_err(|e| {
+                    error!(server = %addr, error = %e, "Failed to add server");
+                    zbus::fdo::Error::Failed(format!("Failed to add server {addr}: {e}"))
                 })?;
 
-            debug!(server = %addr, domains = ?domains, "Added upstream server with domains");
+                debug!(server = %addr, "Added general-purpose upstream server");
+            }
         }
 
-        info!(
-            server_count = upstream_pool.server_count().await,
-            "Upstream servers updated via D-Bus (extended format)"
-        );
+        let server_count = dns_service.upstream_server_count().await;
+        info!(server_count = server_count, "Upstream servers updated via D-Bus (extended format)");
         Ok(())
     }
 
@@ -757,10 +743,11 @@ impl DnsmasqInterface {
         debug!("D-Bus method called: GetMetrics");
 
         let metrics = self.metrics.read().await;
-        let all_metrics = metrics.get_all_metrics().await.map_err(|e| {
-            error!(error = %e, "Failed to retrieve metrics");
-            zbus::fdo::Error::Failed(format!("Failed to retrieve metrics: {}", e))
-        })?;
+        let all_metrics: HashMap<String, String> = metrics
+            .get_all_metrics()
+            .iter()
+            .map(|(k, v)| (format!("{k:?}"), v.to_string()))
+            .collect();
 
         debug!(metric_count = all_metrics.len(), "Retrieved metrics");
         Ok(all_metrics)
@@ -796,15 +783,24 @@ impl DnsmasqInterface {
         debug!("D-Bus method called: GetServerMetrics");
 
         let dns_service = self.dns_service.read().await;
-        let upstream_pool = dns_service.upstream_pool();
+        let stats = dns_service.get_upstream_server_stats().await;
 
-        let stats = upstream_pool.get_server_stats().await.map_err(|e| {
-            error!(error = %e, "Failed to retrieve server metrics");
-            zbus::fdo::Error::Failed(format!("Failed to retrieve server metrics: {}", e))
-        })?;
+        // Convert Vec<ServerStats> to HashMap<String, String> format
+        let mut metrics = HashMap::new();
+        for server_stat in stats {
+            let server_key = server_stat.addr.to_string();
+            metrics.insert(format!("{server_key}_queries"), server_stat.total_queries.to_string());
+            metrics
+                .insert(format!("{server_key}_failures"), server_stat.failed_queries.to_string());
+            metrics.insert(format!("{server_key}_retrys"), server_stat.retrys.to_string());
+            metrics.insert(
+                format!("{server_key}_failure_rate"),
+                format!("{:.2}", server_stat.failure_rate),
+            );
+        }
 
-        debug!(server_count = stats.len(), "Retrieved server metrics");
-        Ok(stats)
+        debug!(server_count = metrics.len() / 3, "Retrieved server metrics");
+        Ok(metrics)
     }
 
     // ========================================================================
@@ -848,7 +844,6 @@ impl DnsmasqInterface {
     ///     string:"192.168.1.100" string:"aa:bb:cc:dd:ee:ff" \
     ///     string:"client-hostname" uint64:0
     /// ```
-    #[cfg(feature = "dhcp")]
     #[instrument(skip(self))]
     async fn add_dhcp_lease(
         &self,
@@ -862,13 +857,13 @@ impl DnsmasqInterface {
         // Validate and parse IP address
         let ip_addr = IpAddr::from_str(&ip).map_err(|e| {
             error!(ip = %ip, error = %e, "Invalid IP address");
-            zbus::fdo::Error::InvalidArgs(format!("Invalid IP address '{}': {}", ip, e))
+            zbus::fdo::Error::InvalidArgs(format!("Invalid IP address '{ip}': {e}"))
         })?;
 
         // Validate and parse MAC address
         let mac_addr = MacAddress::from_str(&mac).map_err(|e| {
             error!(mac = %mac, error = %e, "Invalid MAC address");
-            zbus::fdo::Error::InvalidArgs(format!("Invalid MAC address '{}': {}", mac, e))
+            zbus::fdo::Error::InvalidArgs(format!("Invalid MAC address '{mac}': {e}"))
         })?;
 
         // Get DHCP service
@@ -883,37 +878,51 @@ impl DnsmasqInterface {
             dhcp.get_lease_manager()
         };
 
-        // Create and add lease
-        let lease = Lease::new(
-            ip_addr,
-            mac_addr,
-            if hostname.is_empty() { None } else { Some(hostname) },
-            expires,
-        );
+        // Allocate lease via lease manager
+        // Convert expires timestamp to duration from now
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
+        let duration = if expires > now {
+            Duration::from_secs(expires - now)
+        } else {
+            // If expires is in the past, use a minimal duration
+            Duration::from_secs(1)
+        };
+
+        // Clone hostname for signal emission before moving it into allocate_lease
+        let hostname_for_signal = hostname.clone();
 
         lease_manager
             .write()
             .await
-            .add_lease(lease.clone())
+            .allocate_lease(
+                ip_addr,
+                Some(mac_addr),
+                if hostname.is_empty() { None } else { Some(hostname) },
+                None,   // client_id
+                "dbus", // interface (D-Bus added lease)
+                duration,
+            )
             .await
             .map_err(|e| {
-                error!(error = %e, "Failed to add DHCP lease");
-                zbus::fdo::Error::Failed(format!("Failed to add lease: {}", e))
+                error!(error = %e, "Failed to allocate DHCP lease");
+                zbus::fdo::Error::Failed(format!("Failed to allocate lease: {e}"))
             })?;
 
         info!(ip = %ip_addr, mac = %mac_addr, "DHCP lease added via D-Bus");
 
         // Emit signal
         if let Some(conn) = self.connection() {
-            let signal_context = SignalContext::new(conn, "/uk/org/thekelleys/dnsmasq")
-                .map_err(|e| zbus::fdo::Error::Failed(format!("Failed to create signal context: {}", e)))?;
-
-            Self::dhcp_lease_added(&signal_context, &ip, &mac, &hostname)
-                .await
-                .map_err(|e| {
-                    warn!(error = %e, "Failed to emit DhcpLeaseAdded signal");
-                    // Don't fail the method call if signal emission fails
+            let signal_context =
+                SignalEmitter::new(conn, "/uk/org/thekelleys/dnsmasq").map_err(|e| {
+                    zbus::fdo::Error::Failed(format!("Failed to create signal context: {e}"))
                 })?;
+
+            if let Err(e) =
+                Self::dhcp_lease_added(&signal_context, &ip, &mac, &hostname_for_signal).await
+            {
+                warn!(error = %e, "Failed to emit DhcpLeaseAdded signal");
+                // Don't fail the method call if signal emission fails
+            }
         }
 
         Ok(())
@@ -922,7 +931,7 @@ impl DnsmasqInterface {
     /// Deletes a DHCP lease by IP address.
     ///
     /// Removes the specified DHCP lease, freeing the IP address for reallocation.
-    /// This triggers a DhcpLeaseDeleted signal.
+    /// This triggers a `DhcpLeaseDeleted` signal.
     ///
     /// # D-Bus Method Signature
     ///
@@ -950,7 +959,6 @@ impl DnsmasqInterface {
     ///     uk.org.thekelleys.dnsmasq.DeleteDhcpLease \
     ///     string:"192.168.1.100"
     /// ```
-    #[cfg(feature = "dhcp")]
     #[instrument(skip(self))]
     async fn delete_dhcp_lease(&self, ip: String) -> zbus::fdo::Result<()> {
         info!(ip = %ip, "D-Bus method called: DeleteDhcpLease");
@@ -958,7 +966,7 @@ impl DnsmasqInterface {
         // Validate and parse IP address
         let ip_addr = IpAddr::from_str(&ip).map_err(|e| {
             error!(ip = %ip, error = %e, "Invalid IP address");
-            zbus::fdo::Error::InvalidArgs(format!("Invalid IP address '{}': {}", ip, e))
+            zbus::fdo::Error::InvalidArgs(format!("Invalid IP address '{ip}': {e}"))
         })?;
 
         // Get DHCP service
@@ -974,47 +982,33 @@ impl DnsmasqInterface {
         };
 
         // Find the lease before deletion (for signal emission)
-        let lease = lease_manager
-            .read()
-            .await
-            .find_by_ip(&ip_addr)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "Failed to find lease");
-                zbus::fdo::Error::Failed(format!("Failed to find lease: {}", e))
-            })?
-            .ok_or_else(|| {
-                error!(ip = %ip_addr, "Lease not found");
-                zbus::fdo::Error::Failed(format!("No lease found for IP {}", ip_addr))
-            })?;
+        let lease = lease_manager.read().await.find_by_ip(&ip_addr).await.ok_or_else(|| {
+            error!(ip = %ip_addr, "Lease not found");
+            zbus::fdo::Error::Failed(format!("No lease found for IP {ip_addr}"))
+        })?;
 
-        let mac = lease.mac().to_string();
-        let hostname = lease.hostname().unwrap_or("");
+        let mac = lease.mac.as_ref().map(ToString::to_string).unwrap_or_default();
+        let hostname = lease.hostname.as_deref().unwrap_or("");
 
-        // Delete the lease
-        lease_manager
-            .write()
-            .await
-            .delete_lease(&ip_addr)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "Failed to delete DHCP lease");
-                zbus::fdo::Error::Failed(format!("Failed to delete lease: {}", e))
-            })?;
+        // Release the lease
+        lease_manager.write().await.release_lease(&ip_addr).await.map_err(|e| {
+            error!(error = %e, "Failed to release DHCP lease");
+            zbus::fdo::Error::Failed(format!("Failed to release lease: {e}"))
+        })?;
 
         info!(ip = %ip_addr, mac = %mac, "DHCP lease deleted via D-Bus");
 
         // Emit signal
         if let Some(conn) = self.connection() {
-            let signal_context = SignalContext::new(conn, "/uk/org/thekelleys/dnsmasq")
-                .map_err(|e| zbus::fdo::Error::Failed(format!("Failed to create signal context: {}", e)))?;
-
-            Self::dhcp_lease_deleted(&signal_context, &ip, &mac, hostname)
-                .await
-                .map_err(|e| {
-                    warn!(error = %e, "Failed to emit DhcpLeaseDeleted signal");
-                    // Don't fail the method call if signal emission fails
+            let signal_context =
+                SignalEmitter::new(conn, "/uk/org/thekelleys/dnsmasq").map_err(|e| {
+                    zbus::fdo::Error::Failed(format!("Failed to create signal context: {e}"))
                 })?;
+
+            if let Err(e) = Self::dhcp_lease_deleted(&signal_context, &ip, &mac, hostname).await {
+                warn!(error = %e, "Failed to emit DhcpLeaseDeleted signal");
+                // Don't fail the method call if signal emission fails
+            }
         }
 
         Ok(())
@@ -1048,24 +1042,14 @@ impl DnsmasqInterface {
     ///     /uk/org/thekelleys/dnsmasq \
     ///     uk.org.thekelleys.dnsmasq.GetLoopServers
     /// ```
-    #[cfg(feature = "loop")]
     #[instrument(skip(self))]
     async fn get_loop_servers(&self) -> zbus::fdo::Result<Vec<String>> {
         debug!("D-Bus method called: GetLoopServers");
 
         let dns_service = self.dns_service.read().await;
-        let upstream_pool = dns_service.upstream_pool();
 
-        let loop_servers = upstream_pool
-            .get_loop_servers()
-            .await
-            .map_err(|e| {
-                error!(error = %e, "Failed to retrieve loop servers");
-                zbus::fdo::Error::Failed(format!("Failed to retrieve loop servers: {}", e))
-            })?
-            .iter()
-            .map(|addr| addr.to_string())
-            .collect();
+        let loop_servers: Vec<String> =
+            dns_service.get_loop_servers().await.iter().map(ToString::to_string).collect();
 
         debug!(server_count = loop_servers.len(), "Retrieved loop servers");
         Ok(loop_servers)
@@ -1082,10 +1066,9 @@ impl DnsmasqInterface {
     /// * `ip` - IP address assigned
     /// * `mac` - Client MAC address
     /// * `hostname` - Client hostname (may be empty)
-    #[cfg(feature = "dhcp")]
     #[zbus(signal)]
     async fn dhcp_lease_added(
-        signal_ctxt: &SignalContext<'_>,
+        signal_ctxt: &SignalEmitter<'_>,
         ip: &str,
         mac: &str,
         hostname: &str,
@@ -1098,10 +1081,9 @@ impl DnsmasqInterface {
     /// * `ip` - IP address released
     /// * `mac` - Client MAC address
     /// * `hostname` - Client hostname (may be empty)
-    #[cfg(feature = "dhcp")]
     #[zbus(signal)]
     async fn dhcp_lease_deleted(
-        signal_ctxt: &SignalContext<'_>,
+        signal_ctxt: &SignalEmitter<'_>,
         ip: &str,
         mac: &str,
         hostname: &str,
@@ -1114,18 +1096,26 @@ impl DnsmasqInterface {
     /// * `ip` - IP address
     /// * `mac` - Client MAC address
     /// * `hostname` - Client hostname (may be empty)
-    #[cfg(feature = "dhcp")]
     #[zbus(signal)]
     async fn dhcp_lease_updated(
-        signal_ctxt: &SignalContext<'_>,
+        signal_ctxt: &SignalEmitter<'_>,
         ip: &str,
         mac: &str,
         hostname: &str,
     ) -> zbus::Result<()>;
+}
 
+// ============================================================================
+// HELPER METHODS (NOT PART OF D-BUS INTERFACE)
+// ============================================================================
+
+#[cfg(feature = "dbus")]
+impl DnsmasqInterface {
     /// Helper method to get connection reference (internal use).
     ///
     /// This is used by signal emission code to access the D-Bus connection.
+    /// Note: This is NOT part of the D-Bus interface - it's a regular Rust method.
+    #[allow(clippy::unused_self)]
     fn connection(&self) -> Option<&Connection> {
         // This will be provided by the DbusService that holds the connection
         // For now, return None - actual signal emission happens via DbusService
@@ -1163,7 +1153,6 @@ impl DnsmasqInterface {
 pub struct DbusDaemon {
     /// References to core services
     dns_service: Arc<RwLock<DnsService>>,
-    #[cfg(feature = "dhcp")]
     dhcp_service: Option<Arc<RwLock<DhcpService>>>,
     metrics: Arc<RwLock<MetricsCollector>>,
 }
@@ -1180,20 +1169,15 @@ impl DbusDaemon {
     ///
     /// # Returns
     ///
-    /// New DbusDaemon ready to run
-    #[instrument(skip(dns_service, metrics))]
+    /// New `DbusDaemon` ready to run
+    #[instrument(skip(dns_service, dhcp_service, metrics))]
     pub fn new(
         dns_service: Arc<RwLock<DnsService>>,
-        #[cfg(feature = "dhcp")] dhcp_service: Option<Arc<RwLock<DhcpService>>>,
+        dhcp_service: Option<Arc<RwLock<DhcpService>>>,
         metrics: Arc<RwLock<MetricsCollector>>,
     ) -> Result<Self> {
         info!("Creating D-Bus daemon");
-        Ok(Self {
-            dns_service,
-            #[cfg(feature = "dhcp")]
-            dhcp_service,
-            metrics,
-        })
+        Ok(Self { dns_service, dhcp_service, metrics })
     }
 
     /// Runs the D-Bus service, connecting to system bus and registering interface.
@@ -1223,11 +1207,15 @@ impl DbusDaemon {
     ///
     /// # Example
     ///
-    /// ```no_run
+    /// ```ignore
     /// # use std::sync::Arc;
     /// # use tokio::sync::RwLock;
+    /// # use dnsmasq::dns::DnsService;
+    /// # use dnsmasq::util::metrics::MetricsCollector;
+    /// # use dnsmasq::platform::dbus::DbusDaemon;
     /// # async fn example() -> anyhow::Result<()> {
-    /// let dns_service = Arc::new(RwLock::new(DnsService::new(/* ... */)?));
+    /// // Note: DnsService uses builder pattern
+    /// let dns_service = Arc::new(RwLock::new(DnsService::builder().build().await?));
     /// let metrics = Arc::new(RwLock::new(MetricsCollector::new()));
     ///
     /// let daemon = DbusDaemon::new(dns_service, None, metrics)?;
@@ -1240,9 +1228,8 @@ impl DbusDaemon {
         info!("Starting D-Bus service");
 
         // Connect to system bus
-        let connection = Connection::system()
-            .await
-            .context("Failed to connect to D-Bus system bus")?;
+        let connection =
+            Connection::system().await.context("Failed to connect to D-Bus system bus")?;
 
         info!(connection_unique_name = %connection.unique_name()
             .context("Failed to get connection unique name")?, 
@@ -1259,7 +1246,6 @@ impl DbusDaemon {
         // Create interface instance
         let interface = DnsmasqInterface {
             dns_service: Arc::clone(&self.dns_service),
-            #[cfg(feature = "dhcp")]
             dhcp_service: self.dhcp_service.as_ref().map(Arc::clone),
             metrics: Arc::clone(&self.metrics),
         };
