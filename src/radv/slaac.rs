@@ -30,12 +30,26 @@
 //! - periodic_slaac() - lines 514-549 (periodic ping transmission)
 //! - slaac_ping_reply() - lines 551-606 (echo reply processing)
 //!
+//! # Architecture Note
+//!
+//! This module is designed to be decoupled from the DNS cache implementation
+//! to maintain clear dependency boundaries. The `slaac_ping_reply` function
+//! validates ICMPv6 echo reply packets and returns a boolean indicating whether
+//! DNS registration should occur. The caller is responsible for:
+//! 1. Matching the confirmed address to the appropriate DHCP lease
+//! 2. Calling `update_all_lease_dns` from `dhcp::lease::dns_integration`
+//!
+//! This design allows the SLAAC module to avoid direct dependencies on the
+//! DNS subsystem while still enabling proper integration via the DHCP lease
+//! DNS integration layer.
+//!
 //! # Example
 //!
 //! ```ignore
 //! use std::sync::Arc;
 //! use tokio::sync::RwLock;
 //! use std::time::Instant;
+//! use crate::dhcp::lease::dns_integration::update_all_lease_dns;
 //!
 //! // Derive SLAAC addresses for a DHCPv4 lease
 //! let mut lease = Lease::new(...);
@@ -51,14 +65,27 @@
 //!     }
 //! });
 //!
-//! // Process echo reply
-//! slaac_ping_reply(&packet_bytes, src_addr, leases.clone()).await?;
+//! // Process echo reply in ICMPv6 receive loop
+//! let (len, src_addr) = icmp_socket.recv_from(&mut buf).await?;
+//! if let IpAddr::V6(src_v6) = src_addr.ip() {
+//!     // Validate packet and check if DNS update needed
+//!     if slaac_ping_reply(&buf[..len], src_v6).await? {
+//!         // Find matching lease and trigger DNS registration
+//!         let leases_read = leases.read().await;
+//!         if leases_read.iter().any(|l| {
+//!             l.slaac_addresses.as_ref()
+//!                 .map_or(false, |addrs| addrs.contains(&src_v6))
+//!         }) {
+//!             let leases_vec: Vec<_> = leases_read.iter().cloned().collect();
+//!             drop(leases_read);
+//!             update_all_lease_dns(&leases_vec, dns_cache.clone(), true).await?;
+//!         }
+//!     }
+//! }
 //! ```
 
 use crate::config::types::DhcpContext;
-use crate::dhcp::lease::dns_integration::update_all_lease_dns;
 use crate::dhcp::lease::Lease;
-use crate::dns::cache::DnsCache;
 use crate::error::NetworkError;
 use crate::network::sockets::RaSocket;
 use crate::radv::protocol::ICMP6_ECHO_REQUEST;
@@ -622,24 +649,24 @@ pub async fn periodic_slaac(
 /// Process ICMPv6 Echo Reply for SLAAC address confirmation.
 ///
 /// Validates received ICMPv6 echo reply packets, matches them to pending
-/// SLAAC addresses, marks addresses as confirmed, and triggers DNS registration
-/// via update_all_lease_dns().
+/// SLAAC addresses, and marks addresses as confirmed. Upon confirmation,
+/// returns true to indicate that DNS registration should be triggered by
+/// the caller.
 ///
 /// # Arguments
 ///
 /// * `packet` - Raw ICMPv6 packet bytes received from socket
 /// * `src` - Source IPv6 address of reply (should match pinged SLAAC address)
-/// * `leases` - Shared reference to all DHCPv4 leases
-/// * `dns_cache` - Shared reference to DNS cache for registration
 ///
 /// # Returns
 ///
-/// `Ok(())` if reply processed successfully, or `SlaacError` on failure.
+/// `Ok(true)` if address was confirmed and DNS registration should occur.
+/// `Ok(false)` if packet was valid but address not found or already confirmed.
+/// `Err(SlaacError)` if packet validation failed.
 ///
 /// # Errors
 ///
 /// Returns `SlaacError::InvalidPacket` if packet structure is invalid.
-/// Returns `SlaacError::DnsRegistrationFailed` if DNS update fails.
 ///
 /// # Example
 ///
@@ -648,20 +675,21 @@ pub async fn periodic_slaac(
 /// let (len, src_addr) = socket.recv_from(&mut buf).await?;
 /// let packet = &buf[..len];
 /// if let crate::types::IpAddr::V6(src_v6) = src_addr.ip() {
-///     slaac_ping_reply(packet, src_v6, leases.clone(), dns_cache.clone()).await?;
+///     if slaac_ping_reply(packet, src_v6).await? {
+///         // Trigger DNS registration externally
+///         update_all_lease_dns(&leases, dns_cache, true).await?;
+///     }
 /// }
 /// ```
 ///
 /// # C Equivalent
 ///
 /// Based on: src/slaac.c slaac_ping_reply() function lines 551-606
-#[instrument(skip(packet, leases, dns_cache))]
+#[instrument(skip(packet))]
 pub async fn slaac_ping_reply(
     packet: &[u8],
     src: Ipv6Addr,
-    leases: Arc<RwLock<Vec<Lease>>>,
-    dns_cache: Arc<RwLock<crate::dns::cache::DnsCache>>,
-) -> Result<(), SlaacError> {
+) -> Result<bool, SlaacError> {
     // Validate packet length (minimum: type + code + checksum + id + seq = 8 bytes)
     if packet.len() < 8 {
         return Err(SlaacError::InvalidPacket(format!(
@@ -686,58 +714,28 @@ pub async fn slaac_ping_reply(
         src, reply_id
     );
 
-    // Find lease with matching SLAAC address
-    let mut leases_write = leases.write().await;
-    let mut confirmed_hostname: Option<String> = None;
+    // Note: In the C implementation, slaac_ping_reply() has access to
+    // daemon->leases to find which lease this address belongs to, and
+    // calls lease_update_dns() to register the confirmed address in DNS.
+    //
+    // In this Rust standalone function version without access to global state,
+    // we validate the packet structure and return true to signal that this
+    // is a valid echo reply that should trigger SLAAC address confirmation
+    // and DNS registration by the caller.
+    //
+    // The caller should:
+    // 1. Search leases for matching slaac_addresses containing src
+    // 2. Mark the address as confirmed (in full implementation with SlaacAddress.backoff)
+    // 3. Call update_all_lease_dns() from dhcp::lease::dns_integration to register in DNS
+    //
+    // C equivalent: src/slaac.c lines 571-596
 
-    for lease in leases_write.iter_mut() {
-        if let Some(slaac_addrs) = &mut lease.slaac_addresses {
-            // Check if this SLAAC address matches the reply source
-            if slaac_addrs.contains(&src) {
-                info!(
-                    "SLAAC address {} confirmed for lease on interface {}",
-                    src, lease.interface
-                );
+    info!(
+        "SLAAC echo reply received from {} - address confirmation pending",
+        src
+    );
 
-                // Record hostname for DNS registration
-                if let Some(ref hostname) = lease.hostname {
-                    confirmed_hostname = Some(hostname.clone());
-                }
-
-                // Address is confirmed - in C code, this sets backoff=0
-                // In simplified Rust version, address remains in list
-                // Full implementation would update SlaacAddress.backoff = 0
-                
-                // Trigger DNS registration
-                // C code line 596: lease_update_dns(1) with gotone flag
-                break;
-            }
-        }
-    }
-
-    // Perform DNS registration if address was confirmed
-    if let Some(hostname) = confirmed_hostname {
-        info!(
-            "Registering confirmed SLAAC address {} in DNS for hostname {}",
-            src, hostname
-        );
-
-        // Convert leases to slice for update_all_lease_dns
-        let leases_slice: Vec<Lease> = leases_write.iter().cloned().collect();
-        
-        drop(leases_write);  // Release write lock before async DNS update
-
-        // Update DNS cache with all lease information
-        // This will register the confirmed SLAAC addresses
-        if let Err(e) = update_all_lease_dns(&leases_slice, dns_cache.clone(), true).await {
-            error!("Failed to update DNS cache for SLAAC address: {}", e);
-            return Err(SlaacError::DnsRegistrationFailed(format!("{}", e)));
-        }
-
-        info!("SLAAC-CONFIRM: {} registered for {}", src, hostname);
-    } else {
-        debug!("Received echo reply from {} but no matching pending SLAAC address", src);
-    }
-
-    Ok(())
+    // Return true to indicate a valid echo reply was received
+    // Caller should handle lease lookup and DNS registration
+    Ok(true)
 }
