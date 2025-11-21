@@ -131,7 +131,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, info, instrument};
 
 /// Time interval in seconds between forced reloads of ARP cache from kernel ARP/neighbor tables.
 ///
@@ -673,7 +673,7 @@ impl ArpCache {
     pub async fn notify_changes(&mut self) -> Result<bool, NetworkError> {
         // Process deletion notifications first
         if let Some(deleted_entry) = self.pending_deletions.pop() {
-            if self.config.enable_arp_script {
+            if self.config.scripts.enable_arp_script {
                 if let Some(mac) = deleted_entry.mac {
                     info!("Notifying script: device disappeared - {} ({})", deleted_entry.ip, mac);
                     let helper = self.helper.read().await;
@@ -693,7 +693,7 @@ impl ArpCache {
         // Process new entry notifications
         for entry in &mut self.entries {
             if entry.status == ArpStatus::New {
-                if self.config.enable_arp_script {
+                if self.config.scripts.enable_arp_script {
                     if let Some(ref mac) = entry.mac {
                         info!("Notifying script: new device discovered - {} ({})", entry.ip, mac);
                         let helper = self.helper.read().await;
