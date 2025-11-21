@@ -70,7 +70,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
 use tracing::{error, info, warn};
 
-/// Type alias for validation results, using ConfigError for failures.
+/// Type alias for validation results, using `ConfigError` for failures.
 pub type ValidationResult = Result<(), ConfigError>;
 
 /// Non-fatal validation warnings that don't prevent daemon startup.
@@ -92,7 +92,7 @@ pub enum ValidationWarning {
 
     /// Port number requires privileged access (<1024).
     ///
-    /// Binding to ports below 1024 requires root privileges or CAP_NET_BIND_SERVICE
+    /// Binding to ports below 1024 requires root privileges or `CAP_NET_BIND_SERVICE`
     /// capability on Linux systems. Ensure proper privilege configuration.
     PrivilegedPort {
         /// Port number
@@ -184,6 +184,7 @@ impl<'a> ConfigValidator<'a> {
     /// let config = Config::load()?;
     /// let validator = ConfigValidator::new(&config);
     /// ```
+    #[must_use]
     pub fn new(config: &'a Config) -> Self {
         Self { config, warnings: Vec::new() }
     }
@@ -300,7 +301,7 @@ impl<'a> ConfigValidator<'a> {
                 if ipv4.is_unspecified() {
                     return Err(ConfigError::InvalidValue {
                         directive: context.to_string(),
-                        reason: format!("IPv4 address 0.0.0.0 is not valid for {}", context),
+                        reason: format!("IPv4 address 0.0.0.0 is not valid for {context}"),
                     });
                 }
 
@@ -314,7 +315,7 @@ impl<'a> ConfigValidator<'a> {
                 if ipv6.is_unspecified() {
                     return Err(ConfigError::InvalidValue {
                         directive: context.to_string(),
-                        reason: format!("IPv6 address :: is not valid for {}", context),
+                        reason: format!("IPv6 address :: is not valid for {context}"),
                     });
                 }
             }
@@ -350,7 +351,7 @@ impl<'a> ConfigValidator<'a> {
         // Use DomainName type for validation
         DomainName::new(hostname).map_err(|e| ConfigError::InvalidValue {
             directive: context.to_string(),
-            reason: format!("Invalid hostname '{}': {}", hostname, e),
+            reason: format!("Invalid hostname '{hostname}': {e}"),
         })?;
 
         Ok(())
@@ -430,7 +431,7 @@ impl<'a> ConfigValidator<'a> {
 
             // Check readability
             let metadata = std::fs::metadata(path).map_err(|e| ConfigError::ValidationFailed {
-                reason: format!("{}: cannot access file: {}", context, e),
+                reason: format!("{context}: cannot access file: {e}"),
             })?;
 
             if metadata.is_file() {
@@ -466,7 +467,7 @@ impl<'a> ConfigValidator<'a> {
     ///
     /// Checks that each DHCP pool has:
     /// - Valid start and end IP addresses
-    /// - start_ip < end_ip
+    /// - `start_ip` < `end_ip`
     /// - Address family consistency (all IPv4 or all IPv6)
     /// - No overlapping address ranges
     /// - Address count within MAXLEASES limit
@@ -501,7 +502,7 @@ impl<'a> ConfigValidator<'a> {
                                 "DHCP range {}",
                                 range.interface.as_deref().unwrap_or("unknown")
                             ),
-                            value: format!("{} - {}", start_ip, end_ip),
+                            value: format!("{start_ip} - {end_ip}"),
                             reason: "start address must be less than end address".to_string(),
                         });
                     }
@@ -532,7 +533,7 @@ impl<'a> ConfigValidator<'a> {
                             "DHCP range {}",
                             range.interface.as_deref().unwrap_or("unknown")
                         ),
-                        value: format!("{} - {}", start_ip, end_ip),
+                        value: format!("{start_ip} - {end_ip}"),
                         reason: "DHCPv4 range must contain IPv4 addresses".to_string(),
                     });
                 }
@@ -544,13 +545,13 @@ impl<'a> ConfigValidator<'a> {
                 if lease_secs < 300 {
                     // Less than 5 minutes
                     self.warnings.push(ValidationWarning::UnusualLeaseTime {
-                        seconds: lease_secs as u32,
+                        seconds: u32::try_from(lease_secs).unwrap_or(u32::MAX),
                         interface: range.interface.clone().unwrap_or_else(|| "unknown".to_string()),
                     });
-                } else if lease_secs > 604800 {
+                } else if lease_secs > 604_800 {
                     // More than 7 days
                     self.warnings.push(ValidationWarning::UnusualLeaseTime {
-                        seconds: lease_secs as u32,
+                        seconds: u32::try_from(lease_secs).unwrap_or(u32::MAX),
                         interface: range.interface.clone().unwrap_or_else(|| "unknown".to_string()),
                     });
                 }
@@ -573,7 +574,7 @@ impl<'a> ConfigValidator<'a> {
                                 "DHCPv6 range {}",
                                 range.interface.as_deref().unwrap_or("unknown")
                             ),
-                            value: format!("{} - {}", start_ip, end_ip),
+                            value: format!("{start_ip} - {end_ip}"),
                             reason: "start address must be less than end address".to_string(),
                         });
                     }
@@ -591,7 +592,7 @@ impl<'a> ConfigValidator<'a> {
                             "DHCP range {}",
                             range.interface.as_deref().unwrap_or("unknown")
                         ),
-                        value: format!("{} - {}", start_ip, end_ip),
+                        value: format!("{start_ip} - {end_ip}"),
                         reason: "DHCPv6 range must contain IPv6 addresses".to_string(),
                     });
                 }
@@ -603,13 +604,13 @@ impl<'a> ConfigValidator<'a> {
                 if lease_secs < 300 {
                     // Less than 5 minutes
                     self.warnings.push(ValidationWarning::UnusualLeaseTime {
-                        seconds: lease_secs as u32,
+                        seconds: u32::try_from(lease_secs).unwrap_or(u32::MAX),
                         interface: range.interface.clone().unwrap_or_else(|| "unknown".to_string()),
                     });
-                } else if lease_secs > 604800 {
+                } else if lease_secs > 604_800 {
                     // More than 7 days
                     self.warnings.push(ValidationWarning::UnusualLeaseTime {
-                        seconds: lease_secs as u32,
+                        seconds: u32::try_from(lease_secs).unwrap_or(u32::MAX),
                         interface: range.interface.clone().unwrap_or_else(|| "unknown".to_string()),
                     });
                 }
@@ -626,8 +627,7 @@ impl<'a> ConfigValidator<'a> {
                 if !(end1 < start2 || end2 < start1) {
                     return Err(ConfigError::ValidationFailed {
                         reason: format!(
-                            "Overlapping IPv4 DHCP ranges: {}-{} on {} and {}-{} on {}",
-                            start1, end1, iface1, start2, end2, iface2
+                            "Overlapping IPv4 DHCP ranges: {start1}-{end1} on {iface1} and {start2}-{end2} on {iface2}"
                         ),
                     });
                 }
@@ -644,8 +644,7 @@ impl<'a> ConfigValidator<'a> {
                 if !(end1 < start2 || end2 < start1) {
                     return Err(ConfigError::ValidationFailed {
                         reason: format!(
-                            "Overlapping IPv6 DHCP ranges: {}-{} on {} and {}-{} on {}",
-                            start1, end1, iface1, start2, end2, iface2
+                            "Overlapping IPv6 DHCP ranges: {start1}-{end1} on {iface1} and {start2}-{end2} on {iface2}"
                         ),
                     });
                 }
@@ -658,7 +657,7 @@ impl<'a> ConfigValidator<'a> {
     /// Validates cross-option dependencies and mutual exclusions.
     ///
     /// Checks that interdependent options are properly configured:
-    /// - TFTP enabled requires tftp_root configured
+    /// - TFTP enabled requires `tftp_root` configured
     /// - DHCP enabled with PXE requires TFTP enabled
     /// - Interface binding options are mutually exclusive
     /// - DNSSEC enabled requires trust anchors
@@ -682,12 +681,15 @@ impl<'a> ConfigValidator<'a> {
                 // Validate that tftp_prefix exists and is a directory
                 if !tftp_prefix.exists() {
                     return Err(ConfigError::ValidationFailed {
-                        reason: format!("TFTP root directory does not exist: {:?}", tftp_prefix),
+                        reason: format!(
+                            "TFTP root directory does not exist: {}",
+                            tftp_prefix.display()
+                        ),
                     });
                 }
                 if !tftp_prefix.is_dir() {
                     return Err(ConfigError::ValidationFailed {
-                        reason: format!("TFTP root is not a directory: {:?}", tftp_prefix),
+                        reason: format!("TFTP root is not a directory: {}", tftp_prefix.display()),
                     });
                 }
             }
@@ -732,7 +734,8 @@ impl<'a> ConfigValidator<'a> {
     ///
     /// # Side Effects
     ///
-    /// Adds `ValidationWarning::LargeCacheSize` if cache_size > 10000.
+    /// Adds `ValidationWarning::LargeCacheSize` if `cache_size` > 10000.
+    #[allow(clippy::unnecessary_wraps)]
     fn validate_cache_size(&mut self, cache_size: usize) -> ValidationResult {
         const RECOMMENDED_MAX_CACHE: usize = 10000;
 
@@ -774,6 +777,7 @@ impl<'a> ConfigValidator<'a> {
     ///
     /// - `Ok(())` if options are valid
     /// - `Err(ConfigError)` for invalid option values
+    #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
     fn validate_dhcp_options(&self) -> ValidationResult {
         // NOTE: DHCP options are not stored in the Config struct.
         // DHCP options are handled at the protocol level in the dhcp module.
@@ -807,8 +811,7 @@ impl<'a> ConfigValidator<'a> {
         if !overlap.is_empty() {
             return Err(ConfigError::ValidationFailed {
                 reason: format!(
-                    "Interfaces specified in both 'interface' and 'except-interface': {:?}",
-                    overlap
+                    "Interfaces specified in both 'interface' and 'except-interface': {overlap:?}"
                 ),
             });
         }
@@ -935,6 +938,7 @@ impl<'a> ConfigValidator<'a> {
     /// # Returns
     ///
     /// A slice of all validation warnings collected during validation.
+    #[must_use]
     pub fn warnings(&self) -> &[ValidationWarning] {
         &self.warnings
     }
@@ -1019,7 +1023,7 @@ pub fn run_test_mode(config: &Config) -> ! {
         Err(e) => {
             // Validation failed
             error!("Configuration validation failed: {}", e);
-            eprintln!("dnsmasq: bad configuration: {}", e);
+            eprintln!("dnsmasq: bad configuration: {e}");
             std::process::exit(1);
         }
     }

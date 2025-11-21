@@ -429,7 +429,7 @@ pub mod inotify;
 ///
 /// # Platform Support
 ///
-/// All UNIX-like platforms via tokio::signal::unix.
+/// All UNIX-like platforms via `tokio::signal::unix`.
 pub use signals::setup_signal_handlers;
 
 /// Signal event enum for type-safe signal dispatch.
@@ -442,10 +442,10 @@ pub use signals::setup_signal_handlers;
 ///
 /// - **Reload**: SIGHUP received (reload configuration)
 /// - **Terminate**: SIGTERM/SIGINT received (graceful shutdown)
-/// - **DumpCache**: SIGUSR1 received (dump DNS cache to log)
-/// - **ReportMetrics**: SIGUSR2 received (log statistics)
-/// - **ChildExited**: SIGCHLD received (helper process exited)
-/// - **AlarmFired**: SIGALRM received (timer event)
+/// - **`DumpCache`**: SIGUSR1 received (dump DNS cache to log)
+/// - **`ReportMetrics`**: SIGUSR2 received (log statistics)
+/// - **`ChildExited`**: SIGCHLD received (helper process exited)
+/// - **`AlarmFired`**: SIGALRM received (timer event)
 ///
 /// # Examples
 ///
@@ -486,9 +486,9 @@ pub use signals::SignalEvent;
 /// # Linux Capabilities
 ///
 /// On Linux, the following capabilities may be retained:
-/// - **CAP_NET_BIND_SERVICE**: Bind to ports < 1024 (if needed)
-/// - **CAP_NET_ADMIN**: Configure network interfaces, routes
-/// - **CAP_NET_RAW**: Send ICMP packets for DHCP conflict detection
+/// - **`CAP_NET_BIND_SERVICE`**: Bind to ports < 1024 (if needed)
+/// - **`CAP_NET_ADMIN`**: Configure network interfaces, routes
+/// - **`CAP_NET_RAW`**: Send ICMP packets for DHCP conflict detection
 ///
 /// # Examples
 ///
@@ -550,10 +550,10 @@ pub use privileges::PrivilegeManager;
 ///
 /// # Methods
 ///
-/// - **new()**: Create new D-Bus daemon instance
-/// - **run()**: Start D-Bus service (blocking async)
-/// - **clear_cache()**: Clear DNS cache via D-Bus
-/// - **set_servers()**: Update upstream DNS servers via D-Bus
+/// - **`new()`**: Create new D-Bus daemon instance
+/// - **`run()`**: Start D-Bus service (blocking async)
+/// - **`clear_cache()`**: Clear DNS cache via D-Bus
+/// - **`set_servers()`**: Update upstream DNS servers via D-Bus
 ///
 /// # Examples
 ///
@@ -572,16 +572,16 @@ pub use privileges::PrivilegeManager;
 #[cfg(feature = "dbus")]
 pub use dbus::DbusDaemon;
 
-/// OpenWrt ubus daemon control interface (feature = "ubus").
+/// `OpenWrt` ubus daemon control interface (feature = "ubus").
 ///
-/// Provides ubus JSON-RPC integration for OpenWrt embedded systems.
+/// Provides ubus JSON-RPC integration for `OpenWrt` embedded systems.
 ///
 /// # Methods
 ///
-/// - **new()**: Create new ubus daemon instance
-/// - **run()**: Start ubus service (blocking async)
-/// - **handle_metrics()**: Handle metrics request via ubus
-/// - **reconnect()**: Reconnect to ubus after connection loss
+/// - **`new()`**: Create new ubus daemon instance
+/// - **`run()`**: Start ubus service (blocking async)
+/// - **`handle_metrics()`**: Handle metrics request via ubus
+/// - **`reconnect()`**: Reconnect to ubus after connection loss
 ///
 /// # Examples
 ///
@@ -600,17 +600,17 @@ pub use dbus::DbusDaemon;
 #[cfg(feature = "ubus")]
 pub use ubus::UbusDaemon;
 
-/// Linux inotify file watcher for configuration reload (target_os = "linux").
+/// Linux inotify file watcher for configuration reload (`target_os` = "linux").
 ///
 /// Monitors configuration files and directories for changes, triggering
 /// automatic reload events when modifications are detected.
 ///
 /// # Methods
 ///
-/// - **new()**: Create new inotify watcher
-/// - **watch_file()**: Add file to watch list
-/// - **watch_directory()**: Add directory to watch list (recursive)
-/// - **run()**: Start watching (blocking async, yields events)
+/// - **`new()`**: Create new inotify watcher
+/// - **`watch_file()`**: Add file to watch list
+/// - **`watch_directory()`**: Add directory to watch list (recursive)
+/// - **`run()`**: Start watching (blocking async, yields events)
 ///
 /// # Examples
 ///
@@ -637,7 +637,7 @@ pub use inotify::InotifyWatcher;
 
 /// Notify systemd of service readiness or status updates.
 ///
-/// Sends notification messages to systemd via sd_notify protocol.
+/// Sends notification messages to systemd via `sd_notify` protocol.
 ///
 /// # Common Notifications
 ///

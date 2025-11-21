@@ -125,7 +125,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 /// Type alias for nom parser error type used throughout this module
 type NomErrorType<'a> = NomError<&'a [u8]>;
 
-/// Helper function to parse a domain name using DomainName::from_wire within a nom parser context.
+/// Helper function to parse a domain name using `DomainName::from_wire` within a nom parser context.
 ///
 /// This function bridges the gap between nom's `&[u8]` based parsing and `DomainName::from_wire`'s
 /// `Bytes`-based API. It calculates the offset of the current input position within the full message
@@ -175,7 +175,7 @@ fn parse_domain_name<'a>(input: &'a [u8], message: &'a [u8]) -> IResult<&'a [u8]
     }
 }
 
-/// Helper function to parse a domain name in parse_rdata context (non-nom).
+/// Helper function to parse a domain name in `parse_rdata` context (non-nom).
 ///
 /// This variant returns `Result` instead of `IResult` for use in functions that
 /// don't use nom parser combinators.
@@ -187,7 +187,7 @@ fn parse_domain_name<'a>(input: &'a [u8], message: &'a [u8]) -> IResult<&'a [u8]
 ///
 /// # Returns
 ///
-/// Returns a tuple of (remaining_bytes, parsed_domain_name) or an error.
+/// Returns a tuple of (`remaining_bytes`, `parsed_domain_name`) or an error.
 fn parse_domain_name_rdata<'a>(
     input: &'a [u8],
     message: &'a [u8],
@@ -237,7 +237,7 @@ fn parse_domain_name_rdata<'a>(
 /// - **Type**: Record type (A, AAAA, MX, etc.) from [`RecordType`]
 /// - **Class**: Protocol family (almost always IN for Internet)
 /// - **TTL**: Time to live in seconds (cache lifetime)
-/// - **RData**: Type-specific data via [`RData`] enum
+/// - **`RData`**: Type-specific data via [`RData`] enum
 ///
 /// # C Equivalent
 ///
@@ -441,13 +441,13 @@ pub enum RData {
 
     /// DNSSEC public key record (RFC 4034 §2)
     ///
-    /// RDATA format: flags(16) + protocol(8) + algorithm(8) + public_key(variable)
+    /// RDATA format: flags(16) + protocol(8) + algorithm(8) + `public_key(variable)`
     Dnskey {
         /// Key flags (bit 7 = zone key, bit 15 = secure entry point)
         flags: u16,
         /// Protocol value (must be 3 for DNSSEC)
         protocol: u8,
-        /// Cryptographic algorithm identifier (RSA, ECDSA, EdDSA)
+        /// Cryptographic algorithm identifier (RSA, ECDSA, `EdDSA`)
         algorithm: u8,
         /// Public key material
         public_key: Bytes,
@@ -455,7 +455,7 @@ pub enum RData {
 
     /// Delegation signer record (RFC 4034 §5)
     ///
-    /// RDATA format: key_tag(16) + algorithm(8) + digest_type(8) + digest(variable)
+    /// RDATA format: `key_tag(16)` + algorithm(8) + `digest_type(8)` + digest(variable)
     Ds {
         /// Key tag of referenced DNSKEY (CRC-like value)
         key_tag: u16,
@@ -469,8 +469,8 @@ pub enum RData {
 
     /// DNSSEC signature record (RFC 4034 §3)
     ///
-    /// RDATA format: type_covered(16) + algorithm(8) + labels(8) + original_ttl(32) +
-    ///               expiration(32) + inception(32) + key_tag(16) + signer + signature
+    /// RDATA format: `type_covered(16)` + algorithm(8) + labels(8) + `original_ttl(32)` +
+    ///               expiration(32) + inception(32) + `key_tag(16)` + signer + signature
     Rrsig {
         /// Record type this signature covers
         type_covered: u16,
@@ -478,7 +478,7 @@ pub enum RData {
         algorithm: u8,
         /// Number of labels in original name
         labels: u8,
-        /// Original TTL of covered RRset
+        /// Original TTL of covered `RRset`
         original_ttl: u32,
         /// Signature expiration time (Unix timestamp)
         expiration: u32,
@@ -494,7 +494,7 @@ pub enum RData {
 
     /// Next secure record (RFC 4034 §4)
     ///
-    /// RDATA format: next_domain + type_bitmap
+    /// RDATA format: `next_domain` + `type_bitmap`
     Nsec {
         /// Next domain name in canonical order
         next_domain: DomainName,
@@ -504,8 +504,8 @@ pub enum RData {
 
     /// Hashed next secure record (RFC 5155 §3)
     ///
-    /// RDATA format: hash_algorithm(8) + flags(8) + iterations(16) + salt_length(8) +
-    ///               salt + hash_length(8) + next_hashed + type_bitmap
+    /// RDATA format: `hash_algorithm(8)` + flags(8) + iterations(16) + `salt_length(8)` +
+    ///               salt + `hash_length(8)` + `next_hashed` + `type_bitmap`
     Nsec3 {
         /// Hash algorithm identifier (1 = SHA-1)
         hash_algorithm: u8,
@@ -530,7 +530,7 @@ pub enum RData {
 
     /// Certification authority authorization (RFC 6844)
     ///
-    /// RDATA format: flags(8) + tag_length(8) + tag + value
+    /// RDATA format: flags(8) + `tag_length(8)` + tag + value
     Caa {
         /// CAA flags (bit 0 = critical)
         flags: u8,
@@ -610,6 +610,7 @@ impl ResourceRecord {
     /// ```rust,ignore
     /// let modified_rr = rr.with_ttl(3600);
     /// ```
+    #[must_use]
     pub fn with_ttl(mut self, ttl: u32) -> Self {
         self.ttl = ttl;
         self
@@ -622,6 +623,7 @@ impl ResourceRecord {
     /// ```rust,ignore
     /// let modified_rr = rr.with_class(C_IN);
     /// ```
+    #[must_use]
     pub fn with_class(mut self, class: u16) -> Self {
         self.class = class;
         self
@@ -730,7 +732,7 @@ impl ResourceRecord {
     ///
     /// # C Equivalent
     ///
-    /// Replaces type-specific parsing blocks in extract_addresses():
+    /// Replaces type-specific parsing blocks in `extract_addresses()`:
     ///
     /// ```c
     /// // C: Manual type discrimination
@@ -743,6 +745,7 @@ impl ResourceRecord {
     ///     memcpy(&addr.addr6, p, IN6ADDRSZ);
     /// }
     /// ```
+    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     pub fn parse_rdata(
         rdata_bytes: &[u8],
         message: &[u8],
@@ -757,8 +760,7 @@ impl ResourceRecord {
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!(
-                                "A record RDATA must be {} bytes, got {}",
-                                INADDRSZ, rdlength
+                                "A record RDATA must be {INADDRSZ} bytes, got {rdlength}"
                             ),
                         },
                     ));
@@ -775,8 +777,7 @@ impl ResourceRecord {
                         crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
                             reason: format!(
-                                "AAAA record RDATA must be {} bytes, got {}",
-                                IN6ADDRSZ, rdlength
+                                "AAAA record RDATA must be {IN6ADDRSZ} bytes, got {rdlength}"
                             ),
                         },
                     ));
@@ -813,7 +814,7 @@ impl ResourceRecord {
                     be_u16::<_, NomErrorType<'_>>(rdata_bytes).map_err(|e| {
                         crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("Failed to parse MX preference: {:?}", e),
+                            reason: format!("Failed to parse MX preference: {e:?}"),
                         })
                     })?;
                 let (_remaining, exchange) = parse_domain_name_rdata(input, message)?;
@@ -833,7 +834,7 @@ impl ResourceRecord {
                     .map_err(|e| {
                         crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("Failed to parse TXT string: {:?}", e),
+                            reason: format!("Failed to parse TXT string: {e:?}"),
                         })
                     })?;
                     txt_data.push(txt_string.to_vec());
@@ -858,7 +859,7 @@ impl ResourceRecord {
                     .map_err(|e| {
                         crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("Failed to parse SOA integers: {:?}", e),
+                            reason: format!("Failed to parse SOA integers: {e:?}"),
                         })
                     })?;
 
@@ -889,14 +890,14 @@ impl ResourceRecord {
                 .map_err(|e| {
                     crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                         server: "local".to_string(),
-                        reason: format!("Failed to parse SRV fields: {:?}", e),
+                        reason: format!("Failed to parse SRV fields: {e:?}"),
                     })
                 })?;
                 let (_remaining, target) =
                     parse_domain_name_rdata(input, message).map_err(|e| {
                         crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("Failed to parse SRV target: {:?}", e),
+                            reason: format!("Failed to parse SRV target: {e:?}"),
                         })
                     })?;
 
@@ -920,7 +921,7 @@ impl ResourceRecord {
                 .map_err(|e| {
                     crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                         server: "local".to_string(),
-                        reason: format!("Failed to parse NAPTR order/preference: {:?}", e),
+                        reason: format!("Failed to parse NAPTR order/preference: {e:?}"),
                     })
                 })?;
 
@@ -930,7 +931,7 @@ impl ResourceRecord {
                         .map_err(|e| {
                         crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("Failed to parse NAPTR flags: {:?}", e),
+                            reason: format!("Failed to parse NAPTR flags: {e:?}"),
                         })
                     })?;
                 let flags = String::from_utf8_lossy(flags_bytes).to_string();
@@ -941,7 +942,7 @@ impl ResourceRecord {
                         .map_err(|e| {
                         crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("Failed to parse NAPTR service: {:?}", e),
+                            reason: format!("Failed to parse NAPTR service: {e:?}"),
                         })
                     })?;
                 let service = String::from_utf8_lossy(service_bytes).to_string();
@@ -952,7 +953,7 @@ impl ResourceRecord {
                         .map_err(|e| {
                         crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("Failed to parse NAPTR regexp: {:?}", e),
+                            reason: format!("Failed to parse NAPTR regexp: {e:?}"),
                         })
                     })?;
                 let regexp = String::from_utf8_lossy(regexp_bytes).to_string();
@@ -962,7 +963,7 @@ impl ResourceRecord {
                     parse_domain_name_rdata(input, message).map_err(|e| {
                         crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("Failed to parse NAPTR replacement: {:?}", e),
+                            reason: format!("Failed to parse NAPTR replacement: {e:?}"),
                         })
                     })?;
 
@@ -987,7 +988,7 @@ impl ResourceRecord {
                 .map_err(|e| {
                     crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                         server: "local".to_string(),
-                        reason: format!("Failed to parse DNSKEY header: {:?}", e),
+                        reason: format!("Failed to parse DNSKEY header: {e:?}"),
                     })
                 })?;
 
@@ -1016,7 +1017,7 @@ impl ResourceRecord {
                     .map_err(|e| {
                         crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("Failed to parse DS header: {:?}", e),
+                            reason: format!("Failed to parse DS header: {e:?}"),
                         })
                     })?;
 
@@ -1052,7 +1053,7 @@ impl ResourceRecord {
                 .map_err(|e| {
                     crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                         server: "local".to_string(),
-                        reason: format!("Failed to parse RRSIG header: {:?}", e),
+                        reason: format!("Failed to parse RRSIG header: {e:?}"),
                     })
                 })?;
 
@@ -1060,7 +1061,7 @@ impl ResourceRecord {
                 let (input, signer) = parse_domain_name_rdata(input, message).map_err(|e| {
                     crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                         server: "local".to_string(),
-                        reason: format!("Failed to parse RRSIG signer: {:?}", e),
+                        reason: format!("Failed to parse RRSIG signer: {e:?}"),
                     })
                 })?;
 
@@ -1086,7 +1087,7 @@ impl ResourceRecord {
                     parse_domain_name_rdata(rdata_bytes, message).map_err(|e| {
                         crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("Failed to parse NSEC next domain: {:?}", e),
+                            reason: format!("Failed to parse NSEC next domain: {e:?}"),
                         })
                     })?;
 
@@ -1116,7 +1117,7 @@ impl ResourceRecord {
                     .map_err(|e| {
                         crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("Failed to parse NSEC3 header: {:?}", e),
+                            reason: format!("Failed to parse NSEC3 header: {e:?}"),
                         })
                     })?;
 
@@ -1126,7 +1127,7 @@ impl ResourceRecord {
                         .map_err(|e| {
                         crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("Failed to parse NSEC3 salt: {:?}", e),
+                            reason: format!("Failed to parse NSEC3 salt: {e:?}"),
                         })
                     })?;
                 let salt = Bytes::copy_from_slice(salt_bytes);
@@ -1137,7 +1138,7 @@ impl ResourceRecord {
                         .map_err(|e| {
                         crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("Failed to parse NSEC3 next hash: {:?}", e),
+                            reason: format!("Failed to parse NSEC3 next hash: {e:?}"),
                         })
                     })?;
                 let next_hashed = Bytes::copy_from_slice(next_hashed_bytes);
@@ -1170,7 +1171,7 @@ impl ResourceRecord {
                         .map_err(|e| {
                             crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                                 server: "local".to_string(),
-                                reason: format!("Failed to parse OPT option header: {:?}", e),
+                                reason: format!("Failed to parse OPT option header: {e:?}"),
                             })
                         })?;
 
@@ -1180,7 +1181,7 @@ impl ResourceRecord {
                     .map_err(|e| {
                         crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("Failed to parse OPT option data: {:?}", e),
+                            reason: format!("Failed to parse OPT option data: {e:?}"),
                         })
                     })?;
 
@@ -1189,7 +1190,7 @@ impl ResourceRecord {
                         Edns0Option::from_wire_format(option_code, option_data).map_err(|e| {
                             crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                                 server: "local".to_string(),
-                                reason: format!("Failed to parse EDNS0 option: {:?}", e),
+                                reason: format!("Failed to parse EDNS0 option: {e:?}"),
                             })
                         })?;
 
@@ -1213,7 +1214,7 @@ impl ResourceRecord {
                 let (input, flags) = be_u8::<_, NomErrorType<'_>>(rdata_bytes).map_err(|e| {
                     crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                         server: "local".to_string(),
-                        reason: format!("Failed to parse CAA flags: {:?}", e),
+                        reason: format!("Failed to parse CAA flags: {e:?}"),
                     })
                 })?;
 
@@ -1223,7 +1224,7 @@ impl ResourceRecord {
                         .map_err(|e| {
                         crate::error::DnsmasqError::Dns(crate::error::DnsError::ParseFailed {
                             server: "local".to_string(),
-                            reason: format!("Failed to parse CAA tag: {:?}", e),
+                            reason: format!("Failed to parse CAA tag: {e:?}"),
                         })
                     })?;
                 let tag = String::from_utf8_lossy(tag_bytes).to_string();
@@ -1263,6 +1264,7 @@ impl ResourceRecord {
     /// let wire_bytes = rr.serialize()?;
     /// // Append to DNS message additional section
     /// ```
+    #[allow(clippy::cast_possible_truncation)]
     pub fn serialize(&self) -> Result<Vec<u8>> {
         let mut buf = BytesMut::new();
 
@@ -1302,6 +1304,7 @@ impl ResourceRecord {
     /// let rdata_bytes = rr.serialize_rdata()?;
     /// let rdlength = rdata_bytes.len();
     /// ```
+    #[allow(clippy::cast_possible_truncation)]
     pub fn serialize_rdata(&self) -> Result<Vec<u8>> {
         let mut buf = BytesMut::new();
 

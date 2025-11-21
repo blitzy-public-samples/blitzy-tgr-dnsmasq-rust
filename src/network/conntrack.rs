@@ -110,12 +110,12 @@ use nix::sys::socket::{socket, AddressFamily, SockFlag, SockProtocol, SockType};
 /// Transport protocol for conntrack queries.
 ///
 /// Specifies whether the connection being queried is UDP or TCP. This corresponds
-/// to the IPPROTO_UDP and IPPROTO_TCP constants in the C implementation.
+/// to the `IPPROTO_UDP` and `IPPROTO_TCP` constants in the C implementation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Protocol {
-    /// UDP protocol (IPPROTO_UDP = 17)
+    /// UDP protocol (`IPPROTO_UDP` = 17)
     Udp,
-    /// TCP protocol (IPPROTO_TCP = 6)
+    /// TCP protocol (`IPPROTO_TCP` = 6)
     Tcp,
 }
 
@@ -138,7 +138,7 @@ impl Protocol {
 pub struct ConnmarkAllowlist {
     /// The conntrack mark value to match
     pub mark: u32,
-    /// The mask to apply when matching marks (mark & mask == expected_mark & mask)
+    /// The mask to apply when matching marks (mark & mask == `expected_mark` & mask)
     pub mask: u32,
     /// Domain patterns associated with this mark
     pub patterns: Vec<String>,
@@ -158,11 +158,14 @@ impl ConnmarkAllowlist {
     /// ```rust,ignore
     /// let allowlist = ConnmarkAllowlist::new(100, 0xFFFF, vec!["*.vpn.example.com".to_string()]);
     /// ```
+    #[must_use]
+    #[allow(clippy::similar_names)] // `mark` and `mask` are standard networking terminology in conntrack
     pub fn new(mark: u32, mask: u32, patterns: Vec<String>) -> Self {
         Self { mark, mask, patterns }
     }
 
     /// Check if a mark matches this allowlist entry.
+    #[must_use]
     pub fn matches(&self, mark: u32) -> bool {
         (mark & self.mask) == (self.mark & self.mask)
     }
@@ -262,7 +265,7 @@ impl ConntrackHandler {
 
         // Execute conntrack query in blocking thread pool to avoid blocking async runtime.
         // Netlink socket operations are synchronous system calls that may block.
-        spawn_blocking(move || Self::query_conntrack_blocking(peer, local, protocol, warned))
+        spawn_blocking(move || Self::query_conntrack_blocking(peer, local, protocol, &warned))
             .await
             .map_err(|e| NetworkError::NetlinkFailed {
                 operation: "spawn_blocking".to_string(),
@@ -281,7 +284,7 @@ impl ConntrackHandler {
     /// production implementation would need to:
     /// 1. Construct proper netlink conntrack query messages
     /// 2. Parse netlink response messages
-    /// 3. Extract ATTR_MARK from conntrack entry
+    /// 3. Extract `ATTR_MARK` from conntrack entry
     ///
     /// For now, this returns None to indicate "connection not tracked" and provides
     /// the framework for integration with netlink-packet-conntrack or raw netlink.
@@ -289,8 +292,12 @@ impl ConntrackHandler {
         peer: SocketAddr,
         local: SocketAddr,
         protocol: Protocol,
-        warned: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        warned: &std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> Result<Option<u32>, NetworkError> {
+        // NETLINK_NETFILTER = 12 in Linux
+        #[allow(dead_code)]
+        const NETLINK_NETFILTER: i32 = 12;
+
         // Construct netlink conntrack query
         debug!("Querying conntrack: peer={}, local={}, protocol={:?}", peer, local, protocol);
 
@@ -307,9 +314,6 @@ impl ConntrackHandler {
         };
 
         // Open netlink socket for conntrack queries
-        // NETLINK_NETFILTER = 12 in Linux
-        #[allow(dead_code)]
-        const NETLINK_NETFILTER: i32 = 12;
 
         let _sock_fd = socket(
             AddressFamily::Netlink,
@@ -319,7 +323,7 @@ impl ConntrackHandler {
         )
         .map_err(|e| NetworkError::NetlinkFailed {
             operation: "socket_create".to_string(),
-            reason: format!("Failed to create netlink socket: {}", e),
+            reason: format!("Failed to create netlink socket: {e}"),
         })?;
 
         // Note: Full implementation would need to:
@@ -363,11 +367,11 @@ impl Default for ConntrackHandler {
 /// The message format includes:
 /// - Netlink header (nlmsghdr)
 /// - Netfilter header (nfgenmsg)
-/// - Conntrack tuple attributes (CTA_TUPLE_ORIG)
-///   - IP attributes (CTA_TUPLE_IP)
-///   - Proto attributes (CTA_TUPLE_PROTO)
+/// - Conntrack tuple attributes (`CTA_TUPLE_ORIG`)
+///   - IP attributes (`CTA_TUPLE_IP`)
+///   - Proto attributes (`CTA_TUPLE_PROTO`)
 ///
-/// Reference: Linux kernel include/uapi/linux/netfilter/nfnetlink_conntrack.h
+/// Reference: Linux kernel `include/uapi/linux/netfilter/nfnetlink_conntrack.h`
 #[allow(dead_code)]
 fn build_conntrack_query(_peer: SocketAddr, _local: SocketAddr, _protocol: Protocol) -> Vec<u8> {
     // Full implementation would construct netlink message here
@@ -401,10 +405,10 @@ fn build_conntrack_query(_peer: SocketAddr, _local: SocketAddr, _protocol: Proto
 
 /// Helper function to parse netlink conntrack response message.
 ///
-/// This would parse the netfilter conntrack response and extract the ATTR_MARK
+/// This would parse the netfilter conntrack response and extract the `ATTR_MARK`
 /// attribute if present.
 ///
-/// Reference: Linux kernel include/uapi/linux/netfilter/nf_conntrack_common.h
+/// Reference: Linux kernel `include/uapi/linux/netfilter/nf_conntrack_common.h`
 #[allow(dead_code)]
 fn parse_conntrack_response(_msg: &[u8]) -> Option<u32> {
     // Full implementation would parse netlink message here

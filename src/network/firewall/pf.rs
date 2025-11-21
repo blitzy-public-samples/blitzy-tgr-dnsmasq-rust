@@ -136,7 +136,7 @@
 //! Key safety improvements:
 //! - `OwnedFd` automatically closes /dev/pf on Drop
 //! - No manual bzero/memset - Default trait ensures zero-initialization
-//! - Type-safe IpAddr enum prevents address family mismatches
+//! - Type-safe `IpAddr` enum prevents address family mismatches
 //! - Bounds-checked array access for table names
 //!
 //! # Error Handling
@@ -219,7 +219,7 @@
 //! ```
 //!
 //! Supported platforms:
-//! - FreeBSD 10.0+ (pfSense, OPNsense, FreeNAS/TrueNAS)
+//! - FreeBSD 10.0+ (pfSense, `OPNsense`, FreeNAS/TrueNAS)
 //! - OpenBSD 5.0+ (reference PF implementation)
 //! - NetBSD 6.0+
 //!
@@ -252,7 +252,7 @@ const PF_DEVICE_PATH: &str = "/dev/pf";
 /// Maximum length for PF table names (from BSD sys/net/pfvar.h).
 ///
 /// Table names exceeding this length are truncated or rejected with ENAMETOOLONG.
-/// Standard BSD PF implementation defines PF_TABLE_NAME_SIZE as 32 bytes.
+/// Standard BSD PF implementation defines `PF_TABLE_NAME_SIZE` as 32 bytes.
 const PF_TABLE_NAME_SIZE: usize = 32;
 
 /// PF table flag: Make table persistent across ruleset reloads.
@@ -337,10 +337,10 @@ struct pfr_table {
     /// Anchor path (empty for global tables, e.g., "myanchor/nested")
     pfrt_anchor: [u8; 1024], // MAXPATHLEN on most BSD systems
 
-    /// Table name (e.g., "blocked_domains", max 32 chars)
+    /// Table name (e.g., "`blocked_domains`", max 32 chars)
     pfrt_name: [u8; PF_TABLE_NAME_SIZE],
 
-    /// Flags: PFR_TFLAG_PERSIST, PFR_TFLAG_CONST, etc.
+    /// Flags: `PFR_TFLAG_PERSIST`, `PFR_TFLAG_CONST`, etc.
     pfrt_flags: u32,
 
     /// Feedback byte (reserved for kernel use)
@@ -348,7 +348,7 @@ struct pfr_table {
 }
 
 impl Default for pfr_table {
-    /// Create zero-initialized pfr_table structure.
+    /// Create zero-initialized `pfr_table` structure.
     ///
     /// Replaces C's `bzero(&table, sizeof(table))` with safe Rust default initialization.
     fn default() -> Self {
@@ -383,7 +383,7 @@ struct pfr_addr {
     /// Union containing either IPv4 or IPv6 address
     pfra_u: pfra_union,
 
-    /// Address family: AF_INET (2) or AF_INET6 (10/28 depending on BSD)
+    /// Address family: `AF_INET` (2) or `AF_INET6` (10/28 depending on BSD)
     pfra_af: u8,
 
     /// Network prefix length: 0x20 (32) for IPv4 /32, 0x80 (128) for IPv6 /128
@@ -396,7 +396,7 @@ struct pfr_addr {
     pfra_fback: u8,
 }
 
-/// Union for IPv4/IPv6 address storage in pfr_addr.
+/// Union for IPv4/IPv6 address storage in `pfr_addr`.
 ///
 /// C definition:
 /// ```c
@@ -416,7 +416,7 @@ union pfra_union {
 }
 
 impl Default for pfr_addr {
-    /// Create zero-initialized pfr_addr structure.
+    /// Create zero-initialized `pfr_addr` structure.
     ///
     /// Replaces C's `bzero(&addr, sizeof(addr))`.
     fn default() -> Self {
@@ -451,10 +451,10 @@ struct pfioc_table {
     /// Target table descriptor
     pfrio_table: pfr_table,
 
-    /// Pointer to data buffer (array of pfr_table or pfr_addr)
+    /// Pointer to data buffer (array of `pfr_table` or `pfr_addr`)
     pfrio_buffer: *mut libc::c_void,
 
-    /// Size of each element in buffer (sizeof(pfr_table) or sizeof(pfr_addr))
+    /// Size of each element in buffer (`sizeof(pfr_table)` or `sizeof(pfr_addr)`)
     pfrio_esize: libc::c_int,
 
     /// Number of elements in buffer
@@ -503,7 +503,7 @@ impl Default for pfioc_table {
 ///
 /// - `OwnedFd` provides RAII management of /dev/pf file descriptor
 /// - Automatic closure on Drop, preventing descriptor leaks
-/// - No manual close() calls required
+/// - No manual `close()` calls required
 /// - Safe even during unwinding (panic-safe resource cleanup)
 ///
 /// # C Comparison
@@ -548,7 +548,7 @@ impl Default for PfBackend {
 }
 
 impl PfBackend {
-    /// Create a new PfBackend instance without opening /dev/pf.
+    /// Create a new `PfBackend` instance without opening /dev/pf.
     ///
     /// The file descriptor is not opened until `initialize()` is called. This two-phase
     /// construction allows error handling during initialization while keeping construction
@@ -608,7 +608,7 @@ impl PfBackend {
             .await
             .map_err(|e| {
                 error!(error = %e, "Tokio task join error during PF device open");
-                FirewallError::DeviceNotFound(format!("Task join failed: {}", e))
+                FirewallError::DeviceNotFound(format!("Task join failed: {e}"))
             })?;
 
         match fd_result {
@@ -631,15 +631,15 @@ impl PfBackend {
 
                 let error_msg = match errno {
                     Errno::EACCES => {
-                        format!("Permission denied: {} (need root privileges)", PF_DEVICE_PATH)
+                        format!("Permission denied: {PF_DEVICE_PATH} (need root privileges)")
                     }
                     Errno::ENOENT => {
-                        format!("Device not found: {} (PF module not loaded?)", PF_DEVICE_PATH)
+                        format!("Device not found: {PF_DEVICE_PATH} (PF module not loaded?)")
                     }
                     Errno::ENXIO => {
-                        format!("Device not configured: {} (PF not enabled)", PF_DEVICE_PATH)
+                        format!("Device not configured: {PF_DEVICE_PATH} (PF not enabled)")
                     }
-                    _ => format!("Failed to open {}: {}", PF_DEVICE_PATH, errno),
+                    _ => format!("Failed to open {PF_DEVICE_PATH}: {errno}"),
                 };
 
                 Err(FirewallError::DeviceNotFound(error_msg))
@@ -655,12 +655,11 @@ impl PfBackend {
     #[allow(dead_code)]
     fn get_fd(&self) -> Result<libc::c_int> {
         let guard = self.pf_fd.lock().unwrap();
-        match guard.as_ref() {
-            Some(fd) => Ok(fd.as_raw_fd()),
-            None => {
-                warn!("PF device not initialized, call initialize() first");
-                Err(FirewallError::DeviceNotFound("PF device not initialized".to_string()))
-            }
+        if let Some(fd) = guard.as_ref() {
+            Ok(fd.as_raw_fd())
+        } else {
+            warn!("PF device not initialized, call initialize() first");
+            Err(FirewallError::DeviceNotFound("PF device not initialized".to_string()))
         }
     }
 
@@ -676,9 +675,9 @@ impl PfBackend {
     /// # Errors
     ///
     /// Returns [`FirewallError::TableCreateFailed`] if:
-    /// - Table name exceeds PF_TABLE_NAME_SIZE (32 bytes)
+    /// - Table name exceeds `PF_TABLE_NAME_SIZE` (32 bytes)
     /// - ioctl system call fails (except EEXIST)
-    /// - Permission denied (CAP_NET_ADMIN or root required)
+    /// - Permission denied (`CAP_NET_ADMIN` or root required)
     ///
     /// # Synchronous Operation
     ///
@@ -721,9 +720,7 @@ impl PfBackend {
 
         // Execute DIOCRADDTABLES ioctl
         // SAFETY: fd is valid (checked by get_fd), io structure is properly initialized
-        let result = unsafe {
-            libc::ioctl(fd, DIOCRADDTABLES as libc::c_ulong, &raw mut io)
-        };
+        let result = unsafe { libc::ioctl(fd, DIOCRADDTABLES as libc::c_ulong, &raw mut io) };
 
         if result < 0 {
             let errno = Errno::last();
@@ -779,7 +776,7 @@ impl PfBackend {
 
         match ip {
             IpAddr::V4(ipv4) => {
-                addr.pfra_af = libc::AF_INET as u8;
+                addr.pfra_af = u8::try_from(libc::AF_INET).unwrap();
                 addr.pfra_net = 0x20; // /32 prefix for single IPv4 address
 
                 // SAFETY: pfra_union discriminated by pfra_af = AF_INET
@@ -789,7 +786,7 @@ impl PfBackend {
                 }
             }
             IpAddr::V6(ipv6) => {
-                addr.pfra_af = libc::AF_INET6 as u8;
+                addr.pfra_af = u8::try_from(libc::AF_INET6).unwrap();
                 addr.pfra_net = 0x80; // /128 prefix for single IPv6 address
 
                 // SAFETY: pfra_union discriminated by pfra_af = AF_INET6
@@ -806,7 +803,8 @@ impl PfBackend {
         let mut io = pfioc_table {
             pfrio_table: table,
             pfrio_buffer: (&raw mut addr).cast::<libc::c_void>(),
-            pfrio_esize: std::mem::size_of::<pfr_addr>() as libc::c_int,
+            pfrio_esize: libc::c_int::try_from(std::mem::size_of::<pfr_addr>())
+                .unwrap_or(libc::c_int::MAX),
             pfrio_size: 1,
             pfrio_flags: 0,
             ..Default::default()
@@ -814,8 +812,7 @@ impl PfBackend {
 
         // Execute DIOCRADDADDRS ioctl
         // SAFETY: fd is valid, io structure is properly initialized
-        let result =
-            unsafe { libc::ioctl(fd, DIOCRADDADDRS as libc::c_ulong, &raw mut io) };
+        let result = unsafe { libc::ioctl(fd, DIOCRADDADDRS as libc::c_ulong, &raw mut io) };
 
         if result < 0 {
             let errno = Errno::last();
@@ -828,8 +825,7 @@ impl PfBackend {
 
             let error_msg = pf_strerror(errno);
             return Err(FirewallError::AddressFailed(format!(
-                "Failed to add {} to table '{}': {}",
-                ip, table_name, error_msg
+                "Failed to add {ip} to table '{table_name}': {error_msg}"
             )));
         }
 
@@ -864,7 +860,7 @@ impl PfBackend {
 
         match ip {
             IpAddr::V4(ipv4) => {
-                addr.pfra_af = libc::AF_INET as u8;
+                addr.pfra_af = u8::try_from(libc::AF_INET).unwrap();
                 addr.pfra_net = 0x20;
 
                 unsafe {
@@ -873,7 +869,7 @@ impl PfBackend {
                 }
             }
             IpAddr::V6(ipv6) => {
-                addr.pfra_af = libc::AF_INET6 as u8;
+                addr.pfra_af = u8::try_from(libc::AF_INET6).unwrap();
                 addr.pfra_net = 0x80;
 
                 // SAFETY: pfra_union discriminated by pfra_af = AF_INET6
@@ -890,7 +886,8 @@ impl PfBackend {
         let mut io = pfioc_table {
             pfrio_table: table,
             pfrio_buffer: (&raw mut addr).cast::<libc::c_void>(),
-            pfrio_esize: std::mem::size_of::<pfr_addr>() as libc::c_int,
+            pfrio_esize: libc::c_int::try_from(std::mem::size_of::<pfr_addr>())
+                .unwrap_or(libc::c_int::MAX),
             pfrio_size: 1,
             pfrio_flags: 0,
             ..Default::default()
@@ -898,8 +895,7 @@ impl PfBackend {
 
         // Execute DIOCRDELADDRS ioctl
         // SAFETY: fd is valid, io structure is properly initialized
-        let result =
-            unsafe { libc::ioctl(fd, DIOCRDELADDRS as libc::c_ulong, &raw mut io) };
+        let result = unsafe { libc::ioctl(fd, DIOCRDELADDRS as libc::c_ulong, &raw mut io) };
 
         if result < 0 {
             let errno = Errno::last();
@@ -919,8 +915,7 @@ impl PfBackend {
 
             let error_msg = pf_strerror(errno);
             return Err(FirewallError::AddressFailed(format!(
-                "Failed to remove {} from table '{}': {}",
-                ip, table_name, error_msg
+                "Failed to remove {ip} from table '{table_name}': {error_msg}"
             )));
         }
 
@@ -974,7 +969,7 @@ impl PfBackend {
         .await
         .map_err(|e| {
             error!(error = %e, "Tokio task join error");
-            FirewallError::ProtocolError(format!("Task join failed: {}", e))
+            FirewallError::ProtocolError(format!("Task join failed: {e}"))
         })?
     }
 
@@ -1006,7 +1001,7 @@ impl PfBackend {
         .await
         .map_err(|e| {
             error!(error = %e, "Tokio task join error");
-            FirewallError::ProtocolError(format!("Task join failed: {}", e))
+            FirewallError::ProtocolError(format!("Task join failed: {e}"))
         })?
     }
 
@@ -1037,7 +1032,7 @@ impl PfBackend {
         .await
         .map_err(|e| {
             error!(error = %e, "Tokio task join error");
-            FirewallError::ProtocolError(format!("Task join failed: {}", e))
+            FirewallError::ProtocolError(format!("Task join failed: {e}"))
         })?
     }
 }
@@ -1117,7 +1112,7 @@ impl FirewallBackend for PfBackend {
 ///
 /// # Arguments
 ///
-/// * `errno` - Error code from nix::errno::Errno after failed PF ioctl
+/// * `errno` - Error code from `nix::errno::Errno` after failed PF ioctl
 ///
 /// # Returns
 ///
@@ -1141,7 +1136,7 @@ fn pf_strerror(errno: Errno) -> String {
     match errno {
         Errno::ESRCH => "Table does not exist".to_string(),
         Errno::ENOENT => "Anchor or Ruleset does not exist".to_string(),
-        _ => format!("{}", errno),
+        _ => format!("{errno}"),
     }
 }
 

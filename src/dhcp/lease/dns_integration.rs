@@ -20,9 +20,9 @@
 //!
 //! - Register lease hostnames in DNS cache
 //! - Unregister hostnames when leases expire or are released
-//! - Support for both DHCPv4 and DHCPv6 leases
+//! - Support for both `DHCPv4` and `DHCPv6` leases
 //! - FQDN (Fully Qualified Domain Name) handling
-//! - IPv6 SLAAC address registration for DHCPv6 leases
+//! - IPv6 SLAAC address registration for `DHCPv6` leases
 //! - DNS cache bulk update and synchronization
 //! - Configurable hostname vs FQDN registration policy
 //!
@@ -50,9 +50,9 @@
 //!
 //! # C Implementation Reference
 //!
-//! Based on: src/lease.c:lease_update_dns() function (lines 1297-1352)
-//! which integrates DHCP leases with DNS cache via cache_add_dhcp_entry()
-//! and cache_unhash_dhcp() for bulk updates.
+//! Based on: `src/lease.c:lease_update_dns()` function (lines 1297-1352)
+//! which integrates DHCP leases with DNS cache via `cache_add_dhcp_entry()`
+//! and `cache_unhash_dhcp()` for bulk updates.
 
 // Note: Config import removed as dhcp_fqdn field is not yet implemented
 // TODO: Add Config parameter to functions once config::Config::dhcp_fqdn is available
@@ -109,8 +109,8 @@ use tracing::{debug, error, info};
 ///
 /// # C Implementation Reference
 ///
-/// Based on: src/lease.c:lease_update_dns() lines 1331-1339, which calls
-/// cache_add_dhcp_entry(hostname, AF_INET, &addr, expires) for each lease
+/// Based on: `src/lease.c:lease_update_dns()` lines 1331-1339, which calls
+/// `cache_add_dhcp_entry(hostname`, `AF_INET`, &addr, expires) for each lease
 /// with an associated hostname.
 pub async fn register_lease_hostname(
     dns_cache: &Arc<RwLock<DnsCache>>,
@@ -120,13 +120,14 @@ pub async fn register_lease_hostname(
     expires: SystemTime,
 ) -> Result<(), DhcpError> {
     // Calculate TTL from expiration time
-    let ttl = match expires.duration_since(SystemTime::now()) {
-        Ok(duration) => duration.as_secs() as u32,
-        Err(_) => {
-            // Lease has already expired, don't register
-            debug!("Not registering expired lease for hostname {}", hostname);
-            return Ok(());
-        }
+    #[allow(clippy::cast_possible_truncation)]
+    // DHCP leases are typically hours/days/weeks, well within u32::MAX seconds (~136 years)
+    let ttl = if let Ok(duration) = expires.duration_since(SystemTime::now()) {
+        duration.as_secs() as u32
+    } else {
+        // Lease has already expired, don't register
+        debug!("Not registering expired lease for hostname {}", hostname);
+        return Ok(());
     };
 
     // Acquire write lock on DNS cache
@@ -142,7 +143,7 @@ pub async fn register_lease_hostname(
                 error!("Invalid FQDN '{}': {}", fqdn_str, e);
                 DhcpError::LeaseDatabaseFailed {
                     operation: "dns_integration".to_string(),
-                    reason: format!("Invalid FQDN '{}': {}", fqdn_str, e),
+                    reason: format!("Invalid FQDN '{fqdn_str}': {e}"),
                 }
             })?;
 
@@ -151,7 +152,7 @@ pub async fn register_lease_hostname(
                 error!("Failed to add DHCP FQDN to DNS cache: {}", e);
                 DhcpError::LeaseDatabaseFailed {
                     operation: "dns_integration".to_string(),
-                    reason: format!("Failed to add DNS FQDN entry: {}", e),
+                    reason: format!("Failed to add DNS FQDN entry: {e}"),
                 }
             })?;
         }
@@ -169,7 +170,7 @@ pub async fn register_lease_hostname(
             error!("Invalid hostname '{}': {}", hostname, e);
             DhcpError::LeaseDatabaseFailed {
                 operation: "dns_integration".to_string(),
-                reason: format!("Invalid hostname '{}': {}", hostname, e),
+                reason: format!("Invalid hostname '{hostname}': {e}"),
             }
         })?;
 
@@ -178,7 +179,7 @@ pub async fn register_lease_hostname(
             error!("Failed to add DHCP entry to DNS cache: {}", e);
             DhcpError::LeaseDatabaseFailed {
                 operation: "dns_integration".to_string(),
-                reason: format!("Failed to add DNS entry: {}", e),
+                reason: format!("Failed to add DNS entry: {e}"),
             }
         })?;
     }
@@ -226,7 +227,7 @@ pub async fn register_lease_hostname(
 ///
 /// # C Implementation Reference
 ///
-/// Based on: src/cache.c:cache_del_dhcp() which removes DHCP-sourced entries
+/// Based on: `src/cache.c:cache_del_dhcp()` which removes DHCP-sourced entries
 /// from the DNS cache when leases expire or are released.
 pub async fn unregister_lease_hostname(
     dns_cache: &Arc<RwLock<DnsCache>>,
@@ -253,7 +254,7 @@ pub async fn unregister_lease_hostname(
                 error!("Invalid FQDN '{}': {}", fqdn_str, e);
                 DhcpError::LeaseDatabaseFailed {
                     operation: "dns_integration".to_string(),
-                    reason: format!("Invalid FQDN '{}': {}", fqdn_str, e),
+                    reason: format!("Invalid FQDN '{fqdn_str}': {e}"),
                 }
             })?;
 
@@ -273,7 +274,7 @@ pub async fn unregister_lease_hostname(
             error!("Invalid hostname '{}': {}", hostname, e);
             DhcpError::LeaseDatabaseFailed {
                 operation: "dns_integration".to_string(),
-                reason: format!("Invalid hostname '{}': {}", hostname, e),
+                reason: format!("Invalid hostname '{hostname}': {e}"),
             }
         })?;
 
@@ -303,7 +304,7 @@ pub async fn unregister_lease_hostname(
 ///
 /// * `leases` - Slice of all active DHCP leases
 /// * `dns_cache` - Shared reference to the DNS cache
-/// * `force` - If true, bypass the dns_dirty check and force update
+/// * `force` - If true, bypass the `dns_dirty` check and force update
 ///
 /// # Returns
 ///
@@ -322,15 +323,15 @@ pub async fn unregister_lease_hostname(
 ///
 /// # C Implementation Reference
 ///
-/// Based on: src/lease.c:lease_update_dns(int force) lines 1297-1352
+/// Based on: `src/lease.c:lease_update_dns(int` force) lines 1297-1352
 ///
 /// The C implementation:
 /// 1. Checks `dns_dirty || force` to determine if update is needed
 /// 2. Calls `cache_unhash_dhcp()` to prepare the cache for bulk updates
 /// 3. Iterates through all leases and calls `cache_add_dhcp_entry()`
-/// 4. Handles both IPv4 and IPv6 leases (with DHCPv6 SLAAC addresses)
-/// 5. Respects the OPT_DHCP_FQDN option to control hostname registration
-/// 6. Clears the dns_dirty flag after successful update
+/// 4. Handles both IPv4 and IPv6 leases (with `DHCPv6` SLAAC addresses)
+/// 5. Respects the `OPT_DHCP_FQDN` option to control hostname registration
+/// 6. Clears the `dns_dirty` flag after successful update
 ///
 /// # Implementation Notes
 ///

@@ -31,6 +31,15 @@
 //! - **ra-names**: SLAAC with RDNSS and ping-based address confirmation
 //! - **ra-stateless**: Pure SLAAC without DHCPv6 coordination
 
+// ICMPv6 Router Advertisement protocol requires specific field sizes and intentional casts
+// RaParam struct requires multiple independent protocol flags per RFC 4861
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    clippy::struct_excessive_bools
+)]
+
 pub mod protocol;
 pub mod slaac;
 
@@ -43,10 +52,9 @@ use crate::types::IpAddr;
 
 // Protocol structures and constants
 use protocol::{
-    PrefixOpt, RaPacket, ALL_NODES,
-    ICMP6_ECHO_REPLY, ICMP6_NEIGH_ADVERT, ICMP6_NEIGH_SOLICIT,
-    ICMP6_ROUTER_ADVERT, ICMP6_ROUTER_SOLICIT, INTERVAL_OPT, MTU_OPT, PREFIX_OPT, RDNSS_OPT,
-    HOP_LIMIT,
+    PrefixOpt, RaPacket, ALL_NODES, HOP_LIMIT, ICMP6_ECHO_REPLY, ICMP6_NEIGH_ADVERT,
+    ICMP6_NEIGH_SOLICIT, ICMP6_ROUTER_ADVERT, ICMP6_ROUTER_SOLICIT, INTERVAL_OPT, MTU_OPT,
+    PREFIX_OPT, RDNSS_OPT,
 };
 
 // SLAAC functionality
@@ -66,8 +74,11 @@ pub use protocol::{
     NeighPacket as PublicNeighPacket, PingPacket as PublicPingPacket, PrefixOpt as PublicPrefixOpt,
     RaPacket as PublicRaPacket, ALL_NODES as PUBLIC_ALL_NODES, ALL_ROUTERS as PUBLIC_ALL_ROUTERS,
 };
-pub use slaac::{eui64_from_mac, periodic_slaac as public_periodic_slaac, slaac_add_addrs as public_slaac_add_addrs, 
-                slaac_ping_reply as public_slaac_ping_reply, SlaacAddress};
+pub use slaac::{
+    eui64_from_mac, periodic_slaac as public_periodic_slaac,
+    slaac_add_addrs as public_slaac_add_addrs, slaac_ping_reply as public_slaac_ping_reply,
+    SlaacAddress,
+};
 
 /// Router Advertisement specific error types
 #[derive(Debug, thiserror::Error)]
@@ -96,9 +107,9 @@ pub enum RadVError {
 /// Result type for Router Advertisement operations
 pub type Result<T> = std::result::Result<T, RadVError>;
 
-/// DHCPv6 context coordination flags
-/// These flags are used to coordinate Router Advertisement behavior with DHCPv6 server
-const CONTEXT_RA_NAME: u32 = 0x01;  // Context used for RA-names mode (DNS registration)
+/// `DHCPv6` context coordination flags
+/// These flags are used to coordinate Router Advertisement behavior with `DHCPv6` server
+const CONTEXT_RA_NAME: u32 = 0x01; // Context used for RA-names mode (DNS registration)
 #[allow(dead_code)]
 const CONTEXT_TEMPLATE: u32 = 0x02; // Context is a template for address allocation
 
@@ -109,32 +120,33 @@ const CONTEXT_TEMPLATE: u32 = 0x02; // Context is a template for address allocat
 pub struct RaInterface {
     /// Interface name (e.g., "eth0", "wlan0")
     pub name: String,
-    
+
     /// Router Advertisement transmission interval in seconds (default: 600)
-    /// RFC 4861 recommends 200-600 seconds for MaxRtrAdvInterval
+    /// RFC 4861 recommends 200-600 seconds for `MaxRtrAdvInterval`
     pub interval: u32,
-    
+
     /// Router lifetime in seconds (default: 3 * interval)
     /// Set to 0 to indicate this router should not be used as default router
     pub lifetime: u32,
-    
+
     /// Router preference (0=medium, 1=high, 3=low)
     /// Used in Route Information Options per RFC 4191
     pub priority: u8,
-    
+
     /// MTU to advertise via MTU option (0 = do not advertise)
     pub mtu: u32,
 }
 
 impl RaInterface {
-    /// Create a new RaInterface with default values
+    /// Create a new `RaInterface` with default values
+    #[must_use]
     pub fn new(name: String) -> Self {
         Self {
             name,
-            interval: 600,      // 10 minutes (RFC 4861 MaxRtrAdvInterval)
-            lifetime: 1800,     // 30 minutes (3 * interval)
-            priority: 0,        // Medium preference
-            mtu: 0,             // Do not advertise MTU by default
+            interval: 600,  // 10 minutes (RFC 4861 MaxRtrAdvInterval)
+            lifetime: 1800, // 30 minutes (3 * interval)
+            priority: 0,    // Medium preference
+            mtu: 0,         // Do not advertise MTU by default
         }
     }
 }
@@ -146,10 +158,10 @@ impl RaInterface {
 pub struct RadVServer {
     /// Global configuration
     config: Arc<Config>,
-    
+
     /// Interface manager for network interface operations
     interface_manager: Arc<InterfaceManager>,
-    
+
     /// RA transmission times per interface (interface index -> next RA time)
     ra_times: Arc<RwLock<HashMap<u32, TokioInstant>>>,
 }
@@ -161,52 +173,52 @@ pub struct RadVServer {
 pub struct RaParam {
     /// Current monotonic time
     pub now: TokioInstant,
-    
+
     /// Interface index
     pub ind: u32,
-    
+
     /// Managed address configuration flag (M flag in RA)
-    /// When true, indicates addresses are available via DHCPv6
+    /// When true, indicates addresses are available via `DHCPv6`
     pub managed: bool,
-    
+
     /// Other configuration flag (O flag in RA)
-    /// When true, indicates other configuration (e.g., DNS) available via DHCPv6
+    /// When true, indicates other configuration (e.g., DNS) available via `DHCPv6`
     pub other: bool,
-    
+
     /// First RA transmission after startup (triggers short RA period)
     pub first: bool,
-    
+
     /// Advertise this router as default gateway
     pub adv_router: bool,
-    
+
     /// Interface name
     pub if_name: String,
-    
-    /// Link-local IPv6 address (fe80::/10)
+
+    /// Link-local IPv6 address (`fe80::/10`)
     pub link_local: Option<StdIpv6Addr>,
-    
-    /// Global IPv6 address (2000::/3, not ULA)
+
+    /// Global IPv6 address (`2000::/3`, not ULA)
     pub link_global: Option<StdIpv6Addr>,
-    
-    /// Unique Local Address (fc00::/7 or fd00::/8)
+
+    /// Unique Local Address (`fc00::/7` or `fd00::/8`)
     pub ula: Option<StdIpv6Addr>,
-    
+
     /// Global prefix preferred lifetime in seconds
     pub glob_pref_time: u32,
-    
+
     /// Link prefix preferred lifetime in seconds
     pub link_pref_time: u32,
-    
+
     /// ULA prefix preferred lifetime in seconds
     pub ula_pref_time: u32,
-    
+
     /// Advertisement interval in seconds
     pub adv_interval: u32,
-    
+
     /// Router priority (0=medium, 1=high, 3=low)
     pub prio: u8,
-    
-    /// DHCPv6 context found for this interface
+
+    /// `DHCPv6` context found for this interface
     pub found_context: bool,
 }
 
@@ -228,10 +240,7 @@ impl RadVServer {
     /// - Ensures at least one RA-enabled interface is configured
     /// - Validates interval values are positive
     /// - Validates priority values are in valid range (0, 1, or 3)
-    pub fn new(
-        config: Arc<Config>,
-        interface_manager: Arc<InterfaceManager>,
-    ) -> Result<Self> {
+    pub fn new(config: Arc<Config>, interface_manager: Arc<InterfaceManager>) -> Result<Self> {
         // Validate that we have RA interfaces configured
         if config.ra_interfaces.is_empty() {
             return Err(RadVError::Configuration(
@@ -275,32 +284,23 @@ impl RadVServer {
             "Router Advertisement server initialized"
         );
 
-        Ok(Self {
-            config,
-            interface_manager,
-            ra_times,
-        })
+        Ok(Self { config, interface_manager, ra_times })
     }
 
     /// Build Router Advertisement parameters for a specific interface
     ///
     /// Gathers all information needed to construct an RA packet including:
     /// - IPv6 addresses (link-local, global, ULA)
-    /// - M/O flags based on DHCPv6 configuration
+    /// - M/O flags based on `DHCPv6` configuration
     /// - Prefix lifetimes from DHCP contexts
     /// - Interval and priority from interface configuration
     #[instrument(skip(self), fields(interface = iface_idx))]
-    async fn build_ra_param(
-        &self,
-        iface_idx: u32,
-        first: bool,
-    ) -> Result<RaParam> {
+    async fn build_ra_param(&self, iface_idx: u32, first: bool) -> Result<RaParam> {
         // Get interface information
-        let iface = self
-            .interface_manager
-            .get_interface_by_index(iface_idx)
-            .await
-            .ok_or_else(|| RadVError::Interface(format!("Failed to get interface {}", iface_idx)))?;
+        let iface =
+            self.interface_manager.get_interface_by_index(iface_idx).await.ok_or_else(|| {
+                RadVError::Interface(format!("Failed to get interface {iface_idx}"))
+            })?;
 
         // Extract IPv6 addresses by type
         let mut link_local = None;
@@ -310,7 +310,7 @@ impl RadVServer {
         for addr in &iface.addresses {
             if let IpAddr::V6(v6_addr) = addr {
                 let addr_std = StdIpv6Addr::from(v6_addr.octets());
-                
+
                 // Link-local: fe80::/10
                 if (addr_std.segments()[0] & 0xffc0) == 0xfe80 {
                     link_local = Some(addr_std);
@@ -327,15 +327,13 @@ impl RadVServer {
         }
 
         // Find RA interface configuration
-        let ra_iface = self
-            .config
-            .ra_interfaces
-            .iter()
-            .find(|ri| ri.name == iface.name)
-            .ok_or_else(|| RadVError::Configuration(format!(
-                "No RA configuration found for interface {}",
-                iface.name
-            )))?;
+        let ra_iface =
+            self.config.ra_interfaces.iter().find(|ri| ri.name == iface.name).ok_or_else(|| {
+                RadVError::Configuration(format!(
+                    "No RA configuration found for interface {}",
+                    iface.name
+                ))
+            })?;
 
         // Calculate M (managed address) and O (other configuration) flags
         // by examining DHCPv6 contexts
@@ -368,16 +366,16 @@ impl RadVServer {
 
                 // Calculate prefix lifetimes from DHCP lease times
                 let lease_time = context.lease_time; // Use lease time from context
-                let preferred_time = (lease_time as f64 * 0.75) as u32; // 75% of lease time
+                let preferred_time = (f64::from(lease_time) * 0.75) as u32; // 75% of lease time
 
                 // Set lifetime based on address type
                 if let Some(global) = link_global {
-                    if context.contains_address(IpAddr::V6(global.into())) {
+                    if context.contains_address(IpAddr::V6(global)) {
                         glob_pref_time = preferred_time;
                     }
                 }
                 if let Some(ula_addr) = ula {
-                    if context.contains_address(IpAddr::V6(ula_addr.into())) {
+                    if context.contains_address(IpAddr::V6(ula_addr)) {
                         ula_pref_time = preferred_time;
                     }
                 }
@@ -414,12 +412,13 @@ impl RadVServer {
 
     /// Add Router Advertisement header to packet buffer
     ///
-    /// Constructs the base ICMPv6 RA message (type 134) with:
+    /// Constructs the base `ICMPv6` RA message (type 134) with:
     /// - Current hop limit (64 or from configuration)
-    /// - M and O flags for DHCPv6 coordination
+    /// - M and O flags for `DHCPv6` coordination
     /// - Router lifetime (0 if not default router, else 3 * interval)
     /// - Reachable time (0 = unspecified)
     /// - Retrans timer (0 = unspecified)
+    #[allow(clippy::unnecessary_wraps)] // Result for API consistency with other add_* functions
     fn add_ra_header(packet: &mut Vec<u8>, param: &RaParam) -> Result<()> {
         // Calculate flags byte
         let mut flags = 0u8;
@@ -433,11 +432,8 @@ impl RadVServer {
         // Calculate router lifetime in seconds
         // Set to 0 if this router should not be used as default gateway
         // Otherwise use 3 * adv_interval (RFC 4861 recommendation)
-        let router_lifetime = if param.adv_router {
-            (param.adv_interval * 3).min(0xFFFF) as u16
-        } else {
-            0u16
-        };
+        let router_lifetime =
+            if param.adv_router { (param.adv_interval * 3).min(0xFFFF) as u16 } else { 0u16 };
 
         // Construct RA packet structure
         let ra_packet = RaPacket {
@@ -448,14 +444,12 @@ impl RadVServer {
             flags,
             lifetime: router_lifetime.to_be(),
             reachable_time: 0u32.to_be(), // 0 = unspecified
-            retrans_time: 0u32.to_be(),  // 0 = unspecified
+            retrans_time: 0u32.to_be(),   // 0 = unspecified
         };
 
         // Serialize RA header to bytes
-        let ra_bytes: [u8; 16] = unsafe {
-            std::mem::transmute(ra_packet)
-        };
-        
+        let ra_bytes: [u8; 16] = unsafe { std::mem::transmute(ra_packet) };
+
         packet.extend_from_slice(&ra_bytes);
 
         debug!(
@@ -476,6 +470,7 @@ impl RadVServer {
     /// - On-link and Autonomous flags (both set for SLAAC)
     /// - Valid and preferred lifetimes
     /// - Prefix address
+    #[allow(clippy::unnecessary_wraps)] // Result for API consistency with other add_* functions
     fn add_prefix_option(
         packet: &mut Vec<u8>,
         prefix: StdIpv6Addr,
@@ -495,10 +490,8 @@ impl RadVServer {
         };
 
         // Serialize prefix option
-        let prefix_bytes: [u8; 32] = unsafe {
-            std::mem::transmute(prefix_opt)
-        };
-        
+        let prefix_bytes: [u8; 32] = unsafe { std::mem::transmute(prefix_opt) };
+
         packet.extend_from_slice(&prefix_bytes);
 
         debug!(
@@ -515,12 +508,12 @@ impl RadVServer {
     /// Add all prefix information options to RA packet
     ///
     /// Adds prefix information options for:
-    /// - Link-local prefix (fe80::/64) if present
-    /// - Global unicast prefix (2000::/3) if present
-    /// - Unique Local Address prefix (fc00::/7) if present
+    /// - Link-local prefix (`fe80::/64`) if present
+    /// - Global unicast prefix (`2000::/3`) if present
+    /// - Unique Local Address prefix (`fc00::/7`) if present
     ///
     /// Each prefix option includes valid and preferred lifetimes based on
-    /// DHCPv6 context configuration or default values.
+    /// `DHCPv6` context configuration or default values.
     fn add_prefix_options(packet: &mut Vec<u8>, param: &RaParam) -> Result<()> {
         let mut added_count = 0;
 
@@ -565,13 +558,7 @@ impl RadVServer {
             let valid_lifetime = param.ula_pref_time * 2;
             let preferred_lifetime = param.ula_pref_time;
 
-            Self::add_prefix_option(
-                packet,
-                ula,
-                prefix_len,
-                valid_lifetime,
-                preferred_lifetime,
-            )?;
+            Self::add_prefix_option(packet, ula, prefix_len, valid_lifetime, preferred_lifetime)?;
             added_count += 1;
         }
 
@@ -593,18 +580,19 @@ impl RadVServer {
     /// - Reserved (2 bytes)
     /// - Lifetime (4 bytes)
     /// - DNS server addresses (16 bytes each)
-    fn add_rdnss_option(&self, packet: &mut Vec<u8>, param: &RaParam) -> Result<()> {
+    #[allow(clippy::unnecessary_wraps)] // Result for API consistency with other add_* functions
+    fn add_rdnss_option(packet: &mut Vec<u8>, param: &RaParam) -> Result<()> {
         // Collect DNS server addresses to advertise
         // Typically advertise the link-local address of this router where dnsmasq is listening
         let mut dns_servers: Vec<StdIpv6Addr> = Vec::new();
-        
+
         // Prefer global address if available, otherwise use link-local
         if let Some(global) = param.link_global {
             dns_servers.push(global);
         } else if let Some(link_local) = param.link_local {
             dns_servers.push(link_local);
         }
-        
+
         // Also add ULA if available
         if let Some(ula) = param.ula {
             dns_servers.push(ula);
@@ -646,19 +634,19 @@ impl RadVServer {
     /// Option type 5 with 8-byte length.
     fn add_mtu_option(&self, packet: &mut Vec<u8>, param: &RaParam) -> Result<()> {
         // Find RA interface configuration
-        let ra_iface = self
-            .config
-            .ra_interfaces
-            .iter()
-            .find(|ri| ri.name == param.if_name)
-            .ok_or_else(|| RadVError::Configuration(format!(
-                "No RA configuration found for interface {}",
-                param.if_name
-            )))?;
+        let ra_iface =
+            self.config.ra_interfaces.iter().find(|ri| ri.name == param.if_name).ok_or_else(
+                || {
+                    RadVError::Configuration(format!(
+                        "No RA configuration found for interface {}",
+                        param.if_name
+                    ))
+                },
+            )?;
 
         if ra_iface.mtu > 0 {
             packet.push(MTU_OPT); // Type 5
-            packet.push(1);       // Length = 1 (8 bytes)
+            packet.push(1); // Length = 1 (8 bytes)
             packet.extend_from_slice(&[0u8, 0u8]); // Reserved
             packet.extend_from_slice(&ra_iface.mtu.to_be_bytes());
 
@@ -676,13 +664,14 @@ impl RadVServer {
     ///
     /// Informs clients of the interval between unsolicited multicast RAs.
     /// Option type 7 with 8-byte length.
+    #[allow(clippy::unnecessary_wraps)] // Result for API consistency with other add_* functions
     fn add_interval_option(packet: &mut Vec<u8>, param: &RaParam) -> Result<()> {
         packet.push(INTERVAL_OPT); // Type 7
-        packet.push(1);             // Length = 1 (8 bytes)
+        packet.push(1); // Length = 1 (8 bytes)
         packet.extend_from_slice(&[0u8, 0u8]); // Reserved
-        
+
         // Interval in milliseconds
-        let interval_ms = (param.adv_interval as u32) * 1000;
+        let interval_ms = param.adv_interval * 1000;
         packet.extend_from_slice(&interval_ms.to_be_bytes());
 
         debug!(
@@ -703,6 +692,7 @@ impl RadVServer {
     /// 3. RDNSS option (if DNS servers configured)
     /// 4. MTU option (if configured)
     /// 5. Advertisement Interval option
+    #[allow(clippy::unused_async)] // Async for API consistency with other async methods
     async fn construct_ra_packet(&self, param: &RaParam) -> Result<Vec<u8>> {
         // Allocate packet buffer with reasonable capacity
         let mut packet = Vec::with_capacity(512);
@@ -714,7 +704,7 @@ impl RadVServer {
         Self::add_prefix_options(&mut packet, param)?;
 
         // Add RDNSS option (DNS servers)
-        self.add_rdnss_option(&mut packet, param)?;
+        Self::add_rdnss_option(&mut packet, param)?;
 
         // Add MTU option if configured
         self.add_mtu_option(&mut packet, param)?;
@@ -733,8 +723,8 @@ impl RadVServer {
 
     /// Transmit Router Advertisement packet
     ///
-    /// Sends the constructed RA packet via ICMPv6 socket.
-    /// Uses multicast to ALL_NODES (ff02::1) for unsolicited RAs,
+    /// Sends the constructed RA packet via `ICMPv6` socket.
+    /// Uses multicast to `ALL_NODES` (`ff02::1`) for unsolicited RAs,
     /// or unicast to specific destination for solicited RAs.
     async fn transmit_ra_packet(
         &self,
@@ -743,11 +733,10 @@ impl RadVServer {
         dest: Option<StdIpv6Addr>,
     ) -> Result<()> {
         // Create ICMPv6 socket for this interface
-        let socket = create_icmpv6_socket(Arc::new(self.config.network.clone())).await
-            .map_err(|e| RadVError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to create ICMPv6 socket: {}", e)
-            )))?;
+        let socket =
+            create_icmpv6_socket(Arc::new(self.config.network.clone())).await.map_err(|e| {
+                RadVError::Io(std::io::Error::other(format!("Failed to create ICMPv6 socket: {e}")))
+            })?;
 
         // Determine destination: unicast or multicast
         let dest_ipv6 = dest.unwrap_or(ALL_NODES);
@@ -755,10 +744,7 @@ impl RadVServer {
 
         // Transmit packet
         socket.send_ra(packet, dest_addr).await.map_err(|e| {
-            RadVError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to send RA packet: {}", e)
-            ))
+            RadVError::Io(std::io::Error::other(format!("Failed to send RA packet: {e}")))
         })?;
 
         debug!(
@@ -820,16 +806,16 @@ pub async fn send_ra(
     Ok(())
 }
 
-/// Process incoming ICMPv6 packet
+/// Process incoming `ICMPv6` packet
 ///
-/// Handles incoming ICMPv6 packets including:
+/// Handles incoming `ICMPv6` packets including:
 /// - Router Solicitations (type 133): Respond with immediate RA
 /// - Echo Replies (type 129): Forward to SLAAC module for address confirmation
 ///
 /// # Arguments
 ///
-/// * `server` - RadVServer instance
-/// * `packet` - ICMPv6 packet bytes
+/// * `server` - `RadVServer` instance
+/// * `packet` - `ICMPv6` packet bytes
 /// * `src` - Source IPv6 address
 /// * `iface` - Interface index where packet was received
 ///
@@ -863,10 +849,7 @@ pub async fn icmp6_packet(
         }
         ICMP6_NEIGH_SOLICIT | ICMP6_NEIGH_ADVERT => {
             // Neighbor Discovery - log but don't process
-            debug!(
-                icmp_type,
-                "Received Neighbor Discovery message (not processing)"
-            );
+            debug!(icmp_type, "Received Neighbor Discovery message (not processing)");
         }
         _ => {
             // Unknown ICMPv6 type - ignore
@@ -892,7 +875,7 @@ async fn handle_router_solicitation(
         .interface_manager
         .get_interface_by_index(iface)
         .await
-        .ok_or_else(|| RadVError::Interface(format!("Failed to get interface {}", iface)))?;
+        .ok_or_else(|| RadVError::Interface(format!("Failed to get interface {iface}")))?;
 
     info!(
         interface = %iface_info.name,
@@ -934,7 +917,7 @@ async fn handle_echo_reply(packet: &[u8], src: StdIpv6Addr, iface: u32) -> Resul
     // Forward to SLAAC module for processing
     slaac_ping_reply(packet, src)
         .await
-        .map_err(|e| RadVError::PacketConstruction(format!("SLAAC processing failed: {}", e)))?;
+        .map_err(|e| RadVError::PacketConstruction(format!("SLAAC processing failed: {e}")))?;
 
     debug!(
         src = %src,
@@ -956,7 +939,7 @@ async fn handle_echo_reply(packet: &[u8], src: StdIpv6Addr, iface: u32) -> Resul
 ///
 /// # Arguments
 ///
-/// * `server` - RadVServer instance
+/// * `server` - `RadVServer` instance
 ///
 /// # Returns
 ///
@@ -969,24 +952,18 @@ pub async fn ra_start_unsolicited(server: Arc<RadVServer>) -> Result<()> {
         .interface_manager
         .enumerate_interfaces()
         .await
-        .map_err(|e| RadVError::Interface(format!("Failed to enumerate interfaces: {}", e)))?;
+        .map_err(|e| RadVError::Interface(format!("Failed to enumerate interfaces: {e}")))?;
 
     // Filter for RA-enabled interfaces
     let ra_interfaces: Vec<_> = interfaces
         .into_iter()
         .filter(|iface| {
             // Check if interface has IPv6 address
-            let has_ipv6 = iface
-                .addresses
-                .iter()
-                .any(|addr| matches!(addr, IpAddr::V6(_)));
+            let has_ipv6 = iface.addresses.iter().any(|addr| matches!(addr, IpAddr::V6(_)));
 
             // Check if interface is configured for RA
-            let is_ra_enabled = server
-                .config
-                .ra_interfaces
-                .iter()
-                .any(|ra_iface| ra_iface.name == iface.name);
+            let is_ra_enabled =
+                server.config.ra_interfaces.iter().any(|ra_iface| ra_iface.name == iface.name);
 
             has_ipv6 && is_ra_enabled
         })
@@ -1028,11 +1005,7 @@ pub async fn ra_start_unsolicited(server: Arc<RadVServer>) -> Result<()> {
 /// Implements the two-phase RA transmission pattern:
 /// 1. Short period: 4 RAs at 16-second intervals (startup)
 /// 2. Normal period: RAs at configured interval (ongoing)
-async fn run_ra_task(
-    server: Arc<RadVServer>,
-    iface_idx: u32,
-    iface_name: String,
-) -> Result<()> {
+async fn run_ra_task(server: Arc<RadVServer>, iface_idx: u32, iface_name: String) -> Result<()> {
     info!(
         interface = %iface_name,
         "RA task started"
@@ -1051,15 +1024,8 @@ async fn run_ra_task(
 ///
 /// Sends 4 Router Advertisements at 16-second intervals for fast
 /// client configuration during startup.
-async fn run_short_ra_period(
-    server: &RadVServer,
-    iface_idx: u32,
-    iface_name: &str,
-) -> Result<()> {
-    info!(
-        interface = iface_name,
-        "Starting short RA period (4 RAs at 16s intervals)"
-    );
+async fn run_short_ra_period(server: &RadVServer, iface_idx: u32, iface_name: &str) -> Result<()> {
+    info!(interface = iface_name, "Starting short RA period (4 RAs at 16s intervals)");
 
     for i in 0..4 {
         // Send RA
@@ -1072,11 +1038,7 @@ async fn run_short_ra_period(
         )
         .await?;
 
-        debug!(
-            interface = iface_name,
-            ra_num = i + 1,
-            "Sent short-period RA"
-        );
+        debug!(interface = iface_name, ra_num = i + 1, "Sent short-period RA");
 
         // Sleep 16 seconds before next RA (except after last one)
         if i < 3 {
@@ -1084,10 +1046,7 @@ async fn run_short_ra_period(
         }
     }
 
-    info!(
-        interface = iface_name,
-        "Completed short RA period"
-    );
+    info!(interface = iface_name, "Completed short RA period");
 
     Ok(())
 }
@@ -1096,29 +1055,18 @@ async fn run_short_ra_period(
 ///
 /// Sends periodic Router Advertisements at the configured interval
 /// (typically 600 seconds). Runs indefinitely until task is cancelled.
-async fn run_normal_ra_period(
-    server: &RadVServer,
-    iface_idx: u32,
-    iface_name: &str,
-) -> Result<()> {
+async fn run_normal_ra_period(server: &RadVServer, iface_idx: u32, iface_name: &str) -> Result<()> {
     // Get configured interval for this interface
-    let ra_iface = server
-        .config
-        .ra_interfaces
-        .iter()
-        .find(|ri| ri.name == iface_name)
-        .ok_or_else(|| RadVError::Configuration(format!(
-            "No RA configuration found for interface {}",
-            iface_name
-        )))?;
+    let ra_iface =
+        server.config.ra_interfaces.iter().find(|ri| ri.name == iface_name).ok_or_else(|| {
+            RadVError::Configuration(format!(
+                "No RA configuration found for interface {iface_name}"
+            ))
+        })?;
 
-    let interval_secs = ra_iface.interval as u64;
+    let interval_secs = u64::from(ra_iface.interval);
 
-    info!(
-        interface = iface_name,
-        interval_sec = interval_secs,
-        "Starting normal RA period"
-    );
+    info!(interface = iface_name, interval_sec = interval_secs, "Starting normal RA period");
 
     // Create periodic interval
     let mut interval_timer = interval(Duration::from_secs(interval_secs));
@@ -1148,10 +1096,7 @@ async fn run_normal_ra_period(
             );
             // Continue despite error - don't crash the task
         } else {
-            debug!(
-                interface = iface_name,
-                "Sent periodic RA"
-            );
+            debug!(interface = iface_name, "Sent periodic RA");
         }
     }
 }
@@ -1180,13 +1125,13 @@ fn calc_lifetime(ra_iface: &RaInterface) -> u16 {
     let lifetime = ra_iface.interval * 3;
 
     // Cap at u16::MAX (18 hours)
-    lifetime.min(u16::MAX as u32) as u16
+    lifetime.min(u32::from(u16::MAX)) as u16
 }
 
-/// Calculate MinRtrAdvInterval for RA Interval option
+/// Calculate `MinRtrAdvInterval` for RA Interval option
 ///
-/// Per RFC 4861, MinRtrAdvInterval MUST be no less than 3 seconds
-/// and no greater than 0.75 * MaxRtrAdvInterval.
+/// Per RFC 4861, `MinRtrAdvInterval` MUST be no less than 3 seconds
+/// and no greater than 0.75 * `MaxRtrAdvInterval`.
 ///
 /// # Arguments
 ///
@@ -1200,7 +1145,7 @@ fn calc_interval(ra_iface: &RaInterface) -> u16 {
     // MinRtrAdvInterval = 0.75 * MaxRtrAdvInterval (RFC 4861)
     let min_interval = (ra_iface.interval * 3 / 4).max(3);
 
-    min_interval.min(u16::MAX as u32) as u16
+    min_interval.min(u32::from(u16::MAX)) as u16
 }
 
 /// Calculate router priority for RA header
@@ -1215,7 +1160,7 @@ fn calc_interval(ra_iface: &RaInterface) -> u16 {
 /// # Returns
 ///
 /// Router priority bits (0x00 = medium, 0x08 = high, 0x18 = low)
-/// 
+///
 /// Priority mapping for u8:
 /// - 0: Low priority (0x18)
 /// - 1: Medium priority (0x00) - default
@@ -1223,9 +1168,9 @@ fn calc_interval(ra_iface: &RaInterface) -> u16 {
 #[allow(dead_code)]
 fn calc_prio(ra_iface: &RaInterface) -> u8 {
     match ra_iface.priority {
-        0 => 0x18,        // Low priority (11 in bits 4-3)
-        1 => 0x00,        // Medium priority (00 in bits 4-3) - default
-        _ => 0x08,        // High priority (01 in bits 4-3)
+        0 => 0x18, // Low priority (11 in bits 4-3)
+        1 => 0x00, // Medium priority (00 in bits 4-3) - default
+        _ => 0x08, // High priority (01 in bits 4-3)
     }
 }
 
@@ -1235,12 +1180,12 @@ fn calc_prio(ra_iface: &RaInterface) -> u8 {
 /// that the prefix is valid for on-link determination and address
 /// autoconfiguration.
 ///
-/// For DHCPv6 contexts, uses the context lease time. Otherwise uses
+/// For `DHCPv6` contexts, uses the context lease time. Otherwise uses
 /// a default of 2 hours.
 ///
 /// # Arguments
 ///
-/// * `context` - DHCPv6 context (if any)
+/// * `context` - `DHCPv6` context (if any)
 /// * `default_lifetime` - Default lifetime if no context
 ///
 /// # Returns
@@ -1268,7 +1213,7 @@ fn calc_prefix_valid_lifetime(context: Option<&DhcpContext>, default_lifetime: u
 /// # Arguments
 ///
 /// * `valid_lifetime` - Valid lifetime for this prefix
-/// * `context` - DHCPv6 context (if any)
+/// * `context` - `DHCPv6` context (if any)
 ///
 /// # Returns
 ///
@@ -1287,12 +1232,12 @@ fn calc_prefix_preferred_lifetime(valid_lifetime: u32, context: Option<&DhcpCont
 
 /// Determine if Managed Address Configuration flag (M) should be set
 ///
-/// The M flag indicates that addresses are available via DHCPv6.
-/// Set when DHCPv6 context exists and is not in ra-only or ra-stateless mode.
+/// The M flag indicates that addresses are available via `DHCPv6`.
+/// Set when `DHCPv6` context exists and is not in ra-only or ra-stateless mode.
 ///
 /// # Arguments
 ///
-/// * `context` - DHCPv6 context (if any)
+/// * `context` - `DHCPv6` context (if any)
 ///
 /// # Returns
 ///
@@ -1301,7 +1246,7 @@ fn calc_prefix_preferred_lifetime(valid_lifetime: u32, context: Option<&DhcpCont
 fn should_set_managed_flag(context: Option<&DhcpContext>) -> bool {
     if let Some(ctx) = context {
         // Set M flag if context provides addresses (not ra-only or ra-stateless)
-        !(ctx.flags & CONTEXT_RA_STATELESS != 0)
+        ctx.flags & CONTEXT_RA_STATELESS == 0
     } else {
         false
     }
@@ -1310,11 +1255,11 @@ fn should_set_managed_flag(context: Option<&DhcpContext>) -> bool {
 /// Determine if Other Configuration flag (O) should be set
 ///
 /// The O flag indicates that other configuration information is available
-/// via DHCPv6 (e.g., DNS servers, domain search list).
+/// via `DHCPv6` (e.g., DNS servers, domain search list).
 ///
 /// # Arguments
 ///
-/// * `context` - DHCPv6 context (if any)
+/// * `context` - `DHCPv6` context (if any)
 ///
 /// # Returns
 ///
@@ -1332,8 +1277,8 @@ fn should_set_other_flag(context: Option<&DhcpContext>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::Ipv6Addr as StdIpv6Addr;
     use crate::network::platform::linux::LinuxNetworkPlatform;
+    use std::net::Ipv6Addr as StdIpv6Addr;
 
     /// Test RadVServer creation with valid configuration
     #[tokio::test]
@@ -1359,10 +1304,7 @@ mod tests {
     /// Test RadVServer creation fails with empty interface list
     #[tokio::test]
     async fn test_radv_server_new_empty_interfaces() {
-        let config = Arc::new(Config {
-            ra_interfaces: vec![],
-            ..Default::default()
-        });
+        let config = Arc::new(Config { ra_interfaces: vec![], ..Default::default() });
 
         let platform = Arc::new(LinuxNetworkPlatform::new().await.unwrap());
         let interface_manager = Arc::new(InterfaceManager::new(platform));
@@ -1564,7 +1506,7 @@ mod tests {
     #[test]
     fn test_ra_packet_header_size() {
         use crate::radv::protocol::RaPacket;
-        
+
         let _packet = RaPacket {
             type_: protocol::ICMP6_ROUTER_ADVERT,
             code: 0,
@@ -1585,7 +1527,7 @@ mod tests {
     #[test]
     fn test_prefix_option_size() {
         use crate::radv::protocol::PrefixOpt;
-        
+
         let _prefix_opt = PrefixOpt {
             type_: protocol::PREFIX_OPT,
             len: 4,
@@ -1602,5 +1544,3 @@ mod tests {
         assert_eq!(size, 32);
     }
 }
-
-

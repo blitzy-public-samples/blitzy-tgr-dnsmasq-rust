@@ -28,6 +28,9 @@
 //! - **Checksum Calculation**: Automatic IPv4, UDP, and ICMPv6 checksum computation
 //! - **Packet Filtering**: Selective capture via DumpMask flags
 //! - **FIFO Support**: Real-time streaming to Wireshark via named pipes
+
+// Protocol-level encoding requires intentional casts to fixed-size fields
+#![allow(clippy::cast_possible_truncation)]
 //! - **Async I/O**: Non-blocking file operations using tokio::fs
 //!
 //! # Usage
@@ -103,13 +106,13 @@ const PCAP_VERSION_MAJOR: u16 = 2;
 /// Pcap file format version (minor)
 const PCAP_VERSION_MINOR: u16 = 4;
 
-/// Data link type: DLT_RAW (101) - raw IP packets without link layer
+/// Data link type: `DLT_RAW` (101) - raw IP packets without link layer
 const DLT_RAW: u32 = 101;
 
 /// IP protocol number for UDP
 const IPPROTO_UDP: u8 = 17;
 
-/// IP protocol number for ICMPv6
+/// IP protocol number for `ICMPv6`
 const IPPROTO_ICMPV6: u8 = 58;
 
 /// IP protocol number for ICMP
@@ -194,7 +197,7 @@ struct PcapGlobalHeader {
     sigfigs: u32,
     /// Max packet capture length
     snaplen: u32,
-    /// Data link type (101 = DLT_RAW)
+    /// Data link type (101 = `DLT_RAW`)
     network: u32,
 }
 
@@ -202,7 +205,7 @@ impl PcapGlobalHeader {
     /// Create new pcap global header with specified snapshot length.
     ///
     /// # Arguments
-    /// * `snaplen` - Maximum bytes captured per packet (typically EDNS_PKTSZ + 200)
+    /// * `snaplen` - Maximum bytes captured per packet (typically `EDNS_PKTSZ` + 200)
     fn new(snaplen: u32) -> Self {
         Self {
             magic_number: PCAP_MAGIC,
@@ -447,7 +450,7 @@ impl PcapWriter {
     ///
     /// # Arguments
     /// * `path` - Path to pcap file or FIFO
-    /// * `snaplen` - Maximum bytes captured per packet (typically EDNS_PKTSZ + 200)
+    /// * `snaplen` - Maximum bytes captured per packet (typically `EDNS_PKTSZ` + 200)
     ///
     /// # Errors
     /// Returns error if file cannot be created or header write fails.
@@ -528,14 +531,14 @@ impl PcapWriter {
         Ok(())
     }
 
-    /// Write ICMPv6 packet to pcap file.
+    /// Write `ICMPv6` packet to pcap file.
     ///
-    /// Constructs IPv6 header with ICMPv6 payload, calculates checksum, and writes
+    /// Constructs IPv6 header with `ICMPv6` payload, calculates checksum, and writes
     /// the packet with pcap record header.
     ///
     /// # Arguments
     /// * `mask` - Dump mask for packet filtering and logging
-    /// * `packet` - ICMPv6 packet data including ICMP header
+    /// * `packet` - `ICMPv6` packet data including ICMP header
     /// * `src` - Source socket address (IPv6 only)
     /// * `dst` - Destination socket address (IPv6 only)
     ///
@@ -550,17 +553,14 @@ impl PcapWriter {
     ) -> io::Result<()> {
         let packet_num = self.packet_count.fetch_add(1, Ordering::SeqCst) + 1;
 
-        match (src.ip(), dst.ip()) {
-            (IpAddr::V6(src_ip), IpAddr::V6(dst_ip)) => {
-                self.write_icmpv6(packet, src_ip, dst_ip).await?;
-            }
-            _ => {
-                error!("ICMPv6 dump requires IPv6 addresses");
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "ICMPv6 requires IPv6 addresses",
-                ));
-            }
+        if let (IpAddr::V6(src_ip), IpAddr::V6(dst_ip)) = (src.ip(), dst.ip()) {
+            self.write_icmpv6(packet, src_ip, dst_ip).await?;
+        } else {
+            error!("ICMPv6 dump requires IPv6 addresses");
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "ICMPv6 requires IPv6 addresses",
+            ));
         }
 
         debug!("Dumped ICMPv6 packet {} mask 0x{:04x}", packet_num, mask.bits());
@@ -599,7 +599,7 @@ impl PcapWriter {
         ip.calculate_checksum();
 
         // Calculate UDP checksum with IPv4 pseudo-header
-        udp.checksum = self.calculate_udp_checksum_v4(&ip, &udp, payload);
+        udp.checksum = Self::calculate_udp_checksum_v4(&ip, &udp, payload);
 
         // Build complete packet
         let ip_bytes = ip.serialize()?;
@@ -636,7 +636,7 @@ impl PcapWriter {
         let ip = Ipv6Header::new(src_ip, dst_ip, IPPROTO_UDP, 8 + payload_len);
 
         // Calculate UDP checksum with IPv6 pseudo-header
-        udp.checksum = self.calculate_udp_checksum_v6(&ip, &udp, payload);
+        udp.checksum = Self::calculate_udp_checksum_v6(&ip, &udp, payload);
 
         // Build complete packet
         let ip_bytes = ip.serialize()?;
@@ -655,7 +655,7 @@ impl PcapWriter {
         Ok(())
     }
 
-    /// Write ICMPv6 packet.
+    /// Write `ICMPv6` packet.
     async fn write_icmpv6(
         &mut self,
         packet: &[u8],
@@ -669,7 +669,7 @@ impl PcapWriter {
 
         // Calculate ICMPv6 checksum
         let mut packet_with_checksum = packet.to_vec();
-        let checksum = self.calculate_icmpv6_checksum(&ip, &packet_with_checksum);
+        let checksum = Self::calculate_icmpv6_checksum(&ip, &packet_with_checksum);
 
         // Set checksum in packet (bytes 2-3)
         if packet_with_checksum.len() >= 4 {
@@ -693,7 +693,7 @@ impl PcapWriter {
     }
 
     /// Calculate UDP checksum with IPv4 pseudo-header.
-    fn calculate_udp_checksum_v4(&self, ip: &Ipv4Header, udp: &UdpHeader, payload: &[u8]) -> u16 {
+    fn calculate_udp_checksum_v4(ip: &Ipv4Header, udp: &UdpHeader, payload: &[u8]) -> u16 {
         let mut sum: u32 = 0;
 
         // IPv4 pseudo-header
@@ -736,7 +736,7 @@ impl PcapWriter {
     }
 
     /// Calculate UDP checksum with IPv6 pseudo-header.
-    fn calculate_udp_checksum_v6(&self, ip: &Ipv6Header, udp: &UdpHeader, payload: &[u8]) -> u16 {
+    fn calculate_udp_checksum_v6(ip: &Ipv6Header, udp: &UdpHeader, payload: &[u8]) -> u16 {
         let mut sum: u32 = 0;
 
         // IPv6 pseudo-header - source address
@@ -782,8 +782,8 @@ impl PcapWriter {
         }
     }
 
-    /// Calculate ICMPv6 checksum with IPv6 pseudo-header.
-    fn calculate_icmpv6_checksum(&self, ip: &Ipv6Header, packet: &[u8]) -> u16 {
+    /// Calculate `ICMPv6` checksum with IPv6 pseudo-header.
+    fn calculate_icmpv6_checksum(ip: &Ipv6Header, packet: &[u8]) -> u16 {
         let mut sum: u32 = 0;
 
         // IPv6 pseudo-header - source address
@@ -836,7 +836,7 @@ impl PcapWriter {
 ///
 /// # Arguments
 /// * `path` - Path to pcap file or FIFO
-/// * `snaplen` - Maximum bytes per packet (typically EDNS_PKTSZ + 200)
+/// * `snaplen` - Maximum bytes per packet (typically `EDNS_PKTSZ` + 200)
 ///
 /// # Returns
 /// A new `PcapWriter` instance or error if initialization fails.
@@ -862,7 +862,7 @@ pub async fn dump_init(path: &Path, snaplen: usize) -> io::Result<PcapWriter> {
 /// This function exists for compatibility with code expecting C-style packet dumping.
 ///
 /// # Arguments
-/// * `writer` - Mutable reference to PcapWriter
+/// * `writer` - Mutable reference to `PcapWriter`
 /// * `mask` - Packet type filter mask
 /// * `packet` - Packet payload data
 /// * `src` - Source socket address
@@ -877,15 +877,15 @@ pub async fn dump_packet_udp(
     writer.write_packet_udp(mask, packet, src, dst).await
 }
 
-/// Dump ICMPv6 packet to capture file (wrapper function for C API compatibility).
+/// Dump `ICMPv6` packet to capture file (wrapper function for C API compatibility).
 ///
-/// Captures an ICMPv6 packet with specified source and destination IPv6 addresses.
+/// Captures an `ICMPv6` packet with specified source and destination IPv6 addresses.
 /// This function exists for compatibility with code expecting C-style packet dumping.
 ///
 /// # Arguments
-/// * `writer` - Mutable reference to PcapWriter
+/// * `writer` - Mutable reference to `PcapWriter`
 /// * `mask` - Packet type filter mask
-/// * `packet` - ICMPv6 packet data
+/// * `packet` - `ICMPv6` packet data
 /// * `src` - Source socket address (IPv6)
 /// * `dst` - Destination socket address (IPv6)
 pub async fn dump_packet_icmp(

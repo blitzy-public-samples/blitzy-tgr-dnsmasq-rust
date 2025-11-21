@@ -106,35 +106,35 @@ pub enum MetricType {
     /// Tracks network boot via PXE protocol.
     Pxe = 11,
 
-    /// DHCPv4 ACK messages sent (address assignment confirmation).
+    /// `DHCPv4` ACK messages sent (address assignment confirmation).
     /// Successful DHCP lease grants completing the four-way handshake.
     DhcpAck = 12,
 
-    /// DHCPv4 DECLINE messages received from clients.
+    /// `DHCPv4` DECLINE messages received from clients.
     /// Client detected IP address conflict via ARP and declined offered address.
     DhcpDecline = 13,
 
-    /// DHCPv4 DISCOVER messages received (initial address request).
+    /// `DHCPv4` DISCOVER messages received (initial address request).
     /// First phase of DHCP four-way handshake.
     DhcpDiscover = 14,
 
-    /// DHCPv4 INFORM messages received (configuration without address).
+    /// `DHCPv4` INFORM messages received (configuration without address).
     /// Client has static IP but requests DHCP configuration options only.
     DhcpInform = 15,
 
-    /// DHCPv4 NAK messages sent (address assignment rejection).
+    /// `DHCPv4` NAK messages sent (address assignment rejection).
     /// Server rejects client REQUEST (wrong network, expired lease, etc.).
     DhcpNak = 16,
 
-    /// DHCPv4 OFFER messages sent (address offer to client).
+    /// `DHCPv4` OFFER messages sent (address offer to client).
     /// Second phase of DHCP handshake offering available address.
     DhcpOffer = 17,
 
-    /// DHCPv4 RELEASE messages received (client relinquishes lease).
+    /// `DHCPv4` RELEASE messages received (client relinquishes lease).
     /// Client explicitly releases IP address before lease expiration.
     DhcpRelease = 18,
 
-    /// DHCPv4 REQUEST messages received (address request/renewal).
+    /// `DHCPv4` REQUEST messages received (address request/renewal).
     /// Third phase of DHCP handshake or lease renewal request.
     DhcpRequest = 19,
 
@@ -142,19 +142,19 @@ pub enum MetricType {
     /// Tracks queries that daemon cannot answer due to configuration or policy.
     Noanswer = 20,
 
-    /// DHCPv4 leases allocated from dynamic address pools.
+    /// `DHCPv4` leases allocated from dynamic address pools.
     /// Counts successful IPv4 address assignments (dynamic leases only).
     LeasesAllocated4 = 21,
 
-    /// DHCPv4 leases expired and pruned from lease database.
+    /// `DHCPv4` leases expired and pruned from lease database.
     /// Lease expiration cleanup and memory reclamation for IPv4.
     LeasesPruned4 = 22,
 
-    /// DHCPv6 leases allocated from IPv6 address pools.
-    /// Counts successful IPv6 address assignments (stateful DHCPv6).
+    /// `DHCPv6` leases allocated from IPv6 address pools.
+    /// Counts successful IPv6 address assignments (stateful `DHCPv6`).
     LeasesAllocated6 = 23,
 
-    /// DHCPv6 leases expired and pruned from lease database.
+    /// `DHCPv6` leases expired and pruned from lease database.
     /// Lease expiration cleanup and memory reclamation for IPv6.
     LeasesPruned6 = 24,
 
@@ -162,19 +162,19 @@ pub enum MetricType {
     /// Tracks TCP query volume (large responses, zone transfers, DNSSEC).
     TcpConnections = 25,
 
-    /// DHCPv4 LEASEQUERY requests received (RFC 4388).
+    /// `DHCPv4` LEASEQUERY requests received (RFC 4388).
     /// External systems querying lease information by IP or MAC address.
     DhcpLeasequery = 26,
 
-    /// DHCPv4 LEASEQUERY responses: lease unassigned (IP not in pool).
+    /// `DHCPv4` LEASEQUERY responses: lease unassigned (IP not in pool).
     /// LEASEQUERY query for IP address not within configured DHCP ranges.
     DhcpLeaseUnassigned = 27,
 
-    /// DHCPv4 LEASEQUERY responses: lease active (IP currently leased).
+    /// `DHCPv4` LEASEQUERY responses: lease active (IP currently leased).
     /// LEASEQUERY query returned active lease information.
     DhcpLeaseActive = 28,
 
-    /// DHCPv4 LEASEQUERY responses: lease unknown (no record found).
+    /// `DHCPv4` LEASEQUERY responses: lease unknown (no record found).
     /// LEASEQUERY query for IP/MAC with no matching lease database entry.
     DhcpLeaseUnknown = 29,
 }
@@ -183,8 +183,8 @@ impl Display for MetricType {
     /// Formats the metric type as a human-readable string identifier.
     ///
     /// Returns lowercase identifiers with underscores, matching the C implementation's
-    /// metric_names array format. These names are used for logging, export via control
-    /// interfaces (D-Bus, UBus), and administrative display.
+    /// `metric_names` array format. These names are used for logging, export via control
+    /// interfaces (D-Bus, `UBus`), and administrative display.
     ///
     /// # Examples
     ///
@@ -227,7 +227,7 @@ impl Display for MetricType {
             MetricType::DhcpLeaseActive => "dhcp_lease_actve", // Note: typo preserved from C for compatibility
             MetricType::DhcpLeaseUnknown => "dhcp_lease_unknown",
         };
-        write!(f, "{}", name)
+        write!(f, "{name}")
     }
 }
 
@@ -318,6 +318,7 @@ impl MetricsCollector {
     ///
     /// let collector = MetricsCollector::new();
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         let mut metrics = HashMap::new();
 
@@ -372,8 +373,9 @@ impl MetricsCollector {
     /// let collector = MetricsCollector::new();
     /// assert_eq!(collector.get_metric(MetricType::DnsQueriesForwarded), 0);
     /// ```
+    #[must_use]
     pub fn get_metric(&self, metric_type: MetricType) -> u32 {
-        self.metrics.get(&metric_type).map(|counter| counter.load(Ordering::Relaxed)).unwrap_or(0)
+        self.metrics.get(&metric_type).map_or(0, |counter| counter.load(Ordering::Relaxed))
     }
 
     /// Resets all metric counters to zero.
@@ -397,14 +399,14 @@ impl MetricsCollector {
         }
     }
 
-    /// Retrieves all metric values as a HashMap.
+    /// Retrieves all metric values as a `HashMap`.
     ///
     /// Returns a snapshot of all metric counters at the time of the call.
-    /// The returned HashMap maps metric types to their current counter values.
+    /// The returned `HashMap` maps metric types to their current counter values.
     ///
     /// # Returns
     ///
-    /// HashMap containing all metric types and their current values
+    /// `HashMap` containing all metric types and their current values
     ///
     /// # Examples
     ///
@@ -417,6 +419,7 @@ impl MetricsCollector {
     /// let all_metrics = collector.get_all_metrics();
     /// assert_eq!(all_metrics.get(&MetricType::DnsQueriesForwarded), Some(&1));
     /// ```
+    #[must_use]
     pub fn get_all_metrics(&self) -> HashMap<MetricType, u32> {
         self.metrics.iter().map(|(k, v)| (*k, v.load(Ordering::Relaxed))).collect()
     }
@@ -447,7 +450,7 @@ impl MetricsCollector {
         let mut json_map = serde_json::Map::new();
 
         for (metric_type, counter) in &self.metrics {
-            let name = format!("{}", metric_type);
+            let name = format!("{metric_type}");
             let value = counter.load(Ordering::Relaxed);
             json_map.insert(name, to_value(value)?);
         }
@@ -511,6 +514,7 @@ impl Default for MetricsCollector {
 /// let name = get_metric_name(MetricType::DnsQueriesForwarded);
 /// assert_eq!(name, "dns_queries_forwarded");
 /// ```
+#[must_use]
 pub fn get_metric_name(metric_type: MetricType) -> &'static str {
     match metric_type {
         MetricType::DnsCacheInserted => "dns_cache_inserted",
@@ -550,7 +554,7 @@ pub fn get_metric_name(metric_type: MetricType) -> &'static str {
 ///
 /// This function provides a standalone way to clear all metric counters, typically
 /// invoked during daemon initialization, configuration reload, or administrative reset
-/// via control interfaces (D-Bus, UBus).
+/// via control interfaces (D-Bus, `UBus`).
 ///
 /// # Arguments
 ///
@@ -597,7 +601,7 @@ pub fn clear_metrics(collector: &MetricsCollector) {
 pub fn report_all(collector: &MetricsCollector) {
     for metric_type in MetricType::all() {
         let value = collector.get_metric(metric_type);
-        println!("{}: {}", metric_type, value);
+        println!("{metric_type}: {value}");
     }
 }
 

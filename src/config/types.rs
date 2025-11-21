@@ -602,7 +602,7 @@ pub struct DnsConfig {
     /// DNS PTR records for reverse lookups.
     pub ptr_records: Vec<(String, String)>,
 
-    /// Upstream servers (duplicate of upstream_servers for compatibility).
+    /// Upstream servers (duplicate of `upstream_servers` for compatibility).
     ///
     /// Some tests may reference this field name.
     pub servers: Vec<ServerDetails>,
@@ -700,7 +700,7 @@ impl Default for DnsConfig {
 /// ```
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DhcpConfig {
-    /// DHCPv4 address ranges.
+    /// `DHCPv4` address ranges.
     ///
     /// Replaces C `struct dhcp_context *dhcp` linked list (v4 entries only).
     /// Each range defines start/end addresses for dynamic allocation.
@@ -712,7 +712,7 @@ pub struct DhcpConfig {
     /// `CONTEXT_V6` flag. Includes both `IA_NA` (address allocation) and `IA_PD`
     /// (prefix delegation) pools.
     pub v6_ranges: Vec<DhcpRange>,
-    
+
     /// `DHCPv6` contexts for Router Advertisement integration.
     ///
     /// Replaces C `struct dhcp_context *dhcp6` linked list. Contains `DHCPv6`
@@ -859,7 +859,7 @@ pub struct DhcpRange {
     /// When set to a value > 0, this range is used for prefix delegation (`IA_PD`)
     /// instead of or in addition to address allocation (`IA_NA`).
     /// Typical values: 48, 56, 60, 64 (for /48, /56, /60, /64 prefixes).
-    /// 
+    ///
     /// For address allocation ranges (not PD), this should be 0.
     pub prefix_len: u8,
 }
@@ -962,26 +962,26 @@ pub const CONTEXT_SETLEASE: u32 = 1u32 << 19;
 
 /// Router Advertisement interface configuration
 ///
-/// Corresponds to C struct ra_interface from dnsmasq.h.
+/// Corresponds to C struct `ra_interface` from dnsmasq.h.
 /// Specifies per-interface Router Advertisement parameters.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct RaInterface {
     /// Interface name (e.g., "eth0", "wlan0")
     pub name: String,
-    
+
     /// Router Advertisement interval in seconds
-    /// RFC 4861 Section 6.2.1: MinRtrAdvInterval to MaxRtrAdvInterval (typically 200-600s)
+    /// RFC 4861 Section 6.2.1: `MinRtrAdvInterval` to `MaxRtrAdvInterval` (typically 200-600s)
     pub interval: u32,
-    
+
     /// Router lifetime in seconds
     /// RFC 4861 Section 6.2.1: Indicates how long the router should be considered a default router.
     /// Value of 0 means the router should not be considered a default router.
     pub lifetime: u32,
-    
+
     /// Router priority (for default router preference)
     /// RFC 4191: HIGH (1), MEDIUM (0), LOW (3), or RESERVED (2)
     pub priority: u8,
-    
+
     /// MTU option value for Router Advertisements
     /// Advertises the link MTU to hosts. Value of 0 means no MTU option is sent.
     /// Typical value: 1500 (Ethernet), 1280 (minimum IPv6 MTU)
@@ -991,38 +991,38 @@ pub struct RaInterface {
 /// DHCP context for IPv6 address ranges and Router Advertisement configuration.
 ///
 /// Replaces C `struct dhcp_context`. This structure defines the parameters for
-/// DHCPv6 address allocation and IPv6 Router Advertisement for a specific network
+/// `DHCPv6` address allocation and IPv6 Router Advertisement for a specific network
 /// range or interface. Each context represents a logical network segment with its
 /// own allocation policies, RA settings, and lifetime parameters.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DhcpContext {
     /// IPv6 range start address.
     ///
-    /// Replaces C `struct in6_addr start6`. Required for DHCPv6 ranges.
-    /// For consistency with DhcpRange, this duplicates the start field but
+    /// Replaces C `struct in6_addr start6`. Required for `DHCPv6` ranges.
+    /// For consistency with `DhcpRange`, this duplicates the start field but
     /// ensures it's an IPv6 address for DHCPv6-specific operations.
     pub start6: IpAddr,
 
     /// Context flags.
     ///
     /// Replaces C `int flags`. Bitfield with CONTEXT_* constants:
-    /// - CONTEXT_V6: IPv6 context (vs. IPv4)
-    /// - CONTEXT_RA: Router Advertisement enabled
-    /// - CONTEXT_STATIC: Static address range (no dynamic allocation)
-    /// - CONTEXT_DHCP: DHCPv6 address allocation enabled
-    /// - CONTEXT_RA_STATELESS: Stateless RA (no address allocation)
+    /// - `CONTEXT_V6`: IPv6 context (vs. IPv4)
+    /// - `CONTEXT_RA`: Router Advertisement enabled
+    /// - `CONTEXT_STATIC`: Static address range (no dynamic allocation)
+    /// - `CONTEXT_DHCP`: `DHCPv6` address allocation enabled
+    /// - `CONTEXT_RA_STATELESS`: Stateless RA (no address allocation)
     pub flags: u32,
 
     /// Network interface index.
     ///
-    /// Replaces C `int if_index`. Interface index for binding DHCPv6 server
+    /// Replaces C `int if_index`. Interface index for binding `DHCPv6` server
     /// socket and correlating with Router Advertisement interface.
     pub if_index: i32,
-    
+
     /// DHCP lease time in seconds.
     ///
     /// Replaces C `unsigned int lease_time`. Specifies the lease duration
-    /// for addresses allocated from this context. Used for calculating 
+    /// for addresses allocated from this context. Used for calculating
     /// valid and preferred lifetimes in Router Advertisements.
     pub lease_time: u32,
 }
@@ -1082,7 +1082,7 @@ impl DhcpContext {
 pub struct StaticLease {
     /// Client MAC address.
     ///
-    /// Replaces C `unsigned char hwaddr[DHCP_CHADDR_MAX]` from dhcp_config.
+    /// Replaces C `unsigned char hwaddr[DHCP_CHADDR_MAX]` from `dhcp_config`.
     pub mac: MacAddress,
 
     /// Assigned IP address.
@@ -1137,7 +1137,7 @@ pub struct StaticLease {
 pub struct NetworkConfig {
     /// Specific IP addresses to listen on.
     ///
-    /// Replaces C `struct iname *if_addrs`. Empty = bind to all addresses (0.0.0.0/::).
+    /// Replaces C `struct iname *if_addrs`. Empty = bind to all addresses (`0.0.0.0/::`).
     pub listen_addresses: Vec<IpAddr>,
 
     /// Interface names to serve.
@@ -1152,7 +1152,7 @@ pub struct NetworkConfig {
 
     /// Bind to specific interfaces vs. wildcard socket.
     ///
-    /// Replaces C option bit OPT_NOWILD. When true, creates separate socket for
+    /// Replaces C option bit `OPT_NOWILD`. When true, creates separate socket for
     /// each interface. When false, uses single wildcard socket with filtering.
     ///
     /// Default: false (wildcard socket)
@@ -1167,7 +1167,7 @@ pub struct NetworkConfig {
 
     /// Dynamically update interface bindings.
     ///
-    /// Replaces C option bit OPT_CLEVERBIND. When true, monitors interface
+    /// Replaces C option bit `OPT_CLEVERBIND`. When true, monitors interface
     /// addresses and automatically updates bindings when interfaces come/go.
     ///
     /// Default: false
@@ -1212,7 +1212,7 @@ impl Default for NetworkConfig {
 ///
 /// - `tftp_prefix`: Root directory for TFTP file serving
 /// - `tftp_mtu`: MTU for TFTP packet sizing (default: 1500)
-/// - `tftp_secure`: Restrict file access to tftp_prefix (no ../ escapes)
+/// - `tftp_secure`: Restrict file access to `tftp_prefix` (no ../ escapes)
 /// - `tftp_max`: Maximum concurrent TFTP connections
 /// - `if_prefix`: Per-interface TFTP root directories
 ///
@@ -1242,9 +1242,9 @@ pub struct TftpConfig {
     /// Default: 1500 bytes (Ethernet MTU)
     pub tftp_mtu: u16,
 
-    /// Secure mode (restrict to tftp_prefix, block ../ escapes).
+    /// Secure mode (restrict to `tftp_prefix`, block ../ escapes).
     ///
-    /// Replaces C option bit OPT_TFTP_SECURE. Prevents directory traversal attacks.
+    /// Replaces C option bit `OPT_TFTP_SECURE`. Prevents directory traversal attacks.
     ///
     /// Default: false
     pub tftp_secure: bool,
@@ -1271,7 +1271,7 @@ pub struct TftpConfig {
 
     /// Add client IP address as subdirectory to tftp-root.
     ///
-    /// Replaces C option bit OPT_TFTP_APREF_IP. When enabled, adds the client's
+    /// Replaces C option bit `OPT_TFTP_APREF_IP`. When enabled, adds the client's
     /// IP address as a subdirectory to the tftp-root (e.g., /tftp/192.168.1.10/).
     ///
     /// Default: false
@@ -1279,7 +1279,7 @@ pub struct TftpConfig {
 
     /// Disable TFTP blocksize extension (RFC 2348).
     ///
-    /// Replaces C option bit OPT_TFTP_NOBLOCK. Disables support for negotiating
+    /// Replaces C option bit `OPT_TFTP_NOBLOCK`. Disables support for negotiating
     /// TFTP block sizes larger than the default 512 bytes.
     ///
     /// Default: false
@@ -1343,7 +1343,7 @@ impl Default for TftpConfig {
 pub struct LoggingConfig {
     /// Log all DNS queries.
     ///
-    /// Replaces C option bit OPT_QUERY_LOG. Logs format:
+    /// Replaces C option bit `OPT_QUERY_LOG`. Logs format:
     /// "query[A] example.com from 192.168.1.10"
     ///
     /// Default: false
@@ -1351,7 +1351,7 @@ pub struct LoggingConfig {
 
     /// Log DHCP transactions.
     ///
-    /// Replaces C option bit OPT_DHCP_LOG. Logs lease allocations, renewals,
+    /// Replaces C option bit `OPT_DHCP_LOG`. Logs lease allocations, renewals,
     /// releases, and conflicts.
     ///
     /// Default: false
@@ -1371,14 +1371,14 @@ pub struct LoggingConfig {
 
     /// Suppress DHCP logging.
     ///
-    /// When true, don't log DHCP transactions even if log_dhcp is true.
+    /// When true, don't log DHCP transactions even if `log_dhcp` is true.
     ///
     /// Default: false
     pub quiet_dhcp: bool,
 
-    /// Suppress DHCPv6 logging.
+    /// Suppress `DHCPv6` logging.
     ///
-    /// When true, don't log DHCPv6 transactions.
+    /// When true, don't log `DHCPv6` transactions.
     ///
     /// Default: false
     pub quiet_dhcp6: bool,
@@ -1540,7 +1540,7 @@ pub struct ScriptConfig {
 /// Platform-specific integration settings.
 ///
 /// Contains settings for system-level integration features like D-Bus IPC,
-/// ubus (OpenWrt), and other platform-specific functionality.
+/// ubus (`OpenWrt`), and other platform-specific functionality.
 ///
 /// # C Equivalent
 ///
@@ -1566,9 +1566,9 @@ pub struct PlatformConfig {
     #[cfg(feature = "dbus")]
     pub dbus_enabled: bool,
 
-    /// Enable ubus interface (OpenWrt).
+    /// Enable ubus interface (`OpenWrt`).
     ///
-    /// Requires `ubus` feature. Provides ubus integration for OpenWrt systems.
+    /// Requires `ubus` feature. Provides ubus integration for `OpenWrt` systems.
     ///
     /// Default: false
     #[cfg(feature = "ubus")]
@@ -1576,7 +1576,7 @@ pub struct PlatformConfig {
 
     /// Run as daemon (background process).
     ///
-    /// Replaces C option bit OPT_NO_DAEMON (inverted). When true, fork to
+    /// Replaces C option bit `OPT_NO_DAEMON` (inverted). When true, fork to
     /// background and detach from terminal. When false, run in foreground.
     ///
     /// Default: true
@@ -1666,7 +1666,7 @@ impl ConfigBuilder {
         self
     }
 
-    /// Adds a DHCPv4 address range.
+    /// Adds a `DHCPv4` address range.
     #[must_use]
     pub fn add_dhcp_range(mut self, start: IpAddr, end: IpAddr) -> Self {
         let is_ipv6 = start.is_ipv6();

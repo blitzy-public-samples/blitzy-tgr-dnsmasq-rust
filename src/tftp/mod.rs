@@ -272,9 +272,9 @@ pub mod server;
 pub mod transfer;
 
 // Re-export primary TFTP types for external consumption
+pub use crate::error::TftpError;
 pub use server::TftpServer;
 pub use transfer::TransferState;
-pub use crate::error::TftpError;
 
 // =============================================================================
 // TFTP Protocol Constants (RFC 1350)
@@ -295,7 +295,7 @@ pub const OP_RRQ: u16 = 1;
 
 /// TFTP Write Request (WRQ) opcode - Client initiates file upload
 ///
-/// **SECURITY**: This server implementation refuses all write requests with ERR_PERM
+/// **SECURITY**: This server implementation refuses all write requests with `ERR_PERM`
 /// to prevent unauthorized file uploads and maintain read-only security posture.
 ///
 /// C equivalent: `#define OP_WRQ 2` from src/tftp.c line 85

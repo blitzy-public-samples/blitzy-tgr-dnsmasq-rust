@@ -59,7 +59,7 @@
 //!
 //! 1. **Memory Safety**: Eliminates manual array management with potential buffer overflows
 //! 2. **Automatic Registration**: Tokio handles fd registration with the OS reactor transparently
-//! 3. **Efficient Scaling**: Uses epoll (Linux) or kqueue (BSD) for O(1) event notification vs O(n) poll()
+//! 3. **Efficient Scaling**: Uses epoll (Linux) or kqueue (BSD) for O(1) event notification vs O(n) `poll()`
 //! 4. **Type Safety**: Compile-time guarantees prevent invalid fd usage or event mask errors
 //! 5. **Async/Await**: Natural async programming model vs. manual state machines
 //!
@@ -88,18 +88,18 @@
 //!
 //! # Performance Characteristics
 //!
-//! ## C poll() Implementation
+//! ## C `poll()` Implementation
 //!
-//! - poll_reset(): O(1) - just resets counter
-//! - poll_listen(): O(log n + m) - binary search + array insertion
-//! - poll(): O(n) - kernel scans all n file descriptors
-//! - poll_check(): O(log n) - binary search
+//! - `poll_reset()`: O(1) - just resets counter
+//! - `poll_listen()`: O(log n + m) - binary search + array insertion
+//! - `poll()`: O(n) - kernel scans all n file descriptors
+//! - `poll_check()`: O(log n) - binary search
 //! - Memory: Dynamic array, grows by doubling (64 → 128 → 256)
 //!
 //! ## Rust tokio Reactor
 //!
 //! - Socket registration: O(1) - registered at creation time
-//! - epoll_wait/kevent: O(ready_count) - kernel only returns ready fds
+//! - `epoll_wait/kevent`: `O(ready_count)` - kernel only returns ready fds
 //! - Event check: O(1) - tokio maintains per-fd state
 //! - Memory: Efficient slab allocation for tokio runtime internals
 //!
@@ -110,9 +110,9 @@
 //!
 //! This module eliminates these C patterns from poll.c:
 //!
-//! - Manual pollfd array allocation and reallocation (whine_realloc)
-//! - Binary search implementation (fd_search)
-//! - Sorted array insertion with memmove()
+//! - Manual pollfd array allocation and reallocation (`whine_realloc`)
+//! - Binary search implementation (`fd_search`)
+//! - Sorted array insertion with `memmove()`
 //! - Manual event mask management (POLLIN, POLLOUT, POLLERR)
 //! - File descriptor deduplication logic
 //!
@@ -158,8 +158,8 @@ use tracing::{debug, instrument, trace, warn};
 pub struct ReactorConfig {
     /// Buffer size for socket I/O operations.
     ///
-    /// This determines the size of receive buffers allocated for UDP socket recv_from()
-    /// and TCP socket read() operations. The C implementation used fixed 4096-byte buffers
+    /// This determines the size of receive buffers allocated for UDP socket `recv_from()`
+    /// and TCP socket `read()` operations. The C implementation used fixed 4096-byte buffers
     /// in most places (MAXDNAME + packet overhead).
     ///
     /// Typical values:
@@ -181,6 +181,7 @@ impl ReactorConfig {
     /// ```rust,ignore
     /// let config = ReactorConfig::new();
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self {
             buffer_size: 4096, // Default buffer size from C dnsmasq
@@ -200,6 +201,7 @@ impl ReactorConfig {
     /// let config = ReactorConfig::new()
     ///     .with_buffer_size(8192);
     /// ```
+    #[must_use]
     pub fn with_buffer_size(mut self, size: usize) -> Self {
         self.buffer_size = size;
         self
@@ -244,6 +246,7 @@ impl ReactorConfig {
     /// let config = ReactorConfig::new().with_buffer_size(8192).build()?;
     /// assert_eq!(config.buffer_size(), 8192);
     /// ```
+    #[must_use]
     pub fn buffer_size(&self) -> usize {
         self.buffer_size
     }
@@ -260,28 +263,28 @@ impl Default for ReactorConfig {
 /// This function is used for platform-specific sockets that are created via raw POSIX APIs
 /// rather than tokio's high-level socket constructors. Examples include:
 ///
-/// - Linux netlink sockets (created with socket(AF_NETLINK, SOCK_DGRAM, ...))
-/// - BSD routing sockets (created with socket(PF_ROUTE, SOCK_RAW, ...))
+/// - Linux netlink sockets (created with `socket(AF_NETLINK`, `SOCK_DGRAM`, ...))
+/// - BSD routing sockets (created with `socket(PF_ROUTE`, `SOCK_RAW`, ...))
 /// - Pre-bound sockets from systemd socket activation
 /// - Sockets with specific socket options set before binding
 ///
 /// # Safety
 ///
-/// This function uses UNSAFE operations to construct a tokio UdpSocket from a raw file
+/// This function uses UNSAFE operations to construct a tokio `UdpSocket` from a raw file
 /// descriptor. The caller must ensure:
 ///
-/// 1. **Ownership Transfer**: The file descriptor is transferred to the returned UdpSocket,
+/// 1. **Ownership Transfer**: The file descriptor is transferred to the returned `UdpSocket`,
 ///    which takes exclusive ownership. The caller must NOT close the fd manually or wrap
 ///    it in another socket type, as this would result in a double-close.
 ///
 /// 2. **Valid Socket**: The file descriptor must be:
 ///    - A valid open file descriptor at the time of the call
-///    - A UDP socket (SOCK_DGRAM) or compatible datagram socket
+///    - A UDP socket (`SOCK_DGRAM`) or compatible datagram socket
 ///    - Not already registered with another async runtime
 ///    - In the correct state for the intended use (bound/unbound as expected)
 ///
 /// 3. **Non-Blocking Mode**: Tokio requires sockets in non-blocking mode. This function
-///    sets O_NONBLOCK automatically, but the caller should be aware of this side effect.
+///    sets `O_NONBLOCK` automatically, but the caller should be aware of this side effect.
 ///
 /// # Arguments
 ///
@@ -290,14 +293,14 @@ impl Default for ReactorConfig {
 /// # Returns
 ///
 /// Returns `Ok(UdpSocket)` on success, transferring ownership of the file descriptor to
-/// the tokio socket. The socket is ready for async recv_from/send_to operations.
+/// the tokio socket. The socket is ready for async `recv_from/send_to` operations.
 ///
 /// # Errors
 ///
 /// Returns an error if:
 /// - The file descriptor is invalid or closed
 /// - The file descriptor is not a socket
-/// - The socket type is not SOCK_DGRAM
+/// - The socket type is not `SOCK_DGRAM`
 /// - Setting non-blocking mode fails
 /// - Registering with the tokio reactor fails
 ///
@@ -334,7 +337,7 @@ impl Default for ReactorConfig {
 /// 1. The caller is responsible for passing a valid UDP socket fd (documented requirement)
 /// 2. Ownership is explicitly transferred (documented in function contract)
 /// 3. The resulting tokio socket takes exclusive ownership, preventing double-close
-/// 4. tokio's UdpSocket::from_std performs additional validation and sets non-blocking mode
+/// 4. tokio's `UdpSocket::from_std` performs additional validation and sets non-blocking mode
 ///
 /// This pattern is standard for integrating raw POSIX sockets with tokio's async runtime.
 #[instrument(skip(fd), fields(fd = fd))]
@@ -379,16 +382,16 @@ pub async fn wrap_raw_fd_udp(fd: RawFd) -> Result<UdpSocket> {
 ///
 /// # Safety
 ///
-/// This function uses UNSAFE operations to construct a tokio TcpStream from a raw file
+/// This function uses UNSAFE operations to construct a tokio `TcpStream` from a raw file
 /// descriptor. The caller must ensure:
 ///
-/// 1. **Ownership Transfer**: The file descriptor is transferred to the returned TcpStream,
+/// 1. **Ownership Transfer**: The file descriptor is transferred to the returned `TcpStream`,
 ///    which takes exclusive ownership. The caller must NOT close the fd manually.
 ///
 /// 2. **Valid Socket**: The file descriptor must be:
 ///    - A valid open file descriptor
-///    - A TCP socket (SOCK_STREAM with IPPROTO_TCP)
-///    - Already connected to a peer (for TcpStream usage)
+///    - A TCP socket (`SOCK_STREAM` with `IPPROTO_TCP`)
+///    - Already connected to a peer (for `TcpStream` usage)
 ///    - Not already registered with another async runtime
 ///
 /// 3. **Non-Blocking Mode**: The socket will be set to non-blocking mode automatically.
@@ -436,8 +439,8 @@ pub async fn wrap_raw_fd_udp(fd: RawFd) -> Result<UdpSocket> {
 /// `FromRawFd::from_raw_fd()`. This is safe in our usage because:
 ///
 /// 1. The caller guarantees the fd is a valid connected TCP socket (documented contract)
-/// 2. Ownership is unambiguously transferred to the returned TcpStream
-/// 3. tokio's TcpStream::from_std validates the socket and sets non-blocking mode
+/// 2. Ownership is unambiguously transferred to the returned `TcpStream`
+/// 3. tokio's `TcpStream::from_std` validates the socket and sets non-blocking mode
 /// 4. Rust's ownership system prevents double-close or use-after-free
 ///
 /// This is the standard pattern for integrating raw POSIX sockets with tokio.
@@ -486,7 +489,7 @@ pub async fn wrap_raw_fd_tcp(fd: RawFd) -> Result<TcpStream> {
 ///
 /// # Implementation Note
 ///
-/// Unlike the C version which uses poll() to check readiness, this function uses tokio's
+/// Unlike the C version which uses `poll()` to check readiness, this function uses tokio's
 /// `readable()` method which registers interest with the reactor and returns immediately
 /// if data is already available, or awaits notification from the OS.
 ///
@@ -534,7 +537,7 @@ pub async fn wrap_raw_fd_tcp(fd: RawFd) -> Result<TcpStream> {
 /// - O(1) readiness check vs O(log n) binary search in C
 /// - No pollfd array construction/teardown overhead
 ///
-/// # Comparison to C poll_check()
+/// # Comparison to C `poll_check()`
 ///
 /// ```c
 /// // C version (from poll.c)

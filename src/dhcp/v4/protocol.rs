@@ -95,7 +95,7 @@ use crate::dhcp::lease::LeaseManager;
 use crate::error::DhcpError;
 use crate::types::MacAddress;
 
-/// DHCPv4 protocol state machine handler.
+/// `DHCPv4` protocol state machine handler.
 ///
 /// Coordinates DHCP message processing, lease allocation, and response generation.
 /// Replaces C's global function `rfc2131_packet()` with structured protocol handler
@@ -109,7 +109,7 @@ use crate::types::MacAddress;
 /// # Thread Safety
 ///
 /// All fields are wrapped in Arc for shared immutable access across async tasks.
-/// LeaseManager is additionally wrapped in RwLock for coordinated access across services.
+/// `LeaseManager` is additionally wrapped in `RwLock` for coordinated access across services.
 pub struct DhcpProtocol {
     /// DHCP configuration with ranges and static leases
     config: Arc<DhcpConfig>,
@@ -118,7 +118,7 @@ pub struct DhcpProtocol {
 }
 
 impl DhcpProtocol {
-    /// Creates a new DHCPv4 protocol handler.
+    /// Creates a new `DHCPv4` protocol handler.
     ///
     /// # Arguments
     ///
@@ -127,7 +127,7 @@ impl DhcpProtocol {
     ///
     /// # Returns
     ///
-    /// New DhcpProtocol instance ready to process messages
+    /// New `DhcpProtocol` instance ready to process messages
     ///
     /// # Example
     ///
@@ -190,7 +190,7 @@ impl DhcpProtocol {
         })?;
 
         // Check for static lease reservation
-        let offered_ip = if let Some(static_lease) = self.find_static_lease(&client_mac) {
+        let offered_ip = if let Some(static_lease) = self.find_static_lease(client_mac) {
             debug!(
                 client_mac = %client_mac,
                 static_ip = %static_lease.ip,
@@ -199,17 +199,19 @@ impl DhcpProtocol {
             static_lease.ip
         } else {
             // Check if client has existing lease
-            if let Some(existing_lease) = self.lease_manager.read().await.find_by_mac(&client_mac).await {
-                if !existing_lease.is_expired() {
+            if let Some(existing_lease) =
+                self.lease_manager.read().await.find_by_mac(&client_mac).await
+            {
+                if existing_lease.is_expired() {
+                    // Try to allocate requested IP or find new one
+                    self.allocate_address_from_range(context, request, &client_mac).await?
+                } else {
                     debug!(
                         client_mac = %client_mac,
                         existing_ip = %existing_lease.ip,
                         "Reoffering existing lease"
                     );
                     existing_lease.ip
-                } else {
-                    // Try to allocate requested IP or find new one
-                    self.allocate_address_from_range(context, request, &client_mac).await?
                 }
             } else {
                 // New client, allocate from range
@@ -218,20 +220,17 @@ impl DhcpProtocol {
         };
 
         // Ensure offered IP is IPv4
-        let offered_ipv4 = match offered_ip {
-            std::net::IpAddr::V4(ipv4) => ipv4,
-            _ => {
-                return Err(DhcpError::V4ProtocolError {
-                    reason: "Non-IPv4 address in DHCPv4 context".to_string(),
-                })
-            }
+        let std::net::IpAddr::V4(offered_ipv4) = offered_ip else {
+            return Err(DhcpError::V4ProtocolError {
+                reason: "Non-IPv4 address in DHCPv4 context".to_string(),
+            });
         };
 
         // Calculate lease time for offer
         let lease_time = self.calculate_lease_time(context, request);
 
         // Determine server identifier (our IP address)
-        let server_id = self.determine_server_id(context, request);
+        let server_id = Self::determine_server_id(context, request);
 
         // Build DHCPOFFER message
         let mut offer = DhcpMessage::new_reply(request);
@@ -437,15 +436,13 @@ impl DhcpProtocol {
         );
 
         // Extract declined address from requested IP option
-        let declined_ip =
-            match request.get_option(|opt| matches!(opt, DhcpOption::RequestedIpAddress(_))) {
-                Some(DhcpOption::RequestedIpAddress(ip)) => ip,
-                _ => {
-                    return Err(DhcpError::V4ProtocolError {
-                        reason: "DHCPDECLINE missing requested IP address".to_string(),
-                    })
-                }
-            };
+        let Some(DhcpOption::RequestedIpAddress(declined_ip)) =
+            request.get_option(|opt| matches!(opt, DhcpOption::RequestedIpAddress(_)))
+        else {
+            return Err(DhcpError::V4ProtocolError {
+                reason: "DHCPDECLINE missing requested IP address".to_string(),
+            });
+        };
 
         warn!(
             client_mac = %client_mac,
@@ -467,8 +464,12 @@ impl DhcpProtocol {
             );
 
             // Release the lease (marks it available again)
-            if let Err(e) =
-                self.lease_manager.read().await.release_lease(&std::net::IpAddr::V4(*declined_ip)).await
+            if let Err(e) = self
+                .lease_manager
+                .read()
+                .await
+                .release_lease(&std::net::IpAddr::V4(*declined_ip))
+                .await
             {
                 error!(
                     declined_ip = %declined_ip,
@@ -595,6 +596,7 @@ impl DhcpProtocol {
     /// let ack = protocol.handle_inform(&inform_msg).await?;
     /// assert!(ack.yiaddr().is_unspecified()); // No address assignment
     /// ```
+    #[allow(clippy::unused_async)] // Maintains uniform async interface with other DHCP handlers
     pub async fn handle_inform(&self, request: &DhcpMessage) -> Result<DhcpMessage, DhcpError> {
         let client_mac = request.client_hardware_addr()?;
         let xid = request.transaction_id();
@@ -621,7 +623,7 @@ impl DhcpProtocol {
         })?;
 
         // Determine server identifier
-        let server_id = self.determine_server_id(context, request);
+        let server_id = Self::determine_server_id(context, request);
 
         // Build DHCPACK response with configuration options (no yiaddr, no lease time)
         let mut ack = DhcpMessage::new_reply(request);
@@ -660,7 +662,7 @@ impl DhcpProtocol {
 
     /// Selects appropriate DHCP context (address range) for a request.
     ///
-    /// Matches request against configured DHCPv4 ranges based on:
+    /// Matches request against configured `DHCPv4` ranges based on:
     /// - Interface name (if request interface known)
     /// - Gateway relay address (giaddr)
     /// - Network address matching
@@ -673,7 +675,7 @@ impl DhcpProtocol {
     ///
     /// # Returns
     ///
-    /// Reference to matching DhcpRange, or None if no match found
+    /// Reference to matching `DhcpRange`, or None if no match found
     fn select_context<'a>(&'a self, request: &DhcpMessage) -> Option<&'a DhcpRange> {
         let giaddr = request.giaddr();
 
@@ -686,7 +688,7 @@ impl DhcpProtocol {
                     if let std::net::IpAddr::V4(end_ipv4) = range.end {
                         // Simple check: if giaddr is within range network, use this range
                         // Full implementation would check network address with netmask
-                        if self.ip_in_range(giaddr, start_ipv4, end_ipv4) {
+                        if Self::ip_in_range(giaddr, start_ipv4, end_ipv4) {
                             return Some(range);
                         }
                     }
@@ -722,6 +724,7 @@ impl DhcpProtocol {
     /// # Returns
     ///
     /// Vector of DHCP options to include in response
+    #[allow(clippy::unused_self)]
     fn build_option_list(
         &self,
         context: &DhcpRange,
@@ -739,6 +742,8 @@ impl DhcpProtocol {
 
         // Lease time (not included for INFORM responses, handled by caller)
         if lease_time.as_secs() > 0 {
+            #[allow(clippy::cast_possible_truncation)]
+            // DHCP protocol uses u32 for lease times (RFC 2131)
             options.push(DhcpOption::LeaseTime(lease_time.as_secs() as u32));
         }
 
@@ -817,7 +822,7 @@ impl DhcpProtocol {
         if let Some(DhcpOption::LeaseTime(requested_secs)) =
             request.get_option(|opt| matches!(opt, DhcpOption::LeaseTime(_)))
         {
-            let requested_duration = Duration::from_secs(*requested_secs as u64);
+            let requested_duration = Duration::from_secs(u64::from(*requested_secs));
 
             // Honor request if reasonable (not too short, not too long)
             let min_lease = Duration::from_secs(600); // 10 minutes minimum
@@ -849,7 +854,7 @@ impl DhcpProtocol {
     /// # Returns
     ///
     /// IPv4 address to use as server identifier
-    fn determine_server_id(&self, context: &DhcpRange, request: &DhcpMessage) -> Ipv4Addr {
+    fn determine_server_id(context: &DhcpRange, request: &DhcpMessage) -> Ipv4Addr {
         let giaddr = request.giaddr();
 
         // If request came through relay, use address on relay's network
@@ -865,12 +870,12 @@ impl DhcpProtocol {
         }
 
         // Fallback: use broadcast address (should not happen)
-        Ipv4Addr::new(255, 255, 255, 255)
+        Ipv4Addr::BROADCAST
     }
 
     /// Determines server identifier for REQUEST message processing.
     ///
-    /// Similar to determine_server_id but specifically for REQUEST handling.
+    /// Similar to `determine_server_id` but specifically for REQUEST handling.
     fn determine_server_id_for_request(&self, _request: &DhcpMessage) -> Ipv4Addr {
         // Stub: return first available range's start address
         if let Some(range) = self.config.v4_ranges.first() {
@@ -879,7 +884,7 @@ impl DhcpProtocol {
             }
         }
 
-        Ipv4Addr::new(255, 255, 255, 255)
+        Ipv4Addr::BROADCAST
     }
 
     /// Finds static lease configuration for a MAC address.
@@ -891,8 +896,8 @@ impl DhcpProtocol {
     /// # Returns
     ///
     /// Reference to static lease if configured, None otherwise
-    fn find_static_lease(&self, mac: &MacAddress) -> Option<&StaticLease> {
-        self.config.static_leases.iter().find(|lease| lease.mac == *mac)
+    fn find_static_lease(&self, mac: MacAddress) -> Option<&StaticLease> {
+        self.config.static_leases.iter().find(|lease| lease.mac == mac)
     }
 
     /// Checks if an IP address is within a range.
@@ -906,7 +911,7 @@ impl DhcpProtocol {
     /// # Returns
     ///
     /// true if ip is within [start, end] inclusive
-    fn ip_in_range(&self, ip: Ipv4Addr, start: Ipv4Addr, end: Ipv4Addr) -> bool {
+    fn ip_in_range(ip: Ipv4Addr, start: Ipv4Addr, end: Ipv4Addr) -> bool {
         let ip_u32 = u32::from(ip);
         let start_u32 = u32::from(start);
         let end_u32 = u32::from(end);
@@ -941,7 +946,7 @@ impl DhcpProtocol {
             // Verify requested IP is in range
             if let std::net::IpAddr::V4(start_ipv4) = context.start {
                 if let std::net::IpAddr::V4(end_ipv4) = context.end {
-                    if self.ip_in_range(*req_ip, start_ipv4, end_ipv4) {
+                    if Self::ip_in_range(*req_ip, start_ipv4, end_ipv4) {
                         // Check if IP is available
                         if self
                             .lease_manager
@@ -1024,7 +1029,7 @@ impl DhcpProtocol {
                     requested_ip = %requested_ip,
                     "IP already leased to different client"
                 );
-                return self.send_nak(request, "Address already allocated");
+                return Self::send_nak(request, "Address already allocated");
             }
         }
 
@@ -1087,7 +1092,7 @@ impl DhcpProtocol {
                     error = %e,
                     "Failed to allocate lease"
                 );
-                self.send_nak(request, "Lease allocation failed")
+                Self::send_nak(request, "Lease allocation failed")
             }
         }
     }
@@ -1116,13 +1121,13 @@ impl DhcpProtocol {
         if let (std::net::IpAddr::V4(start), std::net::IpAddr::V4(end)) =
             (context.start, context.end)
         {
-            if !self.ip_in_range(requested_ip, start, end) {
+            if !Self::ip_in_range(requested_ip, start, end) {
                 warn!(
                     client_mac = %client_mac,
                     requested_ip = %requested_ip,
                     "Requested IP not in configured range"
                 );
-                return self.send_nak(request, "Wrong network");
+                return Self::send_nak(request, "Wrong network");
             }
         }
 
@@ -1136,14 +1141,14 @@ impl DhcpProtocol {
                     requested_ip = %requested_ip,
                     "IP leased to different client"
                 );
-                return self.send_nak(request, "Address in use");
+                return Self::send_nak(request, "Address in use");
             }
             // IP is leased to this client, renew it
         }
 
         // Allocate/renew lease and send ACK
         let lease_time = self.calculate_lease_time(context, request);
-        let server_id = self.determine_server_id(context, request);
+        let server_id = Self::determine_server_id(context, request);
 
         match self
             .lease_manager
@@ -1190,7 +1195,7 @@ impl DhcpProtocol {
                     error = %e,
                     "Failed to allocate lease in INIT-REBOOT"
                 );
-                self.send_nak(request, "Lease allocation failed")
+                Self::send_nak(request, "Lease allocation failed")
             }
         }
     }
@@ -1206,17 +1211,20 @@ impl DhcpProtocol {
         let client_mac = request.client_hardware_addr()?;
 
         // Verify lease exists and belongs to this client
-        let existing_lease =
-            self.lease_manager.read().await.find_by_ip(&std::net::IpAddr::V4(ciaddr)).await.ok_or_else(
-                || {
-                    warn!(
-                        client_mac = %client_mac,
-                        ciaddr = %ciaddr,
-                        "No lease found for RENEWING"
-                    );
-                    DhcpError::LeaseNotFound { ip: ciaddr.to_string() }
-                },
-            )?;
+        let existing_lease = self
+            .lease_manager
+            .read()
+            .await
+            .find_by_ip(&std::net::IpAddr::V4(ciaddr))
+            .await
+            .ok_or_else(|| {
+                warn!(
+                    client_mac = %client_mac,
+                    ciaddr = %ciaddr,
+                    "No lease found for RENEWING"
+                );
+                DhcpError::LeaseNotFound { ip: ciaddr.to_string() }
+            })?;
 
         if existing_lease.mac != Some(client_mac) {
             warn!(
@@ -1224,7 +1232,7 @@ impl DhcpProtocol {
                 ciaddr = %ciaddr,
                 "Lease belongs to different client"
             );
-            return self.send_nak(request, "Not your lease");
+            return Self::send_nak(request, "Not your lease");
         }
 
         // Renew the lease
@@ -1232,9 +1240,15 @@ impl DhcpProtocol {
             pool_name: "no matching DHCP range".to_string(),
         })?;
         let lease_time = self.calculate_lease_time(context, request);
-        let server_id = self.determine_server_id(context, request);
+        let server_id = Self::determine_server_id(context, request);
 
-        match self.lease_manager.read().await.renew_lease(&std::net::IpAddr::V4(ciaddr), lease_time).await {
+        match self
+            .lease_manager
+            .read()
+            .await
+            .renew_lease(&std::net::IpAddr::V4(ciaddr), lease_time)
+            .await
+        {
             Ok(_) => {
                 let mut ack = DhcpMessage::new_reply(request);
                 ack.set_yiaddr(ciaddr);
@@ -1268,7 +1282,7 @@ impl DhcpProtocol {
                     error = %e,
                     "Failed to renew lease"
                 );
-                self.send_nak(request, "Lease renewal failed")
+                Self::send_nak(request, "Lease renewal failed")
             }
         }
     }
@@ -1283,7 +1297,7 @@ impl DhcpProtocol {
     /// # Returns
     ///
     /// DHCPNAK message
-    fn send_nak(&self, request: &DhcpMessage, message: &str) -> Result<DhcpMessage, DhcpError> {
+    fn send_nak(request: &DhcpMessage, message: &str) -> Result<DhcpMessage, DhcpError> {
         let client_mac = request.client_hardware_addr()?;
 
         let mut nak = DhcpMessage::new_reply(request);
@@ -1304,6 +1318,7 @@ impl DhcpProtocol {
 // (In real implementation, these would be in config/types.rs)
 impl DhcpRange {
     /// Gets the next-server IP for TFTP booting (stub)
+    #[allow(clippy::unused_self)]
     fn next_server(&self) -> Option<Ipv4Addr> {
         None // Stub: would be configured per range
     }

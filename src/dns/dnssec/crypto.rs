@@ -18,7 +18,7 @@
 //! This module provides signature verification for DNSSEC RRSIG records, replacing the C
 //! implementation's Nettle library wrapper with Rust's ring cryptographic library. It
 //! implements verification for RSA (algorithms 5, 7, 8, 10), ECDSA (algorithms 13, 14),
-//! and EdDSA (algorithm 15) signatures according to RFC 8624 requirements.
+//! and `EdDSA` (algorithm 15) signatures according to RFC 8624 requirements.
 //!
 //! # Overview
 //!
@@ -26,7 +26,7 @@
 //! functions for each algorithm family:
 //! - `dnsmasq_rsa_verify()` - RSA signature verification
 //! - `dnsmasq_ecdsa_verify()` - ECDSA signature verification  
-//! - `dnsmasq_eddsa_verify()` - EdDSA signature verification
+//! - `dnsmasq_eddsa_verify()` - `EdDSA` signature verification
 //! - `dnsmasq_gostdsa_verify()` - GOST signature verification (optional)
 //!
 //! This Rust implementation eliminates FFI overhead and unsafe code by using the pure-Rust
@@ -40,15 +40,15 @@
 //!
 //! **Error Handling:**
 //! - C: Silent 0/1 return codes with limited diagnostic information
-//! - Rust: Result<bool, CryptoError> with structured error variants providing detailed context
+//! - Rust: Result<bool, `CryptoError`> with structured error variants providing detailed context
 //!
 //! **Cryptographic Library:**
 //! - C: Nettle library via FFI (external dependency, potential ABI issues)
 //! - Rust: ring crate (pure Rust, memory-safe, actively maintained by AWS)
 //!
-//! **EdDSA Handling:**
-//! - C: Custom `null_hash` pseudo-hash to buffer entire message (EdDSA signs messages, not digests)
-//! - Rust: Direct message verification without hash abstraction using ring::signature::ED25519
+//! **`EdDSA` Handling:**
+//! - C: Custom `null_hash` pseudo-hash to buffer entire message (`EdDSA` signs messages, not digests)
+//! - Rust: Direct message verification without hash abstraction using `ring::signature::ED25519`
 //!
 //! # Supported Algorithms
 //!
@@ -102,7 +102,7 @@
 //!
 //! - RSA verification: ~1ms per signature (key size dependent)
 //! - ECDSA verification: ~0.5ms per signature
-//! - EdDSA verification: ~0.1ms per signature (fastest)
+//! - `EdDSA` verification: ~0.1ms per signature (fastest)
 //!
 //! The ring library uses platform-specific optimizations (AES-NI, AVX2) when available,
 //! providing performance comparable to or better than Nettle.
@@ -122,13 +122,13 @@ use tracing::{debug, error, trace, warn};
 ///
 /// # Error Variants
 ///
-/// - **UnsupportedAlgorithm**: DNSSEC algorithm number not recognized or not implemented
-/// - **InvalidKeyFormat**: Public key data cannot be parsed (wrong length, invalid encoding)
-/// - **InvalidSignatureFormat**: Signature data malformed (wrong length, invalid ASN.1)
-/// - **VerificationFailed**: Cryptographic verification failed (signature doesn't match)
-/// - **DigestLengthMismatch**: Message digest length doesn't match algorithm requirements
-/// - **KeyExtractionFailed**: BlockData key retrieval failed
-/// - **RingError**: Underlying ring library error (key rejection, verification error)
+/// - **`UnsupportedAlgorithm`**: DNSSEC algorithm number not recognized or not implemented
+/// - **`InvalidKeyFormat`**: Public key data cannot be parsed (wrong length, invalid encoding)
+/// - **`InvalidSignatureFormat`**: Signature data malformed (wrong length, invalid ASN.1)
+/// - **`VerificationFailed`**: Cryptographic verification failed (signature doesn't match)
+/// - **`DigestLengthMismatch`**: Message digest length doesn't match algorithm requirements
+/// - **`KeyExtractionFailed`**: `BlockData` key retrieval failed
+/// - **`RingError`**: Underlying ring library error (key rejection, verification error)
 #[derive(Debug, Error)]
 pub enum CryptoError {
     /// DNSSEC algorithm not supported by this implementation.
@@ -146,7 +146,7 @@ pub enum CryptoError {
     /// Keys must conform to RFC-specified wire formats:
     /// - RSA: exponent length (1 or 3 bytes) + exponent + modulus (RFC 3110)
     /// - ECDSA: X coordinate + Y coordinate (RFC 6605)
-    /// - EdDSA: Raw public key bytes (RFC 8080)
+    /// - `EdDSA`: Raw public key bytes (RFC 8080)
     #[error("Invalid key format for algorithm {algorithm}: {reason}")]
     InvalidKeyFormat {
         /// The DNSSEC algorithm number
@@ -160,7 +160,7 @@ pub enum CryptoError {
     /// Signatures must conform to algorithm-specific formats:
     /// - RSA: Raw signature bytes (modulus length)
     /// - ECDSA: R + S values (curve-dependent length)
-    /// - EdDSA: Raw signature bytes (64 bytes for Ed25519)
+    /// - `EdDSA`: Raw signature bytes (64 bytes for Ed25519)
     #[error("Invalid signature format for algorithm {algorithm}: {reason}")]
     InvalidSignatureFormat {
         /// The DNSSEC algorithm number
@@ -199,9 +199,9 @@ pub enum CryptoError {
         actual: usize,
     },
 
-    /// Failed to extract public key from BlockData.
+    /// Failed to extract public key from `BlockData`.
     ///
-    /// Indicates BlockData retrieval failed or returned empty data.
+    /// Indicates `BlockData` retrieval failed or returned empty data.
     #[error("Failed to extract key from BlockData: {reason}")]
     KeyExtractionFailed {
         /// Reason for extraction failure
@@ -210,7 +210,7 @@ pub enum CryptoError {
 
     /// Underlying ring library error.
     ///
-    /// Wraps errors from ring::error::Unspecified (key rejected, verification failed, etc).
+    /// Wraps errors from `ring::error::Unspecified` (key rejected, verification failed, etc).
     /// Ring provides minimal error information for security reasons (avoids timing attacks).
     #[error("Ring cryptographic operation failed: {operation}")]
     RingError {
@@ -241,7 +241,7 @@ impl From<CryptoError> for DnsmasqError {
 /// - **RSA**: Algorithms 1, 5, 7, 8, 10 (varying hash functions)
 /// - **DSA**: Algorithm 3 (deprecated, not implemented)
 /// - **ECDSA**: Algorithms 13, 14 (P-256 and P-384 curves)
-/// - **EdDSA**: Algorithms 15, 16 (Ed25519 and Ed448)
+/// - **`EdDSA`**: Algorithms 15, 16 (Ed25519 and Ed448)
 /// - **GOST**: Algorithm 12 (optional, not widely used)
 ///
 /// # Implementation Status Mapping
@@ -309,14 +309,14 @@ pub enum CryptoAlgorithm {
 
     /// Ed448 - Algorithm 16 (RECOMMENDED per RFC 8624)
     ///
-    /// Stronger EdDSA variant using Curve448. Not implemented (ring limitation).
+    /// Stronger `EdDSA` variant using Curve448. Not implemented (ring limitation).
     Ed448 = 16,
 }
 
 impl CryptoAlgorithm {
     /// Convert DNSSEC algorithm number to enum variant.
     ///
-    /// Maps IANA-assigned algorithm numbers (0-255) to CryptoAlgorithm enum variants.
+    /// Maps IANA-assigned algorithm numbers (0-255) to `CryptoAlgorithm` enum variants.
     /// Returns None for unrecognized or unimplemented algorithms.
     ///
     /// # Arguments
@@ -336,6 +336,7 @@ impl CryptoAlgorithm {
     /// assert_eq!(CryptoAlgorithm::from_u8(13), Some(CryptoAlgorithm::EcdsaP256Sha256));
     /// assert_eq!(CryptoAlgorithm::from_u8(255), None); // Unassigned
     /// ```
+    #[must_use]
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
             1 => Some(Self::RsaMd5),
@@ -366,6 +367,7 @@ impl CryptoAlgorithm {
     /// # Returns
     ///
     /// `true` if verification is implemented, `false` otherwise
+    #[must_use]
     pub fn is_supported(&self) -> bool {
         matches!(
             self,
@@ -387,6 +389,7 @@ impl CryptoAlgorithm {
     /// # Returns
     ///
     /// `true` if algorithm is deprecated, `false` if still acceptable
+    #[must_use]
     pub fn is_deprecated(&self) -> bool {
         matches!(self, Self::RsaMd5 | Self::Dsa | Self::RsaSha1 | Self::RsaSha1Nsec3)
     }
@@ -394,7 +397,7 @@ impl CryptoAlgorithm {
     /// Get required message digest length for this algorithm.
     ///
     /// Returns the expected digest length in bytes for signature verification.
-    /// EdDSA algorithms use the full message, not a digest, so return 0.
+    /// `EdDSA` algorithms use the full message, not a digest, so return 0.
     ///
     /// # Digest Lengths
     ///
@@ -402,11 +405,13 @@ impl CryptoAlgorithm {
     /// - SHA256: 32 bytes (algorithms 8, 13)
     /// - SHA384: 48 bytes (algorithm 14)
     /// - SHA512: 64 bytes (algorithm 10)
-    /// - EdDSA: 0 (verifies full message)
+    /// - `EdDSA`: 0 (verifies full message)
     ///
     /// # Returns
     ///
-    /// Expected digest length in bytes, or 0 for EdDSA
+    /// Expected digest length in bytes, or 0 for `EdDSA`
+    #[must_use]
+    #[allow(clippy::match_same_arms)] // EdDSA and unknown algorithms both legitimately return 0
     pub fn required_digest_len(&self) -> usize {
         match self {
             Self::RsaSha1 | Self::RsaSha1Nsec3 => 20,      // SHA1
@@ -414,7 +419,7 @@ impl CryptoAlgorithm {
             Self::RsaSha512 => 64,                         // SHA512
             Self::EcdsaP384Sha384 => 48,                   // SHA384
             Self::Ed25519 | Self::Ed448 => 0,              // EdDSA uses full message
-            _ => 0,
+            _ => 0,                                        // Unknown algorithms return 0
         }
     }
 }
@@ -446,7 +451,7 @@ impl fmt::Display for CryptoAlgorithm {
 ///
 /// # Thread Safety
 ///
-/// SignatureVerifier contains no mutable state and is safe to share across threads.
+/// `SignatureVerifier` contains no mutable state and is safe to share across threads.
 /// Wrap in Arc if sharing between tokio tasks.
 ///
 /// # Memory Safety
@@ -459,11 +464,12 @@ pub struct SignatureVerifier;
 impl SignatureVerifier {
     /// Create a new signature verifier.
     ///
-    /// SignatureVerifier is stateless, so new() simply returns a zero-sized type.
+    /// `SignatureVerifier` is stateless, so `new()` simply returns a zero-sized type.
     ///
     /// # Returns
     ///
-    /// New SignatureVerifier instance (zero-cost abstraction)
+    /// New `SignatureVerifier` instance (zero-cost abstraction)
+    #[must_use]
     pub fn new() -> Self {
         Self
     }
@@ -471,7 +477,7 @@ impl SignatureVerifier {
     /// Verify a DNSSEC signature using the specified algorithm.
     ///
     /// This is the main entry point for signature verification, dispatching to algorithm-specific
-    /// verification functions based on the algorithm number. Replaces C verify() function with
+    /// verification functions based on the algorithm number. Replaces C `verify()` function with
     /// Result-based error handling.
     ///
     /// # Arguments
@@ -493,7 +499,7 @@ impl SignatureVerifier {
     /// - `InvalidKeyFormat` - Public key data cannot be parsed
     /// - `InvalidSignatureFormat` - Signature data malformed
     /// - `DigestLengthMismatch` - Message digest has wrong length
-    /// - `KeyExtractionFailed` - BlockData retrieval failed
+    /// - `KeyExtractionFailed` - `BlockData` retrieval failed
     ///
     /// # Examples
     ///
@@ -516,11 +522,11 @@ impl SignatureVerifier {
     ///
     /// # Algorithm Dispatch
     ///
-    /// - Algorithms 5, 7, 8, 10 → verify_rsa()
-    /// - Algorithms 13, 14 → verify_ecdsa()
-    /// - Algorithm 15 → verify_eddsa()
-    /// - Algorithm 12 → verify_gost() (not implemented, returns error)
-    /// - All others → UnsupportedAlgorithm error
+    /// - Algorithms 5, 7, 8, 10 → `verify_rsa()`
+    /// - Algorithms 13, 14 → `verify_ecdsa()`
+    /// - Algorithm 15 → `verify_eddsa()`
+    /// - Algorithm 12 → `verify_gost()` (not implemented, returns error)
+    /// - All others → `UnsupportedAlgorithm` error
     pub fn verify(
         &self,
         algorithm: u8,
@@ -600,8 +606,8 @@ impl SignatureVerifier {
     /// Verify RSA signature (algorithms 5, 7, 8, 10).
     ///
     /// Parses RSA public key from RFC 3110 wire format and verifies signature using appropriate
-    /// hash algorithm (SHA1, SHA256, or SHA512). Replaces C dnsmasq_rsa_verify() with ring's
-    /// RsaPublicKeyComponents verification.
+    /// hash algorithm (SHA1, SHA256, or SHA512). Replaces C `dnsmasq_rsa_verify()` with ring's
+    /// `RsaPublicKeyComponents` verification.
     ///
     /// # RSA Key Wire Format (RFC 3110)
     ///
@@ -663,7 +669,7 @@ impl SignatureVerifier {
         }
 
         // Parse RSA key from wire format
-        let (exponent, modulus) = self.parse_rsa_key(key_bytes, algorithm)?;
+        let (exponent, modulus) = Self::parse_rsa_key(key_bytes, algorithm)?;
 
         trace!(
             exponent_len = exponent.len(),
@@ -685,15 +691,12 @@ impl SignatureVerifier {
         let public_key = signature::RsaPublicKeyComponents { n: modulus, e: exponent };
 
         // Verify signature
-        match public_key.verify(verification_alg, message_digest, signature) {
-            Ok(_) => {
-                debug!(algorithm = algorithm, "RSA signature verification successful");
-                Ok(true)
-            }
-            Err(_) => {
-                debug!(algorithm = algorithm, "RSA signature verification failed");
-                Ok(false)
-            }
+        if let Ok(()) = public_key.verify(verification_alg, message_digest, signature) {
+            debug!(algorithm = algorithm, "RSA signature verification successful");
+            Ok(true)
+        } else {
+            debug!(algorithm = algorithm, "RSA signature verification failed");
+            Ok(false)
         }
     }
 
@@ -715,7 +718,7 @@ impl SignatureVerifier {
     ///
     /// # Returns
     ///
-    /// - `Ok((exponent, modulus))` - Slices pointing into key_bytes
+    /// - `Ok((exponent, modulus))` - Slices pointing into `key_bytes`
     /// - `Err(CryptoError::InvalidKeyFormat)` - Parsing failed
     ///
     /// # Errors
@@ -724,11 +727,7 @@ impl SignatureVerifier {
     /// - Invalid exponent length encoding
     /// - Exponent length exceeds remaining data
     /// - Zero-length exponent or modulus
-    fn parse_rsa_key<'a>(
-        &self,
-        key_bytes: &'a [u8],
-        algorithm: u8,
-    ) -> Result<(&'a [u8], &'a [u8]), CryptoError> {
+    fn parse_rsa_key(key_bytes: &[u8], algorithm: u8) -> Result<(&[u8], &[u8]), CryptoError> {
         if key_bytes.len() < 3 {
             return Err(CryptoError::InvalidKeyFormat {
                 algorithm,
@@ -791,7 +790,7 @@ impl SignatureVerifier {
     /// Verify ECDSA signature (algorithms 13, 14).
     ///
     /// Parses ECDSA public key from RFC 6605 wire format and verifies signature using P-256
-    /// or P-384 curves. Replaces C dnsmasq_ecdsa_verify() with ring's ECDSA verification.
+    /// or P-384 curves. Replaces C `dnsmasq_ecdsa_verify()` with ring's ECDSA verification.
     ///
     /// # ECDSA Key Wire Format (RFC 6605)
     ///
@@ -914,25 +913,22 @@ impl SignatureVerifier {
         let public_key = signature::UnparsedPublicKey::new(verification_alg, &public_key_bytes);
 
         // Verify signature
-        match public_key.verify(message_digest, signature) {
-            Ok(_) => {
-                debug!(algorithm = algorithm, "ECDSA signature verification successful");
-                Ok(true)
-            }
-            Err(_) => {
-                debug!(algorithm = algorithm, "ECDSA signature verification failed");
-                Ok(false)
-            }
+        if let Ok(()) = public_key.verify(message_digest, signature) {
+            debug!(algorithm = algorithm, "ECDSA signature verification successful");
+            Ok(true)
+        } else {
+            debug!(algorithm = algorithm, "ECDSA signature verification failed");
+            Ok(false)
         }
     }
 
-    /// Verify EdDSA signature (algorithm 15: Ed25519).
+    /// Verify `EdDSA` signature (algorithm 15: Ed25519).
     ///
-    /// Verifies Ed25519 signature using the full message (not a hash digest). EdDSA signs
+    /// Verifies Ed25519 signature using the full message (not a hash digest). `EdDSA` signs
     /// messages directly, so unlike RSA/ECDSA, we don't hash the data first. The C implementation
-    /// uses a special "null_hash" to buffer the entire message for this purpose.
+    /// uses a special "`null_hash`" to buffer the entire message for this purpose.
     ///
-    /// # EdDSA Key Wire Format (RFC 8080)
+    /// # `EdDSA` Key Wire Format (RFC 8080)
     ///
     /// ```text
     /// +------------------+
@@ -942,7 +938,7 @@ impl SignatureVerifier {
     ///
     /// Ed25519 public keys are exactly 32 bytes (256 bits).
     ///
-    /// # EdDSA Signature Format
+    /// # `EdDSA` Signature Format
     ///
     /// ```text
     /// +------------------+
@@ -954,20 +950,20 @@ impl SignatureVerifier {
     ///
     /// # Arguments
     ///
-    /// * `algorithm` - EdDSA algorithm number (15 for Ed25519)
+    /// * `algorithm` - `EdDSA` algorithm number (15 for Ed25519)
     /// * `key_bytes` - Ed25519 public key (32 bytes)
     /// * `signature` - Ed25519 signature (64 bytes)
     /// * `message` - Full message to verify (NOT a hash digest)
     ///
     /// # Returns
     ///
-    /// - `Ok(true)` - EdDSA signature valid
-    /// - `Ok(false)` - EdDSA signature invalid
+    /// - `Ok(true)` - `EdDSA` signature valid
+    /// - `Ok(false)` - `EdDSA` signature invalid
     /// - `Err(CryptoError)` - Verification error
     ///
-    /// # Note on message_digest Parameter
+    /// # Note on `message_digest` Parameter
     ///
-    /// Despite the parameter name "message_digest", for EdDSA this contains the FULL message,
+    /// Despite the parameter name "`message_digest`", for `EdDSA` this contains the FULL message,
     /// not a hash. This maintains API consistency with RSA/ECDSA verification functions.
     /// The C implementation achieves this by using a pseudo-hash that buffers the message.
     pub fn verify_eddsa(
@@ -977,11 +973,11 @@ impl SignatureVerifier {
         signature: &[u8],
         message: &[u8],
     ) -> Result<bool, CryptoError> {
-        trace!(algorithm = algorithm, "Verifying EdDSA signature");
-
         // Ed25519 constants
         const ED25519_KEY_LEN: usize = 32;
         const ED25519_SIG_LEN: usize = 64;
+
+        trace!(algorithm = algorithm, "Verifying EdDSA signature");
 
         // Validate key length
         if key_bytes.len() != ED25519_KEY_LEN {
@@ -1018,15 +1014,12 @@ impl SignatureVerifier {
         let public_key = signature::UnparsedPublicKey::new(&signature::ED25519, key_bytes);
 
         // Verify signature against full message (not digest)
-        match public_key.verify(message, signature) {
-            Ok(_) => {
-                debug!(algorithm = algorithm, "EdDSA signature verification successful");
-                Ok(true)
-            }
-            Err(_) => {
-                debug!(algorithm = algorithm, "EdDSA signature verification failed");
-                Ok(false)
-            }
+        if let Ok(()) = public_key.verify(message, signature) {
+            debug!(algorithm = algorithm, "EdDSA signature verification successful");
+            Ok(true)
+        } else {
+            debug!(algorithm = algorithm, "EdDSA signature verification failed");
+            Ok(false)
         }
     }
 
@@ -1034,7 +1027,7 @@ impl SignatureVerifier {
     ///
     /// Maps DNSSEC algorithm numbers to their corresponding hash algorithm for digest
     /// computation. This is used by the validator module to compute the correct digest
-    /// before calling verify().
+    /// before calling `verify()`.
     ///
     /// # Arguments
     ///
@@ -1043,7 +1036,7 @@ impl SignatureVerifier {
     /// # Returns
     ///
     /// - `Some(&'static ring::digest::Algorithm)` - Hash algorithm for this DNSSEC algorithm
-    /// - `None` - Algorithm doesn't use a hash (EdDSA) or is unsupported
+    /// - `None` - Algorithm doesn't use a hash (`EdDSA`) or is unsupported
     ///
     /// # Hash Algorithm Mapping
     ///
@@ -1051,7 +1044,9 @@ impl SignatureVerifier {
     /// - Algorithm 8, 13 → SHA256
     /// - Algorithm 10 → SHA512
     /// - Algorithm 14 → SHA384
-    /// - Algorithm 15, 16 → None (EdDSA verifies full message)
+    /// - Algorithm 15, 16 → None (`EdDSA` verifies full message)
+    #[must_use]
+    #[allow(clippy::match_same_arms)] // EdDSA and unknown algorithms both legitimately return None
     pub fn hash_for_algorithm(algorithm: u8) -> Option<&'static ring::digest::Algorithm> {
         match algorithm {
             5 | 7 => Some(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY),
@@ -1059,7 +1054,7 @@ impl SignatureVerifier {
             10 => Some(&ring::digest::SHA512),
             14 => Some(&ring::digest::SHA384),
             15 | 16 => None, // EdDSA doesn't use a hash
-            _ => None,
+            _ => None,       // Unknown algorithms return None
         }
     }
 }
@@ -1143,8 +1138,6 @@ mod tests {
 
     #[test]
     fn test_rsa_key_parsing_short_exponent() {
-        let verifier = SignatureVerifier::new();
-
         // Create RSA key with short exponent (1-byte length)
         let exponent = vec![0x01, 0x00, 0x01]; // 65537
         let modulus = vec![0xFF; 128]; // 1024-bit modulus
@@ -1154,7 +1147,7 @@ mod tests {
         key_bytes.extend_from_slice(&exponent);
         key_bytes.extend_from_slice(&modulus);
 
-        let result = verifier.parse_rsa_key(&key_bytes, 8);
+        let result = DnssecVerifier::parse_rsa_key(&key_bytes, 8);
         assert!(result.is_ok());
         let (exp, mod_result) = result.unwrap();
         assert_eq!(exp, &exponent[..]);
@@ -1176,7 +1169,7 @@ mod tests {
         key_bytes.extend_from_slice(&exponent);
         key_bytes.extend_from_slice(&modulus);
 
-        let result = verifier.parse_rsa_key(&key_bytes, 8);
+        let result = DnssecVerifier::parse_rsa_key(&key_bytes, 8);
         assert!(result.is_ok());
         let (exp, mod_result) = result.unwrap();
         assert_eq!(exp, &exponent[..]);
@@ -1185,21 +1178,17 @@ mod tests {
 
     #[test]
     fn test_rsa_key_parsing_too_short() {
-        let verifier = SignatureVerifier::new();
-
         // Key too short (< 3 bytes)
         let key_bytes = vec![0x03, 0x01];
-        let result = verifier.parse_rsa_key(&key_bytes, 8);
+        let result = DnssecVerifier::parse_rsa_key(&key_bytes, 8);
         assert!(matches!(result, Err(CryptoError::InvalidKeyFormat { .. })));
     }
 
     #[test]
     fn test_rsa_key_parsing_zero_exponent_length() {
-        let verifier = SignatureVerifier::new();
-
         // Zero exponent length (invalid)
         let key_bytes = vec![0x00, 0x00, 0x00, 0xFF, 0xFF];
-        let result = verifier.parse_rsa_key(&key_bytes, 8);
+        let result = DnssecVerifier::parse_rsa_key(&key_bytes, 8);
         assert!(matches!(result, Err(CryptoError::InvalidKeyFormat { .. })));
     }
 

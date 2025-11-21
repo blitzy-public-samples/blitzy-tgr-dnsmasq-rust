@@ -181,7 +181,7 @@ enum ReloadState {
 
 impl ReloadState {
     /// Returns human-readable state name for logging
-    fn as_str(&self) -> &'static str {
+    fn as_str(self) -> &'static str {
         match self {
             ReloadState::Idle => "idle",
             ReloadState::Reading => "reading",
@@ -240,7 +240,7 @@ impl ConfigReloader {
     ///
     /// # Arguments
     ///
-    /// * `config` - Shared configuration wrapped in Arc<RwLock<>> for atomic updates
+    /// * `config` - Shared configuration wrapped in Arc<`RwLock`<>> for atomic updates
     /// * `config_path` - Path to dnsmasq.conf file to monitor and reload
     ///
     /// # Examples
@@ -331,7 +331,7 @@ impl ConfigReloader {
         let old_config = self.config.read().await.clone();
 
         // Log configuration changes
-        self.log_config_diff(&old_config, &new_config);
+        Self::log_config_diff(&old_config, &new_config);
 
         // Atomically update configuration
         {
@@ -387,7 +387,7 @@ impl ConfigReloader {
         // Register SIGHUP handler
         let mut sighup =
             signal(SignalKind::hangup()).map_err(|e| ConfigError::ValidationFailed {
-                reason: format!("Failed to register SIGHUP handler: {}", e),
+                reason: format!("Failed to register SIGHUP handler: {e}"),
             })?;
 
         info!("SIGHUP signal handler registered, watching for configuration changes");
@@ -421,7 +421,7 @@ impl ConfigReloader {
     ///
     /// Performs field-by-field comparison and logs changes for audit trail.
     /// Helps administrators understand what changed during reload.
-    fn log_config_diff(&self, old: &Config, new: &Config) {
+    fn log_config_diff(old: &Config, new: &Config) {
         // Track if any changes were detected
         let mut changes_detected = false;
 
@@ -494,10 +494,10 @@ impl ConfigReloader {
         }
 
         // Log summary based on whether changes were detected
-        if !changes_detected {
-            info!("Configuration reloaded with no changes detected");
-        } else {
+        if changes_detected {
             info!("Configuration reloaded with changes applied");
+        } else {
+            info!("Configuration reloaded with no changes detected");
         }
     }
 }

@@ -17,7 +17,7 @@
 //! Replaces C network.c's interface enumeration and monitoring with memory-safe Rust:
 //! - Converts `struct irec` linked list to `Vec<NetworkInterface>` with owned data
 //! - Transforms `iface_enumerate()` callback pattern to async stream
-//! - Replaces getifaddrs() pointer iteration with safe iterator pattern
+//! - Replaces `getifaddrs()` pointer iteration with safe iterator pattern
 //! - Provides real-time interface monitoring via platform-specific mechanisms
 //!
 //! # C Implementation Mapping
@@ -156,7 +156,7 @@
 //! - **No manual memory management**: Vec and String provide automatic cleanup
 //! - **No pointer arithmetic**: Safe slice operations with bounds checking
 //! - **No NULL pointers**: Option types make optionality explicit
-//! - **No data races**: Arc + RwLock ensures thread-safe cache access
+//! - **No data races**: Arc + `RwLock` ensures thread-safe cache access
 //! - **No use-after-free**: Borrow checker prevents dangling references
 //!
 //! # Thread Safety
@@ -249,7 +249,7 @@ pub struct InterfaceManager {
     /// Cached interface list with thread-safe access
     ///
     /// Replaces C's global `daemon->interfaces` linked list with a Rust Vec protected by
-    /// RwLock. Multiple readers (listener creation, validation checks) can access
+    /// `RwLock`. Multiple readers (listener creation, validation checks) can access
     /// concurrently, while writers (refresh operations) get exclusive access.
     cache: Arc<RwLock<Vec<NetworkInterface>>>,
 }
@@ -278,7 +278,7 @@ impl InterfaceManager {
     /// Enumerates all network interfaces with addresses
     ///
     /// Discovers all network interfaces on the system using platform-specific mechanisms:
-    /// - Modern systems: getifaddrs() via nix crate
+    /// - Modern systems: `getifaddrs()` via nix crate
     /// - Legacy systems: SIOCGIFCONF ioctl fallback
     /// - Returns interfaces with names, indexes, addresses, netmasks, broadcast addresses,
     ///   MTU, and flags (up/down, loopback, point-to-point, multicast)
@@ -319,7 +319,7 @@ impl InterfaceManager {
     /// # Errors
     ///
     /// Returns `NetworkError` if:
-    /// - getifaddrs() fails (insufficient privileges, system error)
+    /// - `getifaddrs()` fails (insufficient privileges, system error)
     /// - Platform-specific enumeration fails (netlink socket error, routing socket error)
     ///
     /// # Examples
@@ -429,8 +429,8 @@ impl InterfaceManager {
     ///
     /// # Platform Mechanisms
     ///
-    /// - **Linux**: Netlink RTMGRP_IPV4_IFADDR, RTMGRP_IPV6_IFADDR multicast groups
-    /// - **BSD**: Routing socket with RTM_NEWADDR, RTM_DELADDR, RTM_IFINFO messages
+    /// - **Linux**: Netlink `RTMGRP_IPV4_IFADDR`, `RTMGRP_IPV6_IFADDR` multicast groups
+    /// - **BSD**: Routing socket with `RTM_NEWADDR`, `RTM_DELADDR`, `RTM_IFINFO` messages
     /// - **macOS**: Routing socket + System Configuration framework notifications
     ///
     /// # C Equivalent
@@ -495,7 +495,7 @@ impl InterfaceManager {
     /// Retrieves an interface by name
     ///
     /// Performs O(n) linear search through cached interfaces. For frequent lookups,
-    /// consider building a HashMap externally.
+    /// consider building a `HashMap` externally.
     ///
     /// # Arguments
     ///
@@ -528,7 +528,7 @@ impl InterfaceManager {
     ///
     /// # Arguments
     ///
-    /// * `index` - Kernel interface index (e.g., from IP_PKTINFO, IPV6_PKTINFO)
+    /// * `index` - Kernel interface index (e.g., from `IP_PKTINFO`, `IPV6_PKTINFO`)
     ///
     /// # Returns
     ///
@@ -600,7 +600,7 @@ impl InterfaceManager {
     ///
     /// - **Explicit validation logic**: Clear method with documented checks
     /// - **No global state**: Configuration passed as parameter
-    /// - **Type-safe flags**: InterfaceFlags enum vs. integer bitflags
+    /// - **Type-safe flags**: `InterfaceFlags` enum vs. integer bitflags
     /// - **Comprehensive logging**: Tracing for debugging filter decisions
     ///
     /// # Arguments
@@ -717,12 +717,12 @@ impl InterfaceManager {
 
     /// Creates a lookup map for efficient interface queries
     ///
-    /// Builds HashMap for O(1) lookup by name or index. Useful when processing many packets
+    /// Builds `HashMap` for O(1) lookup by name or index. Useful when processing many packets
     /// that need interface resolution.
     ///
     /// # Returns
     ///
-    /// Tuple of (name_map, index_map) for fast lookups
+    /// Tuple of (`name_map`, `index_map`) for fast lookups
     ///
     /// # Examples
     ///

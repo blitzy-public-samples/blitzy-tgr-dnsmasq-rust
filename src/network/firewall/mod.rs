@@ -65,7 +65,7 @@
 //!
 //! **Configuration**: `--ipset=/domain/tablename` (ipset directive reused for PF on BSD)
 //!
-//! **Use case**: BSD-based firewalls and routers (pfSense, OPNsense, etc.).
+//! **Use case**: BSD-based firewalls and routers (pfSense, `OPNsense`, etc.).
 //!
 //! # Integration with DNS Resolution
 //!
@@ -114,7 +114,7 @@
 //! iptables -t mangle -A PREROUTING -m set --match-set vpn_ips dst -j MARK --set-mark 1
 //! ```
 //!
-//! ## QoS and Traffic Shaping
+//! ## `QoS` and Traffic Shaping
 //!
 //! Apply bandwidth limits based on domain classification:
 //!
@@ -265,10 +265,10 @@ pub use pf::PfBackend;
 ///
 /// # Error Categories
 ///
-/// - **Configuration Errors**: SetNotFound, TableCreateFailed
-/// - **Protocol Errors**: ProtocolError (netlink/ioctl communication failures)
-/// - **Platform Errors**: DeviceNotFound (/dev/pf unavailable)
-/// - **Address Errors**: AddressNotSupported (IPv6 on IPv4-only system), AddressFailed
+/// - **Configuration Errors**: `SetNotFound`, `TableCreateFailed`
+/// - **Protocol Errors**: `ProtocolError` (netlink/ioctl communication failures)
+/// - **Platform Errors**: `DeviceNotFound` (/dev/pf unavailable)
+/// - **Address Errors**: `AddressNotSupported` (IPv6 on IPv4-only system), `AddressFailed`
 ///
 /// # C Error Handling Comparison
 ///
@@ -324,10 +324,10 @@ pub enum FirewallError {
     ///
     /// **Examples**:
     /// - Netlink socket bind failure (permission denied)
-    /// - ioctl() returns error code
+    /// - `ioctl()` returns error code
     /// - nftables library returns error buffer
     ///
-    /// **Resolution**: Check permissions (CAP_NET_ADMIN), kernel module loaded, firewall running.
+    /// **Resolution**: Check permissions (`CAP_NET_ADMIN`), kernel module loaded, firewall running.
     #[error("Firewall protocol error: {0}")]
     ProtocolError(String),
 
@@ -408,9 +408,9 @@ pub type Result<T> = std::result::Result<T, FirewallError>;
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddressFamily {
-    /// IPv4 address family (AF_INET in C, corresponds to `IpAddr::V4`).
+    /// IPv4 address family (`AF_INET` in C, corresponds to `IpAddr::V4`).
     IPv4,
-    /// IPv6 address family (AF_INET6 in C, corresponds to `IpAddr::V6`).
+    /// IPv6 address family (`AF_INET6` in C, corresponds to `IpAddr::V6`).
     IPv6,
 }
 
@@ -527,9 +527,9 @@ pub trait FirewallBackend: Send + Sync {
     ///
     /// # Implementation Notes
     ///
-    /// - **ipset**: Sends netlink IPSET_CMD_ADD message with IPSET_ATTR_SETNAME and IPSET_ATTR_IP
+    /// - **ipset**: Sends netlink `IPSET_CMD_ADD` message with `IPSET_ATTR_SETNAME` and `IPSET_ATTR_IP`
     /// - **nftables**: Executes `nft add element <table> <set> { <ip> }` via libnftables
-    /// - **PF**: Issues DIOCRADDADDRS ioctl to /dev/pf with pfr_addr structure
+    /// - **PF**: Issues DIOCRADDADDRS ioctl to /dev/pf with `pfr_addr` structure
     async fn add_to_set(&self, domain: &str, ip: IpAddr, set_name: &str) -> Result<()>;
 
     /// Remove IP address from named firewall set or table.
@@ -558,7 +558,7 @@ pub trait FirewallBackend: Send + Sync {
     ///
     /// # Implementation Notes
     ///
-    /// - **ipset**: Sends netlink IPSET_CMD_DEL message
+    /// - **ipset**: Sends netlink `IPSET_CMD_DEL` message
     /// - **nftables**: Executes `nft delete element <table> <set> { <ip> }`
     /// - **PF**: Issues DIOCRDELADDRS ioctl to /dev/pf
     async fn remove_from_set(&self, domain: &str, ip: IpAddr, set_name: &str) -> Result<()>;
@@ -646,6 +646,7 @@ pub trait FirewallBackend: Send + Sync {
 /// The factory function is called once at daemon initialization. The returned backend is shared
 /// across all DNS resolution tasks via `Arc<dyn FirewallBackend>`.
 #[cfg(target_os = "linux")]
+#[must_use]
 pub fn create_firewall_backend(_config: &Config) -> Option<Box<dyn FirewallBackend>> {
     // Check for nftables configuration first (modern Linux preferred)
     // Configuration inspection would check for nftset directives in config

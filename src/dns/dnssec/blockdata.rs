@@ -338,6 +338,7 @@ impl BlockData {
     /// - Time complexity: O(n) where n is `total_len`
     /// - Space complexity: O(n) for returned vector
     /// - Uses `Iterator::flatten()` for efficient copying
+    #[must_use]
     pub fn retrieve(&self) -> Vec<u8> {
         if self.total_len == 0 {
             return Vec::new();
@@ -401,7 +402,7 @@ impl BlockData {
     /// 1. Calculate remaining space in last block (if any)
     /// 2. Fill remaining space in last block with new data
     /// 3. Allocate additional blocks for remaining new data
-    /// 4. Update total_len to reflect expanded size
+    /// 4. Update `total_len` to reflect expanded size
     /// 5. Update global statistics for new blocks allocated
     pub fn expand(&mut self, additional_data: &[u8]) -> Result<()> {
         if additional_data.is_empty() {
@@ -468,6 +469,7 @@ impl BlockData {
     /// // Uses ceil(100 / 40) = 3 blocks, but len() returns actual data length
     /// ```
     #[inline]
+    #[must_use]
     pub fn len(&self) -> usize {
         self.total_len
     }
@@ -489,6 +491,7 @@ impl BlockData {
     /// assert!(!non_empty.is_empty());
     /// ```
     #[inline]
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.total_len == 0
     }
@@ -517,6 +520,7 @@ impl BlockData {
     /// assert!(large.as_bytes().is_none());
     /// ```
     #[inline]
+    #[must_use]
     pub fn as_bytes(&self) -> Option<&[u8]> {
         if self.blocks.len() == 1 {
             Some(&self.blocks[0][..self.total_len])
@@ -584,6 +588,7 @@ impl BlockDataStats {
     /// # Returns
     ///
     /// New `BlockDataStats` with all counters initialized to zero.
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             current_count: AtomicUsize::new(0),

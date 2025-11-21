@@ -69,7 +69,7 @@ impl DbusDaemon {
     /// This initializes the D-Bus connection builder but doesn't connect yet.
     /// Call `start()` to actually connect to the D-Bus system bus and serve
     /// the interface.
-    pub async fn new() -> Result<Self> {
+    pub fn new() -> Result<Self> {
         Ok(Self { connection: None })
     }
 
@@ -120,7 +120,7 @@ impl DbusDaemon {
     /// Set the upstream servers
     ///
     /// This updates the list of servers that can be returned by the D-Bus
-    /// GetServers method. In the full implementation, this would actually
+    /// `GetServers` method. In the full implementation, this would actually
     /// reconfigure the DNS forwarder.
     pub async fn set_servers(&self, servers: Vec<String>) -> Result<()> {
         if let Some(connection) = &self.connection {
@@ -176,6 +176,7 @@ impl DbusDaemon {
     }
 
     /// Get reference to the D-Bus connection
+    #[must_use]
     pub fn connection(&self) -> Option<&Connection> {
         self.connection.as_ref()
     }
@@ -216,7 +217,7 @@ impl DnsmasqInterface {
     ///
     /// # Arguments
     ///
-    /// * `servers` - Array of server addresses (e.g., ["8.8.8.8", "8.8.4.4"])
+    /// * `servers` - Array of server addresses (e.g., [`8.8.8.8`, `8.8.4.4`])
     async fn set_servers(&self, servers: Vec<String>) -> zbus::fdo::Result<()> {
         info!("D-Bus SetServers called with {} servers", servers.len());
         let mut s = self.servers.write().await;
@@ -228,6 +229,7 @@ impl DnsmasqInterface {
     ///
     /// This method clears all entries from the DNS cache, forcing fresh
     /// queries for all subsequent requests.
+    #[allow(clippy::unused_async)] // D-Bus interface method must be async
     async fn clear_cache(&self) -> zbus::fdo::Result<()> {
         info!("D-Bus ClearCache called");
         // In full implementation, this would actually clear the cache
@@ -237,6 +239,7 @@ impl DnsmasqInterface {
     /// Get dnsmasq version
     ///
     /// Returns the version string of the running dnsmasq instance.
+    #[allow(clippy::unused_async)] // D-Bus interface method must be async
     async fn get_version(&self) -> zbus::fdo::Result<String> {
         debug!("D-Bus GetVersion called");
         Ok(self.version.clone())
@@ -245,18 +248,19 @@ impl DnsmasqInterface {
     /// Get runtime metrics
     ///
     /// Returns a dictionary of runtime statistics including:
-    /// - dns_queries: Total DNS queries processed
-    /// - cache_hits: DNS cache hits
-    /// - dhcp_leases: Active DHCP leases
+    /// - `dns_queries`: Total DNS queries processed
+    /// - `cache_hits`: DNS cache hits
+    /// - `dhcp_leases`: Active DHCP leases
     async fn get_metrics(&self) -> zbus::fdo::Result<HashMap<String, String>> {
         debug!("D-Bus GetMetrics called");
         let metrics = self.metrics.read().await;
         Ok(metrics.clone())
     }
 
-    /// Set Win2K option filtering
+    /// Set `Win2K` option filtering
     ///
-    /// Enable or disable filtering of the Win2K DHCP option.
+    /// Enable or disable filtering of the `Win2K` DHCP option.
+    #[allow(clippy::unused_async)] // D-Bus interface method must be async
     async fn set_filter_win2k_option(&self, enable: bool) -> zbus::fdo::Result<()> {
         info!("D-Bus SetFilterWin2KOption called: {}", enable);
         // In full implementation, this would update configuration

@@ -97,13 +97,13 @@ impl fmt::Display for RandomError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RandomError::EntropySourceOpen(msg) => {
-                write!(f, "Failed to open entropy source: {}", msg)
+                write!(f, "Failed to open entropy source: {msg}")
             }
             RandomError::EntropySourceRead(msg) => {
-                write!(f, "Failed to read entropy: {}", msg)
+                write!(f, "Failed to read entropy: {msg}")
             }
             RandomError::SystemEntropyFailed(msg) => {
-                write!(f, "System entropy function failed: {}", msg)
+                write!(f, "System entropy function failed: {msg}")
             }
         }
     }
@@ -118,13 +118,13 @@ impl std::error::Error for RandomError {}
 /// - `in_state`: 12-element input state incremented on each regeneration
 /// - `out`: 8-element output buffer holding generated random values
 /// - `outleft`: Counter tracking remaining values in output buffer
-/// - `outleft64`: Separate counter for rand64() tracking 32-bit pairs
+/// - `outleft64`: Separate counter for `rand64()` tracking 32-bit pairs
 #[derive(Clone)]
 struct SurfState {
     /// Seed array (32 x u32) initialized from system entropy.
     seed: [u32; 32],
 
-    /// Input state array (12 x u32) incremented on each surf() call.
+    /// Input state array (12 x u32) incremented on each `surf()` call.
     in_state: [u32; 12],
 
     /// Output buffer (8 x u32) holding generated random values.
@@ -304,7 +304,7 @@ impl SurfRng {
     /// Generate a random 64-bit value.
     ///
     /// Returns a random unsigned 64-bit value by combining two 32-bit
-    /// outputs. Suitable for DHCPv6 transaction IDs, unique identifiers,
+    /// outputs. Suitable for `DHCPv6` transaction IDs, unique identifiers,
     /// and large random intervals. Maintains separate output counter
     /// for 64-bit generation.
     ///
@@ -323,8 +323,8 @@ impl SurfRng {
         }
 
         state.outleft64 -= 2;
-        let high = state.out[state.outleft64] as u64;
-        let low = state.out[state.outleft64 + 1] as u64;
+        let high = u64::from(state.out[state.outleft64]);
+        let low = u64::from(state.out[state.outleft64 + 1]);
         (high << 32) | low
     }
 }
@@ -347,7 +347,7 @@ impl SurfRng {
 /// # Returns
 ///
 /// Rotated value
-#[inline(always)]
+#[inline]
 fn rotate(x: u32, b: u32) -> u32 {
     x.rotate_left(b)
 }
@@ -374,7 +374,7 @@ fn rotate(x: u32, b: u32) -> u32 {
 /// # Returns
 ///
 /// Updated `x` value after mixing
-#[inline(always)]
+#[inline]
 fn mush(t: &mut [u32; 12], seed: &[u32; 32], i: usize, sum: u32, x: u32, b: u32) -> u32 {
     t[i] = t[i].wrapping_add((x ^ seed[i]).wrapping_add(sum) ^ rotate(x, b));
     t[i]
@@ -421,7 +421,7 @@ fn surf(state: &mut SurfState) {
     for _ in 0..2 {
         for _ in 0..16 {
             // Increment sum by golden ratio constant
-            sum = sum.wrapping_add(0x9e3779b9);
+            sum = sum.wrapping_add(0x9e37_79b9);
 
             // Apply 12 MUSH operations with rotation amounts: 5, 7, 9, 13
             x = mush(&mut t, &state.seed, 0, sum, x, 5);
@@ -450,13 +450,13 @@ fn surf(state: &mut SurfState) {
 /// Increment input state counter (equivalent to C code incrementing in[0..3]).
 ///
 /// Increments the input state as a 128-bit little-endian counter:
-/// - Increment in_state[0]
-/// - If overflow, increment in_state[1]
-/// - If overflow, increment in_state[2]
-/// - If overflow, increment in_state[3]
+/// - Increment `in_state`[0]
+/// - If overflow, increment `in_state`[1]
+/// - If overflow, increment `in_state`[2]
+/// - If overflow, increment `in_state`[3]
 ///
 /// This ensures the SURF algorithm produces a different output sequence
-/// each time surf() is called.
+/// each time `surf()` is called.
 ///
 /// # Arguments
 ///
@@ -485,7 +485,7 @@ fn increment_input_state(in_state: &mut [u32; 12]) {
 /// - Falls back to reading from RANDFILE (/dev/urandom) if getrandom unavailable
 ///
 /// This function must be called once during daemon startup before any
-/// calls to rand16(), rand32(), or rand64().
+/// calls to `rand16()`, `rand32()`, or `rand64()`.
 ///
 /// # Returns
 ///
@@ -516,16 +516,16 @@ pub fn rand_init() -> Result<SurfRng, RandomError> {
         }
         Err(e) => {
             // getrandom not available or failed, fall back to reading RANDFILE
-            eprintln!("getrandom failed ({}), falling back to {}", e, RANDFILE);
+            eprintln!("getrandom failed ({e}), falling back to {RANDFILE}");
         }
     }
 
     // Fallback: read from RANDFILE (/dev/urandom)
     let mut file = File::open(RANDFILE)
-        .map_err(|e| RandomError::EntropySourceOpen(format!("{}: {}", RANDFILE, e)))?;
+        .map_err(|e| RandomError::EntropySourceOpen(format!("{RANDFILE}: {e}")))?;
 
     file.read_exact(&mut entropy)
-        .map_err(|e| RandomError::EntropySourceRead(format!("{}: {}", RANDFILE, e)))?;
+        .map_err(|e| RandomError::EntropySourceRead(format!("{RANDFILE}: {e}")))?;
 
     SurfRng::from_entropy(&entropy)
 }
@@ -545,8 +545,8 @@ thread_local! {
 
 /// Initialize global RNG instance if not already initialized.
 ///
-/// Called automatically by rand16(), rand32(), rand64() convenience functions.
-/// Panics if initialization fails (matching C implementation's die() behavior).
+/// Called automatically by `rand16()`, `rand32()`, `rand64()` convenience functions.
+/// Panics if initialization fails (matching C implementation's `die()` behavior).
 fn ensure_global_rng_initialized() {
     GLOBAL_RNG.with(|rng| {
         if rng.borrow().is_none() {
@@ -577,6 +577,7 @@ fn ensure_global_rng_initialized() {
 /// let query_id = rand16();
 /// let src_port = rand16();
 /// ```
+#[must_use]
 pub fn rand16() -> u16 {
     ensure_global_rng_initialized();
     GLOBAL_RNG.with(|rng| rng.borrow().as_ref().expect("Global RNG not initialized").rand16())
@@ -603,6 +604,7 @@ pub fn rand16() -> u16 {
 /// let cache_key = rand32();
 /// let delay_ms = rand32() % 1000;
 /// ```
+#[must_use]
 pub fn rand32() -> u32 {
     ensure_global_rng_initialized();
     GLOBAL_RNG.with(|rng| rng.borrow().as_ref().expect("Global RNG not initialized").rand32())
@@ -629,6 +631,7 @@ pub fn rand32() -> u32 {
 /// let transaction_id = rand64();
 /// let lease_id = rand64();
 /// ```
+#[must_use]
 pub fn rand64() -> u64 {
     ensure_global_rng_initialized();
     GLOBAL_RNG.with(|rng| rng.borrow().as_ref().expect("Global RNG not initialized").rand64())

@@ -37,6 +37,12 @@
 //! let encoded = encode_options(&options);
 //! ```
 
+// DHCPv4 protocol encoding intentionally has repetitive patterns for clarity
+// Each option has its own match arm to make the protocol specification explicit
+// Option parser must handle all DHCP option types (RFC 2132), resulting in long function
+// Protocol uses u8 for lengths, requiring intentional truncating casts
+#![allow(clippy::match_same_arms, clippy::too_many_lines, clippy::cast_possible_truncation)]
+
 use crate::dhcp::v4::constants::{
     MSG_TYPE_ACK, MSG_TYPE_DECLINE, MSG_TYPE_DISCOVER, MSG_TYPE_INFORM, MSG_TYPE_NAK,
     MSG_TYPE_OFFER, MSG_TYPE_RELEASE, MSG_TYPE_REQUEST, OPTION_AGENT_ID, OPTION_CLIENT_ID,
@@ -75,7 +81,7 @@ pub enum MessageType {
 }
 
 impl MessageType {
-    /// Convert from wire format u8 value to MessageType enum
+    /// Convert from wire format u8 value to `MessageType` enum
     ///
     /// # Errors
     ///
@@ -92,12 +98,13 @@ impl MessageType {
             MSG_TYPE_INFORM => Ok(MessageType::Inform),
             _ => Err(DhcpError::InvalidOption {
                 option_code: OPTION_MESSAGE_TYPE,
-                reason: format!("Invalid message type value: {}", value),
+                reason: format!("Invalid message type value: {value}"),
             }),
         }
     }
 
-    /// Convert MessageType enum to wire format u8 value
+    /// Convert `MessageType` enum to wire format u8 value
+    #[must_use]
     pub fn to_u8(self) -> u8 {
         match self {
             MessageType::Discover => MSG_TYPE_DISCOVER,
@@ -129,13 +136,13 @@ impl fmt::Display for MessageType {
 
 /// DHCP Option
 ///
-/// Represents all standard DHCPv4 options defined in RFC 2132 and related RFCs.
+/// Represents all standard `DHCPv4` options defined in RFC 2132 and related RFCs.
 /// Each variant contains typed data appropriate for that option.
 ///
 /// # Wire Format
 ///
 /// Most options use TLV encoding: [code: u8][length: u8][data: [u8; length]]
-/// Exceptions: OPTION_PAD (0) and OPTION_END (255) have no length or data.
+/// Exceptions: `OPTION_PAD` (0) and `OPTION_END` (255) have no length or data.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DhcpOption {
     /// Option 0: Padding byte (no length, no data)
@@ -217,6 +224,7 @@ pub enum DhcpOption {
 
 impl DhcpOption {
     /// Get the option code for this option
+    #[must_use]
     pub fn option_code(&self) -> u8 {
         match self {
             DhcpOption::Pad => OPTION_PAD,
@@ -246,6 +254,7 @@ impl DhcpOption {
     }
 
     /// Get the length of the option data (excluding code and length bytes)
+    #[must_use]
     pub fn data_len(&self) -> usize {
         match self {
             DhcpOption::Pad | DhcpOption::End => 0,
@@ -279,24 +288,24 @@ impl fmt::Display for DhcpOption {
         match self {
             DhcpOption::Pad => write!(f, "Pad"),
             DhcpOption::End => write!(f, "End"),
-            DhcpOption::Netmask(addr) => write!(f, "Netmask({})", addr),
-            DhcpOption::Router(addrs) => write!(f, "Router({:?})", addrs),
-            DhcpOption::DnsServer(addrs) => write!(f, "DnsServer({:?})", addrs),
-            DhcpOption::Hostname(s) => write!(f, "Hostname({})", s),
-            DhcpOption::DomainName(s) => write!(f, "DomainName({})", s),
-            DhcpOption::RequestedIpAddress(addr) => write!(f, "RequestedIpAddress({})", addr),
-            DhcpOption::LeaseTime(t) => write!(f, "LeaseTime({}s)", t),
-            DhcpOption::Overload(flag) => write!(f, "Overload({})", flag),
-            DhcpOption::MessageType(mt) => write!(f, "MessageType({})", mt),
-            DhcpOption::ServerId(addr) => write!(f, "ServerId({})", addr),
-            DhcpOption::ParameterRequestList(list) => write!(f, "ParameterRequestList({:?})", list),
-            DhcpOption::Message(s) => write!(f, "Message({})", s),
-            DhcpOption::RenewalTime(t) => write!(f, "RenewalTime({}s)", t),
-            DhcpOption::RebindingTime(t) => write!(f, "RebindingTime({}s)", t),
+            DhcpOption::Netmask(addr) => write!(f, "Netmask({addr})"),
+            DhcpOption::Router(addrs) => write!(f, "Router({addrs:?})"),
+            DhcpOption::DnsServer(addrs) => write!(f, "DnsServer({addrs:?})"),
+            DhcpOption::Hostname(s) => write!(f, "Hostname({s})"),
+            DhcpOption::DomainName(s) => write!(f, "DomainName({s})"),
+            DhcpOption::RequestedIpAddress(addr) => write!(f, "RequestedIpAddress({addr})"),
+            DhcpOption::LeaseTime(t) => write!(f, "LeaseTime({t}s)"),
+            DhcpOption::Overload(flag) => write!(f, "Overload({flag})"),
+            DhcpOption::MessageType(mt) => write!(f, "MessageType({mt})"),
+            DhcpOption::ServerId(addr) => write!(f, "ServerId({addr})"),
+            DhcpOption::ParameterRequestList(list) => write!(f, "ParameterRequestList({list:?})"),
+            DhcpOption::Message(s) => write!(f, "Message({s})"),
+            DhcpOption::RenewalTime(t) => write!(f, "RenewalTime({t}s)"),
+            DhcpOption::RebindingTime(t) => write!(f, "RebindingTime({t}s)"),
             DhcpOption::VendorClassId(data) => write!(f, "VendorClassId({} bytes)", data.len()),
             DhcpOption::ClientId(data) => write!(f, "ClientId({} bytes)", data.len()),
-            DhcpOption::TftpServerName(s) => write!(f, "TftpServerName({})", s),
-            DhcpOption::BootFileName(s) => write!(f, "BootFileName({})", s),
+            DhcpOption::TftpServerName(s) => write!(f, "TftpServerName({s})"),
+            DhcpOption::BootFileName(s) => write!(f, "BootFileName({s})"),
             DhcpOption::RelayAgentInfo(data) => write!(f, "RelayAgentInfo({} bytes)", data.len()),
             DhcpOption::RapidCommit => write!(f, "RapidCommit"),
             DhcpOption::Unknown { code, data } => {
@@ -419,7 +428,7 @@ pub fn parse_option(code: u8, data: &[u8]) -> Result<DhcpOption, DhcpError> {
             if !(1..=3).contains(&flag) {
                 return Err(DhcpError::InvalidOption {
                     option_code: code,
-                    reason: format!("Overload flag must be 1-3, got {}", flag),
+                    reason: format!("Overload flag must be 1-3, got {flag}"),
                 });
             }
             Ok(DhcpOption::Overload(flag))
@@ -520,7 +529,7 @@ pub fn parse_option(code: u8, data: &[u8]) -> Result<DhcpOption, DhcpError> {
 
 /// Encode a DHCP option to wire format
 ///
-/// Serializes the option using TLV encoding with BytesMut for safe buffer management.
+/// Serializes the option using TLV encoding with `BytesMut` for safe buffer management.
 /// This replaces the C implementation's manual buffer pointer manipulation.
 ///
 /// # Arguments
@@ -675,8 +684,8 @@ pub fn encode_option(option: &DhcpOption, buf: &mut BytesMut) {
 
 /// Parse a complete DHCP option list from wire format
 ///
-/// Parses options until OPTION_END is encountered or the buffer is exhausted.
-/// Handles OPTION_PAD for alignment. Uses nom parsers for safe bounds checking.
+/// Parses options until `OPTION_END` is encountered or the buffer is exhausted.
+/// Handles `OPTION_PAD` for alignment. Uses nom parsers for safe bounds checking.
 ///
 /// # Arguments
 ///
@@ -692,7 +701,7 @@ pub fn encode_option(option: &DhcpOption, buf: &mut BytesMut) {
 /// - Malformed TLV encoding
 /// - Invalid option data
 /// - Buffer overruns
-/// - Missing OPTION_END
+/// - Missing `OPTION_END`
 pub fn parse_options(input: &[u8]) -> Result<Vec<DhcpOption>, DhcpError> {
     let mut options = Vec::new();
     let mut remaining = input;
@@ -750,8 +759,8 @@ pub fn parse_options(input: &[u8]) -> Result<Vec<DhcpOption>, DhcpError> {
 
 /// Encode a list of DHCP options to wire format
 ///
-/// Serializes options in TLV format and appends OPTION_END if not already present.
-/// Uses BytesMut for safe, growable buffer management.
+/// Serializes options in TLV format and appends `OPTION_END` if not already present.
+/// Uses `BytesMut` for safe, growable buffer management.
 ///
 /// # Arguments
 ///
@@ -763,8 +772,9 @@ pub fn parse_options(input: &[u8]) -> Result<Vec<DhcpOption>, DhcpError> {
 ///
 /// # Notes
 ///
-/// - Automatically adds OPTION_END if the last option is not End
-/// - Preserves OPTION_PAD for alignment if present in input
+/// - Automatically adds `OPTION_END` if the last option is not End
+/// - Preserves `OPTION_PAD` for alignment if present in input
+#[must_use]
 pub fn encode_options(options: &[DhcpOption]) -> Bytes {
     let mut buf = BytesMut::new();
 
@@ -821,7 +831,7 @@ fn parse_ipv4_list(data: &[u8], option_code: u8) -> Result<Vec<Ipv4Addr>, DhcpEr
 fn parse_string(data: &[u8], option_code: u8) -> Result<String, DhcpError> {
     String::from_utf8(data.to_vec()).map_err(|e| DhcpError::InvalidOption {
         option_code,
-        reason: format!("Invalid UTF-8 in string option: {}", e),
+        reason: format!("Invalid UTF-8 in string option: {e}"),
     })
 }
 
@@ -852,7 +862,7 @@ fn validate_subnet_mask(addr: Ipv4Addr) -> Result<(), DhcpError> {
     } else {
         Err(DhcpError::InvalidOption {
             option_code: OPTION_NETMASK,
-            reason: format!("Invalid subnet mask: {} (must have contiguous 1 bits)", addr),
+            reason: format!("Invalid subnet mask: {addr} (must have contiguous 1 bits)"),
         })
     }
 }

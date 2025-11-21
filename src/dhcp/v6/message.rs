@@ -13,13 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! DHCPv6 message parsing module implementing safe DHCPv6 packet structure parsing.
+//! `DHCPv6` message parsing module implementing safe `DHCPv6` packet structure parsing.
 //!
 //! This module replaces C pointer arithmetic from dhcp6.c and rfc3315.c with safe Rust
-//! parsing using nom parser combinators. It provides memory-safe DHCPv6 message handling
+//! parsing using nom parser combinators. It provides memory-safe `DHCPv6` message handling
 //! with automatic bounds checking preventing buffer overflows.
 //!
-//! # DHCPv6 Message Format (RFC 3315)
+//! # `DHCPv6` Message Format (RFC 3315)
 //!
 //! ```text
 //! DHCPv6 Message Structure:
@@ -65,7 +65,7 @@
 //! The Rust implementation provides:
 //! - **Type-safe parsing**: nom parser combinators with compile-time verification
 //! - **Automatic bounds checking**: No buffer overflows possible
-//! - **Zero-copy option storage**: HashMap<u16, Vec<u8>> for O(1) option lookup
+//! - **Zero-copy option storage**: `HashMap`<u16, Vec<u8>> for O(1) option lookup
 //! - **Transaction ID preservation**: [u8; 3] array matching C's 3-byte XID
 //!
 //! # Examples
@@ -116,9 +116,9 @@ use std::collections::HashMap;
 
 use crate::error::DhcpError;
 
-/// DHCPv6 message structure with type-safe option storage.
+/// `DHCPv6` message structure with type-safe option storage.
 ///
-/// Represents a complete DHCPv6 message including header and all TLV-encoded options.
+/// Represents a complete `DHCPv6` message including header and all TLV-encoded options.
 /// Replaces C's manual buffer management with safe Rust collections.
 ///
 /// # Structure Layout
@@ -146,7 +146,7 @@ use crate::error::DhcpError;
 ///
 /// - `message_type`: Stack-allocated u8
 /// - `transaction_id`: Stack-allocated [u8; 3] array (3 bytes)
-/// - `options`: Heap-allocated HashMap with owned Vec<u8> values
+/// - `options`: Heap-allocated `HashMap` with owned Vec<u8> values
 ///
 /// # Examples
 ///
@@ -164,7 +164,7 @@ use crate::error::DhcpError;
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct DhcpV6Message {
-    /// DHCPv6 message type (SOLICIT, ADVERTISE, REQUEST, etc.)
+    /// `DHCPv6` message type (SOLICIT, ADVERTISE, REQUEST, etc.)
     ///
     /// Maps to `msg_type` field in C. Valid values are the MSG_* constants
     /// from RFC 3315 (1-13 for standard message types).
@@ -177,7 +177,7 @@ pub struct DhcpV6Message {
     ///
     /// # Wire Format
     ///
-    /// Bytes 1-3 of DHCPv6 message in big-endian order:
+    /// Bytes 1-3 of `DHCPv6` message in big-endian order:
     /// ```text
     /// [0]: High byte (bits 16-23)
     /// [1]: Middle byte (bits 8-15)
@@ -185,14 +185,14 @@ pub struct DhcpV6Message {
     /// ```
     transaction_id: [u8; 3],
 
-    /// DHCPv6 options stored as option code -> option data mapping.
+    /// `DHCPv6` options stored as option code -> option data mapping.
     ///
     /// Replaces C's linked list iteration with O(1) hash lookup. Option codes
     /// are u16 (2 bytes), option data is variable-length byte vector.
     ///
     /// # Storage Format
     ///
-    /// - Key: Option code (OPTION_CLIENT_ID, OPTION_SERVER_ID, etc.)
+    /// - Key: Option code (`OPTION_CLIENT_ID`, `OPTION_SERVER_ID`, etc.)
     /// - Value: Raw option data bytes (without code/length header)
     ///
     /// # C Equivalent
@@ -209,14 +209,14 @@ pub struct DhcpV6Message {
 }
 
 impl DhcpV6Message {
-    /// Creates a new DHCPv6 message with the specified type and transaction ID.
+    /// Creates a new `DHCPv6` message with the specified type and transaction ID.
     ///
     /// Initializes an empty message with no options. Options must be added using
     /// `add_option()` after construction.
     ///
     /// # Arguments
     ///
-    /// * `message_type` - DHCPv6 message type (MSG_SOLICIT, MSG_ADVERTISE, etc.)
+    /// * `message_type` - `DHCPv6` message type (`MSG_SOLICIT`, `MSG_ADVERTISE`, etc.)
     /// * `transaction_id` - 3-byte transaction ID for request/response matching
     ///
     /// # Returns
@@ -234,13 +234,14 @@ impl DhcpV6Message {
     /// assert_eq!(msg.message_type(), MSG_SOLICIT);
     /// assert_eq!(msg.transaction_id(), &[0x12, 0x34, 0x56]);
     /// ```
+    #[must_use]
     pub fn new(message_type: u8, transaction_id: [u8; 3]) -> Self {
         Self { message_type, transaction_id, options: HashMap::new() }
     }
 
-    /// Parses a DHCPv6 message from raw network bytes using nom parser combinators.
+    /// Parses a `DHCPv6` message from raw network bytes using nom parser combinators.
     ///
-    /// Implements safe parsing of the DHCPv6 message structure with automatic bounds
+    /// Implements safe parsing of the `DHCPv6` message structure with automatic bounds
     /// checking. Replaces C pointer arithmetic with nom's type-safe parsers.
     ///
     /// # Message Format
@@ -311,11 +312,11 @@ impl DhcpV6Message {
         // Parse using nom combinators - this provides automatic bounds checking
         match Self::parse_message(input) {
             Ok((_, message)) => Ok(message),
-            Err(e) => Err(DhcpError::ParseFailed { reason: format!("nom parsing failed: {}", e) }),
+            Err(e) => Err(DhcpError::ParseFailed { reason: format!("nom parsing failed: {e}") }),
         }
     }
 
-    /// Internal nom parser for complete DHCPv6 message structure.
+    /// Internal nom parser for complete `DHCPv6` message structure.
     ///
     /// Combines header parsing (message type + transaction ID) with option parsing
     /// using nom's combinator system for type-safe, bounds-checked parsing.
@@ -353,7 +354,7 @@ impl DhcpV6Message {
         Ok((input, Self { message_type, transaction_id, options }))
     }
 
-    /// Parses the 3-byte DHCPv6 transaction ID from network bytes.
+    /// Parses the 3-byte `DHCPv6` transaction ID from network bytes.
     ///
     /// Extracts the transaction ID as a 3-byte array in big-endian order, matching
     /// the wire format exactly. This preserves the C implementation's 3-byte XID handling.
@@ -377,9 +378,9 @@ impl DhcpV6Message {
         map(take(3usize), |bytes: &[u8]| [bytes[0], bytes[1], bytes[2]])(input)
     }
 
-    /// Parses a single DHCPv6 option in TLV (Type-Length-Value) format.
+    /// Parses a single `DHCPv6` option in TLV (Type-Length-Value) format.
     ///
-    /// DHCPv6 options follow RFC 3315 TLV encoding:
+    /// `DHCPv6` options follow RFC 3315 TLV encoding:
     /// - 2 bytes: Option code (big-endian u16)
     /// - 2 bytes: Option length (big-endian u16, length of data only)
     /// - N bytes: Option data (where N = length field value)
@@ -423,10 +424,10 @@ impl DhcpV6Message {
         Ok((input, (code, data)))
     }
 
-    /// Serializes the DHCPv6 message to network byte format.
+    /// Serializes the `DHCPv6` message to network byte format.
     ///
-    /// Constructs a complete DHCPv6 packet with header and all options in wire format.
-    /// Uses BytesMut for efficient buffer management with automatic capacity growth.
+    /// Constructs a complete `DHCPv6` packet with header and all options in wire format.
+    /// Uses `BytesMut` for efficient buffer management with automatic capacity growth.
     ///
     /// # Wire Format
     ///
@@ -475,6 +476,8 @@ impl DhcpV6Message {
             buf.put_u16(*code);
 
             // Write option length (2 bytes, big-endian)
+            // DHCPv6 options are limited to 65535 bytes by RFC 8415 specification
+            #[allow(clippy::cast_possible_truncation)]
             buf.put_u16(data.len() as u16);
 
             // Write option data
@@ -484,22 +487,22 @@ impl DhcpV6Message {
         Ok(buf.to_vec())
     }
 
-    /// Returns the DHCPv6 message type.
+    /// Returns the `DHCPv6` message type.
     ///
     /// Message type values are defined in RFC 3315:
-    /// - MSG_SOLICIT (1)
-    /// - MSG_ADVERTISE (2)
-    /// - MSG_REQUEST (3)
-    /// - MSG_CONFIRM (4)
-    /// - MSG_RENEW (5)
-    /// - MSG_REBIND (6)
-    /// - MSG_REPLY (7)
-    /// - MSG_RELEASE (8)
-    /// - MSG_DECLINE (9)
-    /// - MSG_RECONFIGURE (10)
-    /// - MSG_INFORMATION_REQUEST (11)
-    /// - MSG_RELAY_FORW (12)
-    /// - MSG_RELAY_REPL (13)
+    /// - `MSG_SOLICIT` (1)
+    /// - `MSG_ADVERTISE` (2)
+    /// - `MSG_REQUEST` (3)
+    /// - `MSG_CONFIRM` (4)
+    /// - `MSG_RENEW` (5)
+    /// - `MSG_REBIND` (6)
+    /// - `MSG_REPLY` (7)
+    /// - `MSG_RELEASE` (8)
+    /// - `MSG_DECLINE` (9)
+    /// - `MSG_RECONFIGURE` (10)
+    /// - `MSG_INFORMATION_REQUEST` (11)
+    /// - `MSG_RELAY_FORW` (12)
+    /// - `MSG_RELAY_REPL` (13)
     ///
     /// # Examples
     ///
@@ -509,13 +512,14 @@ impl DhcpV6Message {
     /// let msg = DhcpV6Message::new(MSG_SOLICIT, [0x12, 0x34, 0x56]);
     /// assert_eq!(msg.message_type(), MSG_SOLICIT);
     /// ```
+    #[must_use]
     pub fn message_type(&self) -> u8 {
         self.message_type
     }
 
     /// Returns a reference to the 3-byte transaction ID.
     ///
-    /// The transaction ID is used to match requests with responses in DHCPv6
+    /// The transaction ID is used to match requests with responses in `DHCPv6`
     /// exchanges. Clients must copy the transaction ID from requests into responses.
     ///
     /// # Wire Format
@@ -537,6 +541,7 @@ impl DhcpV6Message {
     /// // Use same transaction ID in ADVERTISE response
     /// let advertise = DhcpV6Message::new(MSG_ADVERTISE, xid);
     /// ```
+    #[must_use]
     pub fn transaction_id(&self) -> &[u8; 3] {
         &self.transaction_id
     }
@@ -548,7 +553,7 @@ impl DhcpV6Message {
     ///
     /// # Arguments
     ///
-    /// * `code` - DHCPv6 option code (OPTION_CLIENT_ID, OPTION_SERVER_ID, etc.)
+    /// * `code` - `DHCPv6` option code (`OPTION_CLIENT_ID`, `OPTION_SERVER_ID`, etc.)
     ///
     /// # Returns
     ///
@@ -571,14 +576,15 @@ impl DhcpV6Message {
     ///     // Rapid commit requested
     /// }
     /// ```
+    #[must_use]
     pub fn get_option(&self, code: u16) -> Option<&[u8]> {
-        self.options.get(&code).map(|v| v.as_slice())
+        self.options.get(&code).map(std::vec::Vec::as_slice)
     }
 
     /// Returns an iterator over all options in the message.
     ///
     /// Each item is a tuple of (option code, option data bytes). The iteration
-    /// order is unspecified (HashMap iteration order).
+    /// order is unspecified (`HashMap` iteration order).
     ///
     /// # Returns
     ///
@@ -606,7 +612,7 @@ impl DhcpV6Message {
     ///
     /// # Arguments
     ///
-    /// * `code` - DHCPv6 option code (OPTION_CLIENT_ID, OPTION_SERVER_ID, etc.)
+    /// * `code` - `DHCPv6` option code (`OPTION_CLIENT_ID`, `OPTION_SERVER_ID`, etc.)
     /// * `data` - Raw option data bytes (without TLV header)
     ///
     /// # Examples
@@ -635,7 +641,7 @@ impl DhcpV6Message {
     ///
     /// # Arguments
     ///
-    /// * `code` - DHCPv6 option code to remove
+    /// * `code` - `DHCPv6` option code to remove
     ///
     /// # Returns
     ///

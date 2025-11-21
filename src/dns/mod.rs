@@ -228,12 +228,12 @@ use tracing::{debug, info, instrument, warn};
 
 // Internal module declarations
 pub mod cache;
-pub mod forwarder;
-pub mod protocol;
-pub mod upstream;
 pub mod edns0;
 pub mod filter;
+pub mod forwarder;
 pub mod matcher;
+pub mod protocol;
+pub mod upstream;
 
 // Conditional feature modules
 #[cfg(feature = "auth")]
@@ -305,7 +305,7 @@ use matcher::DomainMatcher;
 /// let response = dns_service.resolve_query(query).await?;
 /// ```
 pub struct DnsService {
-    /// DNS cache with concurrent access via RwLock.
+    /// DNS cache with concurrent access via `RwLock`.
     ///
     /// Multiple async tasks can read simultaneously, but writes require exclusive access.
     /// Cache lookups happen frequently (every query), so read performance is critical.
@@ -384,6 +384,7 @@ impl DnsService {
     ///     .build()
     ///     .await?;
     /// ```
+    #[must_use]
     pub fn builder() -> DnsServiceBuilder {
         DnsServiceBuilder::new()
     }
@@ -477,9 +478,7 @@ impl DnsService {
         // Step 1: Cache lookup (fastest path)
         {
             let mut cache = self.cache.write().await;
-            if let Some(cached_entry) = cache
-                .find_by_name(&query.name, query.qtype)
-            {
+            if let Some(cached_entry) = cache.find_by_name(&query.name, query.qtype) {
                 info!("Cache hit for {} type {:?}", query.name, query.qtype);
                 return self.build_response_from_cache(&query, &cached_entry).await;
             }
@@ -497,13 +496,11 @@ impl DnsService {
                 qtype: query.qtype,
                 qclass: query.qclass,
             });
-            
-            if let Some(auth_message) = auth_service.answer_auth_query(&query_message, client_addr).await? {
-                info!(
-                    "Authoritative answer for {} type {:?}",
-                    query.name,
-                    query.qtype
-                );
+
+            if let Some(auth_message) =
+                auth_service.answer_auth_query(&query_message, client_addr).await?
+            {
+                info!("Authoritative answer for {} type {:?}", query.name, query.qtype);
                 // Convert DnsMessage to DnsResponse
                 let response = DnsResponse::from_message(auth_message);
                 return Ok(response);
@@ -529,6 +526,7 @@ impl DnsService {
     /// # Returns
     ///
     /// A `Result<DnsResponse>` containing the constructed response
+    #[allow(clippy::unused_async)] // Maintains uniform async API across DNS service methods
     async fn build_response_from_cache(
         &self,
         query: &DnsQuery,
@@ -544,7 +542,7 @@ impl DnsService {
                 qclass: query.qclass,
             })
             .build();
-        
+
         let mut response = DnsResponse::from_query(&query_message);
         response.add_answer(cached_entry.record().clone());
         response.set_authoritative(false); // Cache responses are not authoritative
@@ -638,7 +636,7 @@ impl DnsService {
     /// # Performance
     ///
     /// Typically completes in <100ms. Does not block query processing - uses
-    /// RwLock to allow concurrent reads during configuration update.
+    /// `RwLock` to allow concurrent reads during configuration update.
     #[instrument(skip(self, _new_config))]
     pub async fn reload_config(&self, _new_config: Arc<DnsConfig>) {
         info!("Reloading DNS configuration");
@@ -647,13 +645,13 @@ impl DnsService {
         // - Update upstream pool with new server list
         // - Update domain matcher with new rules
         // - Update authoritative zones if feature enabled
-        // 
+        //
         // For now, this is a stub that just logs the reload
         // Full implementation requires:
         // 1. UpstreamPool::update_servers() method
-        // 2. DomainMatcher::reload_patterns() method  
+        // 2. DomainMatcher::reload_patterns() method
         // 3. AuthService::reload_zones() method (if auth feature)
-        
+
         warn!("Configuration reload not yet implemented - restart required for config changes");
     }
 }
@@ -692,10 +690,10 @@ pub struct DnsServiceBuilder {
     config: Option<Arc<DnsConfig>>,
     cache_size: Option<usize>,
     upstream_servers: Option<Vec<String>>,
-    
+
     #[cfg(feature = "auth")]
     auth_zones: Option<Vec<AuthoritativeZone>>,
-    
+
     #[cfg(feature = "dnssec")]
     enable_dnssec: bool,
 }
@@ -706,6 +704,7 @@ impl DnsServiceBuilder {
     /// # Returns
     ///
     /// A new `DnsServiceBuilder` with no components configured
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -719,6 +718,7 @@ impl DnsServiceBuilder {
     /// # Returns
     ///
     /// Self for method chaining
+    #[must_use]
     pub fn config(mut self, config: Arc<DnsConfig>) -> Self {
         self.config = Some(config);
         self
@@ -733,6 +733,7 @@ impl DnsServiceBuilder {
     /// # Returns
     ///
     /// Self for method chaining
+    #[must_use]
     pub fn cache_size(mut self, size: usize) -> Self {
         self.cache_size = Some(size);
         self
@@ -747,6 +748,7 @@ impl DnsServiceBuilder {
     /// # Returns
     ///
     /// Self for method chaining
+    #[must_use]
     pub fn upstream_servers(mut self, servers: Vec<String>) -> Self {
         self.upstream_servers = Some(servers);
         self
@@ -764,6 +766,7 @@ impl DnsServiceBuilder {
     ///
     /// Self for method chaining
     #[cfg(feature = "auth")]
+    #[must_use]
     pub fn auth_zones(mut self, zones: Vec<AuthoritativeZone>) -> Self {
         self.auth_zones = Some(zones);
         self
@@ -781,6 +784,7 @@ impl DnsServiceBuilder {
     ///
     /// Self for method chaining
     #[cfg(feature = "dnssec")]
+    #[must_use]
     pub fn enable_dnssec(mut self, enable: bool) -> Self {
         self.enable_dnssec = enable;
         self
@@ -809,6 +813,7 @@ impl DnsServiceBuilder {
     ///     .build()
     ///     .await?;
     /// ```
+    #[allow(clippy::unused_async)] // Builder pattern maintains async API for future async initialization
     pub async fn build(self) -> Result<DnsService> {
         let config = self
             .config
@@ -822,11 +827,8 @@ impl DnsServiceBuilder {
         let upstream_pool = Arc::new(RwLock::new(UpstreamPool::new()));
 
         // Create forwarder with cache and upstream pool references
-        let forwarder = Arc::new(DnsForwarder::new(
-            cache.clone(),
-            upstream_pool.clone(),
-            config.clone(),
-        ));
+        let forwarder =
+            Arc::new(DnsForwarder::new(cache.clone(), upstream_pool.clone(), config.clone()));
 
         // Create EDNS0 handler
         let edns0_handler = Arc::new(Edns0Handler::new());
@@ -855,7 +857,8 @@ impl DnsServiceBuilder {
             if config.trust_anchors.is_empty() {
                 return Err(DnsError::ConfigurationError(
                     "DNSSEC enabled but no trust anchors configured".to_string(),
-                ).into());
+                )
+                .into());
             }
             // Create TrustAnchorStore from configured trust anchors
             let mut trust_store = TrustAnchorStore::new();
@@ -863,7 +866,7 @@ impl DnsServiceBuilder {
                 trust_store.parse_and_add_anchor(anchor_str)?;
             }
             let trust_anchors = Arc::new(RwLock::new(trust_store));
-            
+
             Some(Arc::new(DnssecValidator::new(trust_anchors, cache.clone())))
         } else {
             None
@@ -959,11 +962,7 @@ mod tests {
     async fn test_dns_service_builder() {
         // Test that builder pattern works with minimal configuration
         let config = Arc::new(DnsConfig::default());
-        let result = DnsServiceBuilder::new()
-            .config(config)
-            .cache_size(100)
-            .build()
-            .await;
+        let result = DnsServiceBuilder::new().config(config).cache_size(100).build().await;
 
         assert!(result.is_ok(), "Builder should succeed with valid config");
     }
@@ -973,21 +972,15 @@ mod tests {
         // Test that builder fails without config
         let result = DnsServiceBuilder::new().cache_size(100).build().await;
 
-        assert!(
-            result.is_err(),
-            "Builder should fail without config"
-        );
+        assert!(result.is_err(), "Builder should fail without config");
     }
 
     #[tokio::test]
     async fn test_cache_stats_default() {
         // Test that cache stats can be retrieved from new service
         let config = Arc::new(DnsConfig::default());
-        let service = DnsServiceBuilder::new()
-            .config(config)
-            .build()
-            .await
-            .expect("Service creation failed");
+        let service =
+            DnsServiceBuilder::new().config(config).build().await.expect("Service creation failed");
 
         let stats = service.get_cache_stats().await;
         assert_eq!(stats.current_size, 0, "New cache should be empty");
@@ -999,11 +992,8 @@ mod tests {
     async fn test_clear_cache() {
         // Test that clearing cache works without errors
         let config = Arc::new(DnsConfig::default());
-        let service = DnsServiceBuilder::new()
-            .config(config)
-            .build()
-            .await
-            .expect("Service creation failed");
+        let service =
+            DnsServiceBuilder::new().config(config).build().await.expect("Service creation failed");
 
         // Should not panic or error
         service.clear_cache().await;

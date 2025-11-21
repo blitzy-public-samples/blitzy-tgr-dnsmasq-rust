@@ -17,7 +17,7 @@
 //! DNS Message Structure and Parsing (RFC 1035)
 //!
 //! This module provides complete DNS packet representation, parsing, and serialization
-//! per RFC 1035. It replaces C struct dns_header and packet parsing functions from
+//! per RFC 1035. It replaces C struct `dns_header` and packet parsing functions from
 //! rfc1035.c with type-safe Rust structs and Result-based error handling.
 //!
 //! # Key Types
@@ -64,10 +64,14 @@
 //! let packet_bytes = response.to_bytes()?;
 //! ```
 
+// DNS protocol (RFC 1035) uses similar field names (qdcount, ancount, nscount, arcount)
+// DNS message header uses u16 for section counts, requiring intentional truncating casts
+#![allow(clippy::similar_names, clippy::cast_possible_truncation)]
+
 use bytes::{BufMut, BytesMut};
 
 use super::compression::{compress_name, decompress_name, CompressionMap};
-use super::constants::*;
+use super::constants::PACKETSZ;
 use super::name::DomainName;
 use super::record::ResourceRecord;
 use crate::error::{DnsError, DnsmasqError, Result};
@@ -101,16 +105,18 @@ impl DnsFlags {
     /// Create flags from two header bytes (byte 3 and byte 4).
     #[must_use]
     pub fn from_bytes(hb3: u8, hb4: u8) -> Self {
-        let raw = ((hb3 as u16) << 8) | (hb4 as u16);
+        let raw = (u16::from(hb3) << 8) | u16::from(hb4);
         Self { raw }
     }
 
     /// Get raw 16-bit flags value.
+    #[must_use]
     pub fn raw(&self) -> u16 {
         self.raw
     }
 
     /// Convert flags to two header bytes (hb3, hb4).
+    #[must_use]
     pub fn to_bytes(&self) -> (u8, u8) {
         let hb3 = (self.raw >> 8) as u8;
         let hb4 = (self.raw & 0xFF) as u8;
@@ -118,6 +124,7 @@ impl DnsFlags {
     }
 
     /// Get QR bit: false = query, true = response.
+    #[must_use]
     pub fn qr(&self) -> bool {
         (self.raw & 0x8000) != 0
     }
@@ -132,16 +139,18 @@ impl DnsFlags {
     }
 
     /// Get OPCODE (4 bits): 0=QUERY, 1=IQUERY, 2=STATUS, 3=reserved, 4=NOTIFY, 5=UPDATE.
+    #[must_use]
     pub fn opcode(&self) -> u8 {
         ((self.raw >> 11) & 0x0F) as u8
     }
 
     /// Set OPCODE (4 bits).
     pub fn set_opcode(&mut self, value: u8) {
-        self.raw = (self.raw & !0x7800) | (((value & 0x0F) as u16) << 11);
+        self.raw = (self.raw & !0x7800) | (u16::from(value & 0x0F) << 11);
     }
 
     /// Get AA bit: Authoritative Answer.
+    #[must_use]
     pub fn aa(&self) -> bool {
         (self.raw & 0x0400) != 0
     }
@@ -156,6 +165,7 @@ impl DnsFlags {
     }
 
     /// Get TC bit: Truncated (packet too large for UDP).
+    #[must_use]
     pub fn tc(&self) -> bool {
         (self.raw & 0x0200) != 0
     }
@@ -170,6 +180,7 @@ impl DnsFlags {
     }
 
     /// Get RD bit: Recursion Desired.
+    #[must_use]
     pub fn rd(&self) -> bool {
         (self.raw & 0x0100) != 0
     }
@@ -184,6 +195,7 @@ impl DnsFlags {
     }
 
     /// Get RA bit: Recursion Available.
+    #[must_use]
     pub fn ra(&self) -> bool {
         (self.raw & 0x0080) != 0
     }
@@ -198,6 +210,7 @@ impl DnsFlags {
     }
 
     /// Get AD bit: Authenticated Data (DNSSEC).
+    #[must_use]
     pub fn ad(&self) -> bool {
         (self.raw & 0x0020) != 0
     }
@@ -212,6 +225,7 @@ impl DnsFlags {
     }
 
     /// Get CD bit: Checking Disabled (DNSSEC).
+    #[must_use]
     pub fn cd(&self) -> bool {
         (self.raw & 0x0010) != 0
     }
@@ -226,13 +240,14 @@ impl DnsFlags {
     }
 
     /// Get RCODE (4 bits): Response code (0=NOERROR, 1=FORMERR, 2=SERVFAIL, 3=NXDOMAIN, etc.).
+    #[must_use]
     pub fn rcode(&self) -> u8 {
         (self.raw & 0x000F) as u8
     }
 
     /// Set RCODE (4 bits): Response code.
     pub fn set_rcode(&mut self, value: u8) {
-        self.raw = (self.raw & !0x000F) | ((value & 0x0F) as u16);
+        self.raw = (self.raw & !0x000F) | u16::from(value & 0x0F);
     }
 }
 
@@ -276,7 +291,7 @@ impl DnsHeader {
 
     /// Parse DNS header from 12-byte slice.
     ///
-    /// Returns the header or DnsError::ParseFailed if input is too short.
+    /// Returns the header or `DnsError::ParseFailed` if input is too short.
     pub fn from_bytes(input: &[u8]) -> Result<Self> {
         if input.len() < 12 {
             return Err(DnsmasqError::Dns(DnsError::ParseFailed {
@@ -333,7 +348,7 @@ impl Question {
 
     /// Parse question from wire format.
     ///
-    /// Returns (Question, bytes_consumed) or error.
+    /// Returns (Question, `bytes_consumed`) or error.
     /// packet parameter is the full packet for decompression.
     pub fn from_bytes(input: &[u8], packet: &[u8], offset: usize) -> Result<(Self, usize)> {
         // Decompress domain name - returns (absolute_offset_after_name, domain_name_string)
@@ -421,7 +436,7 @@ impl DnsMessage {
     /// 4. Parse authority section (NSCOUNT entries)
     /// 5. Parse additional section (ARCOUNT entries)
     ///
-    /// Returns DnsMessage or DnsError::ParseFailed.
+    /// Returns `DnsMessage` or `DnsError::ParseFailed`.
     pub fn from_bytes(packet: &[u8]) -> Result<Self> {
         // Parse header
         let header = DnsHeader::from_bytes(packet)?;
@@ -456,7 +471,7 @@ impl DnsMessage {
             let (remaining, rr) = ResourceRecord::from_wire(input_before, packet).map_err(|e| {
                 DnsmasqError::Dns(DnsError::ParseFailed {
                     server: "local".to_string(),
-                    reason: format!("Failed to parse answer RR: {:?}", e),
+                    reason: format!("Failed to parse answer RR: {e:?}"),
                 })
             })?;
             let consumed = input_before.len() - remaining.len();
@@ -522,7 +537,7 @@ impl DnsMessage {
     /// 4. Authority section with compressed names and RDATA
     /// 5. Additional section with compressed names and RDATA
     ///
-    /// Returns packet bytes or DnsError::SerializeFailed.
+    /// Returns packet bytes or `DnsError::SerializeFailed`.
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut buf = BytesMut::with_capacity(PACKETSZ);
         let mut compression = CompressionMap::new();
@@ -597,7 +612,7 @@ impl DnsMessage {
                 reason: "RDATA length exceeds maximum (65535 bytes)".to_string(),
             }));
         }
-        buf.put_u16(rdata_bytes.len() as u16);
+        buf.put_u16(u16::try_from(rdata_bytes.len()).expect("RDATA length validated <= 65535"));
 
         // Write RDATA bytes
         buf.put_slice(&rdata_bytes);
@@ -606,16 +621,19 @@ impl DnsMessage {
     }
 
     /// Create builder for constructing DNS messages with fluent API.
+    #[must_use]
     pub fn builder() -> DnsMessageBuilder {
         DnsMessageBuilder::new()
     }
 
     /// Get message ID.
+    #[must_use]
     pub fn id(&self) -> u16 {
         self.header.id
     }
 
     /// Get immutable reference to flags.
+    #[must_use]
     pub fn flags(&self) -> &DnsFlags {
         &self.header.flags
     }
@@ -626,11 +644,13 @@ impl DnsMessage {
     }
 
     /// Check if message is a query (QR bit = 0).
+    #[must_use]
     pub fn is_query(&self) -> bool {
         !self.header.flags.qr()
     }
 
     /// Check if message is a response (QR bit = 1).
+    #[must_use]
     pub fn is_response(&self) -> bool {
         self.header.flags.qr()
     }
@@ -651,6 +671,7 @@ impl DnsMessage {
     }
 
     /// Get response code (RCODE).
+    #[must_use]
     pub fn get_rcode(&self) -> u8 {
         self.header.flags.rcode()
     }
@@ -661,21 +682,25 @@ impl DnsMessage {
     }
 
     /// Get question count.
+    #[must_use]
     pub fn qdcount(&self) -> u16 {
         self.questions.len() as u16
     }
 
     /// Get answer count.
+    #[must_use]
     pub fn ancount(&self) -> u16 {
         self.answers.len() as u16
     }
 
     /// Get authority count.
+    #[must_use]
     pub fn nscount(&self) -> u16 {
         self.authority.len() as u16
     }
 
     /// Get additional count.
+    #[must_use]
     pub fn arcount(&self) -> u16 {
         self.additional.len() as u16
     }
@@ -807,6 +832,7 @@ impl DnsMessageBuilder {
     }
 
     /// Build and return the DNS message.
+    #[must_use]
     pub fn build(self) -> DnsMessage {
         self.message
     }
@@ -835,6 +861,7 @@ impl DnsQuery {
     /// Extract query from first question in message.
     ///
     /// Returns None if message has no questions.
+    #[must_use]
     pub fn from_message(message: &DnsMessage) -> Option<Self> {
         message.questions.first().map(|q| Self {
             name: q.qname.clone(),
@@ -856,7 +883,7 @@ impl DnsResponse {
     pub fn from_query(query_message: &DnsMessage) -> Self {
         let mut message = DnsMessage::new(query_message.id());
         message.set_response();
-        message.questions = query_message.questions.clone();
+        message.questions.clone_from(&query_message.questions);
         Self { message }
     }
 
@@ -867,6 +894,7 @@ impl DnsResponse {
     }
 
     /// Get underlying message.
+    #[must_use]
     pub fn to_message(self) -> DnsMessage {
         self.message
     }

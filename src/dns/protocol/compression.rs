@@ -25,7 +25,7 @@
 //! - Compression pointer validation with maximum 255 hop limit
 //! - Bounds checking for all pointer dereferences
 //! - Circular reference detection
-//! - CompressionMap for building compression dictionaries during packet construction
+//! - `CompressionMap` for building compression dictionaries during packet construction
 //! - Safe label escaping for special characters (NUL, dot, escape byte)
 //!
 //! # RFC Compliance
@@ -46,7 +46,7 @@ use std::collections::HashMap;
 
 /// Maximum number of compression pointer hops allowed per RFC 1035 to prevent infinite loops.
 ///
-/// This matches the C implementation's hop limit in extract_name() and prevents malicious
+/// This matches the C implementation's hop limit in `extract_name()` and prevents malicious
 /// packets from causing infinite loops through circular compression pointer references.
 const MAX_COMPRESSION_HOPS: usize = 255;
 
@@ -56,7 +56,7 @@ const MAX_COMPRESSION_HOPS: usize = 255;
 /// pointers where the remaining 14 bits specify an offset from the packet start.
 const COMPRESSION_POINTER_MASK: u8 = 0xC0;
 
-/// CompressionMap tracks label offsets for compression pointer generation during packet construction.
+/// `CompressionMap` tracks label offsets for compression pointer generation during packet construction.
 ///
 /// Maps label sequences to their packet offsets, enabling optimal compression pointer insertion
 /// when the same domain name or suffix appears multiple times in a packet. This replaces manual
@@ -81,6 +81,7 @@ pub struct CompressionMap {
 
 impl CompressionMap {
     /// Creates a new empty compression map.
+    #[must_use]
     pub fn new() -> Self {
         Self { offsets: HashMap::new() }
     }
@@ -134,6 +135,7 @@ impl CompressionMap {
     /// # Returns
     ///
     /// The packet offset if an exact match is found, or None otherwise.
+    #[must_use]
     pub fn find_exact(&self, name: &[u8]) -> Option<usize> {
         self.offsets.get(name).copied()
     }
@@ -150,6 +152,7 @@ impl CompressionMap {
     /// # Returns
     ///
     /// The packet offset if found, or None if no matching suffix exists.
+    #[must_use]
     pub fn find_suffix(&self, name: &[u8]) -> Option<usize> {
         // Try exact match first
         if let Some(&offset) = self.offsets.get(name) {
@@ -184,12 +187,14 @@ impl CompressionMap {
     }
 
     /// Returns the number of recorded compression mappings.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.offsets.len()
     }
 
     /// Returns true if the map contains no compression mappings.
     #[allow(dead_code)]
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.offsets.is_empty()
     }
@@ -207,7 +212,7 @@ impl Default for CompressionMap {
 /// following compression pointers to reconstruct the complete name. Implements safety
 /// checks for infinite loops (max 255 hops), bounds validation, and length limits.
 ///
-/// This replaces the C extract_name() function with safe Rust operations using nom parsers.
+/// This replaces the C `extract_name()` function with safe Rust operations using nom parsers.
 ///
 /// # Arguments
 ///
@@ -287,10 +292,7 @@ pub fn decompress_name(packet: &[u8], offset: usize) -> Result<(usize, String), 
             if hops > MAX_COMPRESSION_HOPS {
                 return Err(DnsError::ParseFailed {
                     server: "local".to_string(),
-                    reason: format!(
-                        "compression hop limit exceeded (max {})",
-                        MAX_COMPRESSION_HOPS
-                    ),
+                    reason: format!("compression hop limit exceeded (max {MAX_COMPRESSION_HOPS})"),
                 });
             }
 
@@ -315,7 +317,7 @@ pub fn decompress_name(packet: &[u8], offset: usize) -> Result<(usize, String), 
         if (label_len & 0xC0) != 0 {
             return Err(DnsError::ParseFailed {
                 server: "local".to_string(),
-                reason: format!("unsupported label type: 0x{:02X}", label_len),
+                reason: format!("unsupported label type: 0x{label_len:02X}"),
             });
         }
 
@@ -324,7 +326,7 @@ pub fn decompress_name(packet: &[u8], offset: usize) -> Result<(usize, String), 
         if len > MAXLABEL {
             return Err(DnsError::InvalidName {
                 name: result.clone(),
-                reason: format!("label length {} exceeds maximum {}", len, MAXLABEL),
+                reason: format!("label length {len} exceeds maximum {MAXLABEL}"),
             });
         }
 
@@ -372,7 +374,7 @@ pub fn decompress_name(packet: &[u8], offset: usize) -> Result<(usize, String), 
 ///
 /// # Returns
 ///
-/// The number of bytes written to the buffer, or DnsError if compression fails.
+/// The number of bytes written to the buffer, or `DnsError` if compression fails.
 ///
 /// # Example
 ///
@@ -387,7 +389,7 @@ pub fn compress_name(
     mut compression_map: Option<&mut CompressionMap>,
 ) -> Result<usize, DnsError> {
     let initial_len = buffer.len();
-    eprintln!("[compress_name] Starting compression of '{}' at offset {}", name, initial_len);
+    eprintln!("[compress_name] Starting compression of '{name}' at offset {initial_len}");
 
     // Handle empty name (root)
     if name.is_empty() || name == "." {
@@ -408,13 +410,15 @@ pub fn compress_name(
         // Check if we can use a compression pointer for remaining labels
         if let Some(map) = compression_map.as_mut() {
             let remaining_wire = encode_labels_to_wire(&labels[i..])?;
-            eprintln!("[compress_name] Checking map for exact match starting at label {}", i);
+            eprintln!("[compress_name] Checking map for exact match starting at label {i}");
 
             if let Some(offset) = map.find_exact(&remaining_wire) {
-                eprintln!("[compress_name] Found exact match in map at offset {}, writing compression pointer", offset);
+                eprintln!("[compress_name] Found exact match in map at offset {offset}, writing compression pointer");
                 // Write compression pointer (14-bit offset with top 2 bits set)
                 if offset <= 0x3FFF {
                     // Maximum 14-bit value
+                    // Cast is safe: offset validated to be <= 0x3FFF (14-bit value fits in u16)
+                    #[allow(clippy::cast_possible_truncation)]
                     let pointer = 0xC000 | (offset as u16);
                     buffer.put_u16(pointer);
                     eprintln!("[compress_name] Wrote compression pointer 0x{:04X}, final buffer length: {}", pointer, buffer.len());
@@ -424,8 +428,7 @@ pub fn compress_name(
                         // We wrote some labels before using compression
                         let written_wire = &buffer[name_start_offset..buffer.len()];
                         eprintln!(
-                            "[compress_name] Adding partial name to map at offset {}",
-                            name_start_offset
+                            "[compress_name] Adding partial name to map at offset {name_start_offset}"
                         );
                         map.add_name(written_wire, name_start_offset);
                     }
@@ -442,12 +445,14 @@ pub fn compress_name(
         if label.len() > MAXLABEL {
             return Err(DnsError::InvalidName {
                 name: name.to_string(),
-                reason: format!("label '{}' exceeds maximum length {}", label, MAXLABEL),
+                reason: format!("label '{label}' exceeds maximum length {MAXLABEL}"),
             });
         }
 
         // Escape and encode label
         let escaped = escape_label(label.as_bytes());
+        // Cast is safe: label length validated to be <= MAXLABEL (63), which fits in u8
+        #[allow(clippy::cast_possible_truncation)]
         buffer.put_u8(escaped.len() as u8);
         buffer.extend_from_slice(&escaped);
         eprintln!(
@@ -466,7 +471,7 @@ pub fn compress_name(
     // (if we used compression, we would have returned early above)
     if let Some(map) = compression_map.as_mut() {
         let written_wire = &buffer[name_start_offset..buffer.len()];
-        eprintln!("[compress_name] Adding complete name to map at offset {}", name_start_offset);
+        eprintln!("[compress_name] Adding complete name to map at offset {name_start_offset}");
         map.add_name(written_wire, name_start_offset);
     }
 
@@ -481,11 +486,13 @@ fn encode_labels_to_wire(labels: &[&str]) -> Result<Vec<u8>, DnsError> {
         if label.len() > MAXLABEL {
             return Err(DnsError::InvalidName {
                 name: labels.join("."),
-                reason: format!("label '{}' exceeds maximum length {}", label, MAXLABEL),
+                reason: format!("label '{label}' exceeds maximum length {MAXLABEL}"),
             });
         }
 
         let escaped = escape_label(label.as_bytes());
+        // Cast is safe: label length validated to be <= MAXLABEL (63), which fits in u8
+        #[allow(clippy::cast_possible_truncation)]
         result.push(escaped.len() as u8);
         result.extend_from_slice(&escaped);
     }
@@ -497,11 +504,11 @@ fn encode_labels_to_wire(labels: &[&str]) -> Result<Vec<u8>, DnsError> {
 /// Escapes special characters in a DNS label per RFC 1035.
 ///
 /// DNS labels can contain any byte value, but certain bytes need escaping:
-/// - NUL byte (0x00): Escaped as [NAME_ESCAPE, 0x01]
-/// - Dot (0x2E): Escaped as [NAME_ESCAPE, 0x2F]  
-/// - Escape byte itself (NAME_ESCAPE): Escaped as [NAME_ESCAPE, NAME_ESCAPE+1]
+/// - NUL byte (0x00): Escaped as [`NAME_ESCAPE`, 0x01]
+/// - Dot (0x2E): Escaped as [`NAME_ESCAPE`, 0x2F]  
+/// - Escape byte itself (`NAME_ESCAPE)`: Escaped as [`NAME_ESCAPE`, `NAME_ESCAPE+1`]
 ///
-/// This matches the C implementation's escaping logic in extract_name().
+/// This matches the C implementation's escaping logic in `extract_name()`.
 ///
 /// # Arguments
 ///
@@ -510,6 +517,7 @@ fn encode_labels_to_wire(labels: &[&str]) -> Result<Vec<u8>, DnsError> {
 /// # Returns
 ///
 /// Vector containing escaped label bytes
+#[must_use]
 pub fn escape_label(label: &[u8]) -> Vec<u8> {
     let mut result = Vec::with_capacity(label.len());
 
@@ -527,7 +535,7 @@ pub fn escape_label(label: &[u8]) -> Vec<u8> {
 
 /// Unescapes a DNS label, reversing the escape encoding.
 ///
-/// Reverses the escaping applied by `escape_label()`, converting NAME_ESCAPE sequences
+/// Reverses the escaping applied by `escape_label()`, converting `NAME_ESCAPE` sequences
 /// back to their original byte values.
 ///
 /// # Arguments
@@ -536,7 +544,7 @@ pub fn escape_label(label: &[u8]) -> Vec<u8> {
 ///
 /// # Returns
 ///
-/// Unescaped label as a String, or DnsError if escape sequence is malformed.
+/// Unescaped label as a String, or `DnsError` if escape sequence is malformed.
 pub fn unescape_label(label: &[u8]) -> Result<String, DnsError> {
     let mut result = Vec::with_capacity(label.len());
     let mut i = 0;
@@ -570,7 +578,7 @@ pub fn unescape_label(label: &[u8]) -> Result<String, DnsError> {
                 if b.is_ascii_graphic() && *b != b'\\' {
                     (*b as char).to_string()
                 } else {
-                    format!("\\x{:02X}", b)
+                    format!("\\x{b:02X}")
                 }
             })
             .collect())
@@ -602,6 +610,7 @@ pub fn unescape_label(label: &[u8]) -> Result<String, DnsError> {
 /// validate_compression(&packet_bytes)?;
 /// // Safe to parse packet, compression pointers are valid
 /// ```
+#[allow(clippy::similar_names)] // RFC 1035 DNS header field names (qdcount, ancount, nscount, arcount) are intentionally similar
 pub fn validate_compression(packet: &[u8]) -> Result<(), DnsError> {
     // DNS header is 12 bytes minimum
     if packet.len() < 12 {
@@ -611,11 +620,14 @@ pub fn validate_compression(packet: &[u8]) -> Result<(), DnsError> {
         });
     }
 
-    // Parse header to get section counts
-    let qdcount = u16::from_be_bytes([packet[4], packet[5]]) as usize;
-    let ancount = u16::from_be_bytes([packet[6], packet[7]]) as usize;
-    let nscount = u16::from_be_bytes([packet[8], packet[9]]) as usize;
-    let arcount = u16::from_be_bytes([packet[10], packet[11]]) as usize;
+    // Parse header to get section counts (standard RFC 1035 DNS header field names)
+    let (qdcount, ancount, nscount, arcount);
+    {
+        qdcount = u16::from_be_bytes([packet[4], packet[5]]) as usize;
+        ancount = u16::from_be_bytes([packet[6], packet[7]]) as usize;
+        nscount = u16::from_be_bytes([packet[8], packet[9]]) as usize;
+        arcount = u16::from_be_bytes([packet[10], packet[11]]) as usize;
+    }
 
     let mut offset = 12; // Start after header
 
@@ -742,7 +754,7 @@ fn validate_name_at_offset(packet: &[u8], start_offset: usize) -> Result<usize, 
         if (label_len & 0xC0) != 0 {
             return Err(DnsError::ParseFailed {
                 server: "local".to_string(),
-                reason: format!("unsupported label type: 0x{:02X}", label_len),
+                reason: format!("unsupported label type: 0x{label_len:02X}"),
             });
         }
 
@@ -751,7 +763,7 @@ fn validate_name_at_offset(packet: &[u8], start_offset: usize) -> Result<usize, 
         if len > MAXLABEL {
             return Err(DnsError::ParseFailed {
                 server: "local".to_string(),
-                reason: format!("label length {} exceeds maximum {}", len, MAXLABEL),
+                reason: format!("label length {len} exceeds maximum {MAXLABEL}"),
             });
         }
 

@@ -55,7 +55,7 @@ use std::path::PathBuf;
 /// Dnsmasq - A lightweight DNS forwarder and DHCP server.
 ///
 /// Command-line arguments for dnsmasq daemon. Provides DNS forwarding, caching,
-/// DHCP server, DHCPv6, IPv6 router advertisements, and TFTP server functionality.
+/// DHCP server, `DHCPv6`, IPv6 router advertisements, and TFTP server functionality.
 /// All options can also be specified in /etc/dnsmasq.conf configuration file.
 #[derive(Parser, Debug, Clone)]
 #[command(name = "dnsmasq")]
@@ -64,6 +64,7 @@ use std::path::PathBuf;
 #[command(author = "Simon Kelley")]
 #[command(disable_version_flag = true)]
 #[command(disable_help_flag = true)]
+#[allow(clippy::struct_excessive_bools)] // CLI args naturally have many boolean flags
 pub struct CliArgs {
     // ========================================================================
     // BASIC OPTIONS
@@ -296,19 +297,19 @@ pub struct CliArgs {
     #[arg(long = "leasefile-ro")]
     pub leasefile_ro: bool,
 
-    /// DHCPv6 options.
+    /// `DHCPv6` options.
     #[arg(long = "dhcp-option6", value_name = "OPTION")]
     pub dhcp_option6: Vec<String>,
 
-    /// DHCPv6 address range.
+    /// `DHCPv6` address range.
     #[arg(long = "dhcp-range6", value_name = "RANGE")]
     pub dhcp_range6: Vec<String>,
 
-    /// DHCPv6 static host configuration.
+    /// `DHCPv6` static host configuration.
     #[arg(long = "dhcp-host6", value_name = "HOST")]
     pub dhcp_host6: Vec<String>,
 
-    /// Enable DHCPv6 on specified interface.
+    /// Enable `DHCPv6` on specified interface.
     #[arg(long = "enable-dhcp6")]
     pub enable_dhcp6: bool,
 
@@ -470,7 +471,7 @@ pub struct CliArgs {
     #[arg(long = "ra-names", value_name = "INTERFACE")]
     pub ra_names: Vec<String>,
 
-    /// Stateful DHCPv6 mode in Router Advertisement.
+    /// Stateful `DHCPv6` mode in Router Advertisement.
     #[arg(long = "ra-stateless")]
     pub ra_stateless: bool,
 
@@ -693,7 +694,7 @@ pub struct CliArgs {
     #[arg(long = "enable-dbus", value_name = "NAME")]
     pub enable_dbus: Option<String>,
 
-    /// Enable UBus integration (OpenWrt).
+    /// Enable `UBus` integration (`OpenWrt`).
     #[arg(long = "enable-ubus")]
     pub enable_ubus: bool,
 
@@ -759,7 +760,7 @@ pub struct CliArgs {
 }
 
 impl CliArgs {
-    /// Parse command-line arguments from the default source (std::env::args()).
+    /// Parse command-line arguments from the default source (`std::env::args()`).
     ///
     /// This is the primary entry point for CLI parsing, using clap's derive
     /// API to automatically handle all options.
@@ -786,6 +787,7 @@ impl CliArgs {
     ///     Err(e) => eprintln!("CLI parse error: {}", e),
     /// }
     /// ```
+    #[must_use]
     pub fn parse() -> Self {
         <Self as Parser>::parse()
     }
@@ -821,11 +823,11 @@ impl CliArgs {
         I: IntoIterator<Item = T>,
         T: Into<String> + Clone,
     {
-        <Self as Parser>::parse_from(args.into_iter().map(|a| a.into()))
+        <Self as Parser>::parse_from(args.into_iter().map(std::convert::Into::into))
     }
 }
 
-/// Parse command-line arguments from std::env::args().
+/// Parse command-line arguments from `std::env::args()`.
 ///
 /// This is the primary public API for CLI parsing. It wraps `CliArgs::parse()`
 /// and provides a convenient function-based interface.
@@ -866,6 +868,7 @@ impl CliArgs {
 ///     Ok(())
 /// }
 /// ```
+#[must_use]
 pub fn parse_args() -> CliArgs {
     CliArgs::parse()
 }

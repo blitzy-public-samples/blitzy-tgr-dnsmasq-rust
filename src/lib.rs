@@ -401,29 +401,29 @@ pub mod util;
 
 // Core type re-exports from types module
 pub use types::{
-    DomainName,    // DNS domain name with RFC 1035 validation
-    IpAddr,        // Re-export of std::net::IpAddr for IP address handling
-    MacAddress,    // MAC address with parsing and formatting
-    RecordType,    // DNS record type enum (A, AAAA, CNAME, etc.)
+    DomainName, // DNS domain name with RFC 1035 validation
+    IpAddr,     // Re-export of std::net::IpAddr for IP address handling
+    MacAddress, // MAC address with parsing and formatting
+    RecordType, // DNS record type enum (A, AAAA, CNAME, etc.)
 };
 
 // Error type re-exports from error module
 pub use error::{
-    DnsmasqError,  // Top-level error enum aggregating all error types
-    Result,        // Type alias for Result<T, DnsmasqError>
+    DnsmasqError, // Top-level error enum aggregating all error types
+    Result,       // Type alias for Result<T, DnsmasqError>
 };
 
 // Configuration re-exports from config module
 pub use config::{
-    Config,        // Main configuration struct with all settings
-    load_config,   // Convenience function for configuration loading
+    load_config, // Convenience function for configuration loading
+    Config,      // Main configuration struct with all settings
 };
 
 // DNS service re-export from dns module
-pub use dns::DnsService;  // Primary DNS service coordinating all DNS operations
+pub use dns::DnsService; // Primary DNS service coordinating all DNS operations
 
 // DHCP service re-export from dhcp module
-pub use dhcp::DhcpService;  // Primary DHCP service coordinating DHCPv4/v6
+pub use dhcp::DhcpService; // Primary DHCP service coordinating DHCPv4/v6
 
 // ================================================================================================
 // Conditional Compilation for Optional Features
@@ -544,16 +544,8 @@ fn compile_time_options() -> String {
 /// following Rust conventions for library preludes.
 pub mod prelude {
     pub use crate::{
-        Config,
-        DhcpService,
-        DnsService,
-        DnsmasqError,
-        DomainName,
-        IpAddr,
-        MacAddress,
-        RecordType,
-        Result,
-        load_config,
+        load_config, Config, DhcpService, DnsService, DnsmasqError, DomainName, IpAddr, MacAddress,
+        RecordType, Result,
     };
 
     #[cfg(feature = "dnssec")]

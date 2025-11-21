@@ -33,8 +33,8 @@
 //! This module root organizes the DNS protocol implementation into five focused submodules:
 //!
 //! - **`constants`**: DNS protocol constants including response codes (NOERROR, SERVFAIL, NXDOMAIN),
-//!   resource record types (T_A, T_AAAA, T_CNAME, T_MX, DNSSEC types), class codes (C_IN, C_ANY),
-//!   operation codes (QUERY), port numbers (NAMESERVER_PORT), and size limits (MAXDNAME, PACKETSZ).
+//!   resource record types (`T_A`, `T_AAAA`, `T_CNAME`, `T_MX`, DNSSEC types), class codes (`C_IN`, `C_ANY`),
+//!   operation codes (QUERY), port numbers (`NAMESERVER_PORT`), and size limits (MAXDNAME, PACKETSZ).
 //!   Replaces `src/dns-protocol.h` constant definitions with Rust const declarations.
 //!
 //! - **`name`**: Domain name handling with the `DomainName` type implementing RFC 1035 label-based
@@ -73,7 +73,7 @@
 //!   message format, name compression, standard RR types A/NS/CNAME/SOA/PTR/MX/TXT, and query/response
 //!   processing semantics)
 //!
-//! - **RFC 2181**: Clarifications to the DNS Specification (TTL handling, RRset ordering, and
+//! - **RFC 2181**: Clarifications to the DNS Specification (TTL handling, `RRset` ordering, and
 //!   authoritative answer semantics)
 //!
 //! - **RFC 3596**: DNS Extensions to Support IPv6 (AAAA records for IPv6 addresses and reverse
@@ -100,7 +100,7 @@
 //!   Rust uses slice-based parsing with automatic bounds checking at compile time.
 //!
 //! - **Compression loop prevention**: C implementation limits compression pointer hops to 255
-//!   iterations at runtime (`#define MAXHOPS 255` in extract_name()). Rust implementation detects
+//!   iterations at runtime (`#define MAXHOPS 255` in `extract_name()`). Rust implementation detects
 //!   compression loops at parse time through visited offset tracking, preventing infinite loops
 //!   without runtime hop counting.
 //!
@@ -236,7 +236,7 @@
 //! The Rust implementation maintains equivalent or superior performance compared to the C version:
 //!
 //! - **Parsing overhead**: Negligible increase from bounds checking due to LLVM optimization and
-//!   branch prediction. Typical DNS query parsing: ~5-10 microseconds on modern x86_64 hardware.
+//!   branch prediction. Typical DNS query parsing: ~5-10 microseconds on modern `x86_64` hardware.
 //!
 //! - **Memory allocation**: Reduced allocation overhead through `Vec` capacity management and
 //!   arena allocation patterns for batch processing. Typical response construction: 1-2 allocations

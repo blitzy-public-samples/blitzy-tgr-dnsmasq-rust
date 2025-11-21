@@ -444,9 +444,10 @@ impl OptionBuilder {
                 reason: format!("Invalid container length: {total_length}"),
             });
         }
-        let option_data_len = u16::try_from(total_length - 4).map_err(|_| DhcpError::V6ProtocolError {
-            reason: format!("Option data length {total_length} exceeds u16::MAX"),
-        })?;
+        let option_data_len =
+            u16::try_from(total_length - 4).map_err(|_| DhcpError::V6ProtocolError {
+                reason: format!("Option data length {total_length} exceeds u16::MAX"),
+            })?;
 
         // Backpatch the length field (bytes at container_pos+2 and container_pos+3)
         let length_bytes = option_data_len.to_be_bytes();
@@ -1012,8 +1013,8 @@ impl OptionBuilder {
         for domain in domains {
             // Encode domain in DNS wire format (length-prefixed labels)
             for label in domain.split('.') {
-                let label_len = u8::try_from(label.len()).map_err(|_| DhcpError::V6ProtocolError {
-                    reason: format!("Domain label too long: {label}"),
+                let label_len = u8::try_from(label.len()).map_err(|_| {
+                    DhcpError::V6ProtocolError { reason: format!("Domain label too long: {label}") }
                 })?;
                 self.put_u8(label_len)?;
                 self.put_bytes(label.as_bytes())?;

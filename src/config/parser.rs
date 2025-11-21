@@ -221,7 +221,7 @@ const MAX_CONFIG_LINE_LENGTH: usize = 4096;
 
 /// Maximum include recursion depth to prevent infinite loops
 ///
-/// Even with cycle detection via HashSet, we limit recursion depth as defense-in-depth
+/// Even with cycle detection via `HashSet`, we limit recursion depth as defense-in-depth
 /// against symlink loops or other edge cases that might bypass path canonicalization.
 const MAX_INCLUDE_DEPTH: usize = 20;
 
@@ -276,6 +276,7 @@ impl ConfigParser {
     /// let parser = ConfigParser::new();
     /// assert_eq!(parser.config.dns.cache_size, 150); // Default value
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self {
             config: Config::default(),
@@ -329,19 +330,18 @@ impl ConfigParser {
             if depth >= MAX_INCLUDE_DEPTH {
                 let err = ConfigError::IncludeFailed {
                     path: current_path.display().to_string(),
-                    reason: format!("Maximum include depth ({}) exceeded", MAX_INCLUDE_DEPTH),
+                    reason: format!("Maximum include depth ({MAX_INCLUDE_DEPTH}) exceeded"),
                 };
 
                 if is_first_file {
                     return Err(err);
-                } else {
-                    // For included files, log but don't fail (matching C behavior)
-                    warn!(
-                        path = %current_path.display(),
-                        "Maximum include depth exceeded, skipping file"
-                    );
-                    continue;
                 }
+                // For included files, log but don't fail (matching C behavior)
+                warn!(
+                    path = %current_path.display(),
+                    "Maximum include depth exceeded, skipping file"
+                );
+                continue;
             }
 
             // Canonicalize path for cycle detection
@@ -353,15 +353,14 @@ impl ConfigParser {
 
                     if is_first_file {
                         return Err(err);
-                    } else {
-                        // For included files, log but don't fail (matching C behavior)
-                        warn!(
-                            path = %current_path.display(),
-                            error = %e,
-                            "Failed to canonicalize path, skipping file"
-                        );
-                        continue;
                     }
+                    // For included files, log but don't fail (matching C behavior)
+                    warn!(
+                        path = %current_path.display(),
+                        error = %e,
+                        "Failed to canonicalize path, skipping file"
+                    );
+                    continue;
                 }
             };
 
@@ -374,14 +373,13 @@ impl ConfigParser {
 
                 if is_first_file {
                     return Err(err);
-                } else {
-                    // For included files, log but don't fail (matching C behavior)
-                    warn!(
-                        path = %canonical_path.display(),
-                        "Circular include detected, skipping"
-                    );
-                    continue;
                 }
+                // For included files, log but don't fail (matching C behavior)
+                warn!(
+                    path = %canonical_path.display(),
+                    "Circular include detected, skipping"
+                );
+                continue;
             }
 
             // Open file for reading
@@ -396,15 +394,14 @@ impl ConfigParser {
 
                     if is_first_file {
                         return Err(err);
-                    } else {
-                        // For included files, log but don't fail (matching C behavior)
-                        warn!(
-                            path = %canonical_path.display(),
-                            error = %e,
-                            "Failed to open file, skipping"
-                        );
-                        continue;
                     }
+                    // For included files, log but don't fail (matching C behavior)
+                    warn!(
+                        path = %canonical_path.display(),
+                        error = %e,
+                        "Failed to open file, skipping"
+                    );
+                    continue;
                 }
             };
 
@@ -434,16 +431,15 @@ impl ConfigParser {
                     initial_file_result = Err(e);
                     self.visited_files.remove(&canonical_path);
                     break;
-                } else {
-                    // For included files, log but continue (matching C behavior)
-                    warn!(
-                        path = %canonical_path.display(),
-                        error = %e,
-                        "Failed to parse configuration file"
-                    );
-                    self.visited_files.remove(&canonical_path);
-                    continue;
                 }
+                // For included files, log but continue (matching C behavior)
+                warn!(
+                    path = %canonical_path.display(),
+                    error = %e,
+                    "Failed to parse configuration file"
+                );
+                self.visited_files.remove(&canonical_path);
+                continue;
             }
 
             // Extract pending includes and add them to work queue
@@ -488,7 +484,7 @@ impl ConfigParser {
         let previous_line = self.current_line;
         self.current_line = 0;
 
-        let result = self.parse_lines(content.lines().map(|s| s.to_string()));
+        let result = self.parse_lines(content.lines().map(std::string::ToString::to_string));
 
         self.current_line = previous_line;
         result
@@ -536,6 +532,7 @@ impl ConfigParser {
     /// parser.parse_file("/etc/dnsmasq.conf").await?;
     /// let config = parser.into_config();
     /// ```
+    #[must_use]
     pub fn into_config(self) -> Config {
         self.config
     }
@@ -550,6 +547,7 @@ impl ConfigParser {
     /// let parser = ConfigParser::new();
     /// assert_eq!(parser.config().dns.cache_size, 150);
     /// ```
+    #[must_use]
     pub fn config(&self) -> &Config {
         &self.config
     }
@@ -573,10 +571,9 @@ impl ConfigParser {
                     file_path: self
                         .current_file
                         .as_ref()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| "<string>".to_string()),
+                        .map_or_else(|| "<string>".to_string(), |p| p.display().to_string()),
                     line_number: self.current_line,
-                    reason: format!("I/O error: {}", e),
+                    reason: format!("I/O error: {e}"),
                 })?;
 
             if bytes_read == 0 {
@@ -591,10 +588,9 @@ impl ConfigParser {
                     file_path: self
                         .current_file
                         .as_ref()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| "<string>".to_string()),
+                        .map_or_else(|| "<string>".to_string(), |p| p.display().to_string()),
                     line_number: self.current_line,
-                    reason: format!("Line too long (exceeds {} bytes)", MAX_CONFIG_LINE_LENGTH),
+                    reason: format!("Line too long (exceeds {MAX_CONFIG_LINE_LENGTH} bytes)"),
                 });
             }
 
@@ -648,10 +644,10 @@ impl ConfigParser {
     /// Parses a single configuration line.
     ///
     /// Handles quote processing, escape sequences, comment stripping, and option parsing.
-    /// This is the core parsing logic that matches C's read_file() line processing.
+    /// This is the core parsing logic that matches C's `read_file()` line processing.
     fn parse_line(&mut self, line: &str) -> Result<(), ConfigError> {
         // Process quotes and escape sequences
-        let processed = self.process_quotes_and_escapes(line)?;
+        let processed = Self::process_quotes_and_escapes(line)?;
 
         // Strip comments (# after whitespace or at start of line)
         let without_comment = Self::strip_comment(&processed);
@@ -672,12 +668,12 @@ impl ConfigParser {
 
     /// Processes quote handling and escape sequences matching C implementation.
     ///
-    /// Implements the quote state machine from C's read_file() (lines 6498-6546):
+    /// Implements the quote state machine from C's `read_file()` (lines 6498-6546):
     /// - Double quotes delimit strings, preserving whitespace
     /// - Escape sequences within quotes: \\, \", \', \t, \n, \r, \b, \e
     /// - Quotes are removed from output
     /// - Missing closing quote is an error
-    fn process_quotes_and_escapes(&self, line: &str) -> Result<String, ConfigError> {
+    fn process_quotes_and_escapes(line: &str) -> Result<String, ConfigError> {
         let mut result = String::with_capacity(line.len());
         let mut chars = line.chars().peekable();
 
@@ -760,7 +756,7 @@ impl ConfigParser {
         Err(ConfigError::ParseError {
             file_path: "<string>".to_string(), // Will be overridden by caller
             line_number: 0,                    // Will be overridden by caller
-            reason: format!("Missing closing quote: {}", quote_char),
+            reason: format!("Missing closing quote: {quote_char}"),
         })
     }
 
@@ -834,11 +830,8 @@ impl ConfigParser {
         if option_name == "conf-file" || option_name == "conf-dir" {
             if let Some(path) = option_value {
                 return self.handle_include_directive(option_name, path);
-            } else {
-                return Err(
-                    self.make_parse_error(format!("Missing path for {} directive", option_name))
-                );
             }
+            return Err(self.make_parse_error(format!("Missing path for {option_name} directive")));
         }
 
         // Dispatch to option-specific handler
@@ -915,10 +908,9 @@ impl ConfigParser {
                     file_path: self
                         .current_file
                         .as_ref()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| "<input>".to_string()),
+                        .map_or_else(|| "<input>".to_string(), |p| p.display().to_string()),
                     line_number: self.current_line,
-                    reason: format!("Unknown configuration option '{}'", option_name),
+                    reason: format!("Unknown configuration option '{option_name}'"),
                 });
             }
         }
@@ -928,8 +920,8 @@ impl ConfigParser {
 
     /// Handles include directives (conf-file, conf-dir).
     ///
-    /// For conf-file: adds the file to pending_includes for processing
-    /// For conf-dir: enumerates directory and adds matching files to pending_includes
+    /// For conf-file: adds the file to `pending_includes` for processing
+    /// For conf-dir: enumerates directory and adds matching files to `pending_includes`
     fn handle_include_directive(
         &mut self,
         directive: &str,
@@ -949,18 +941,18 @@ impl ConfigParser {
             // Directory include with optional pattern
             let parts: Vec<&str> = path_str.split(',').collect();
             let dir_path = parts[0];
-            let pattern = parts.get(1).map(|s| s.trim()).unwrap_or("*.conf");
+            let pattern = parts.get(1).map_or("*.conf", |s| s.trim());
 
             // Enumerate directory and add matching files
             let dir = std::fs::read_dir(dir_path).map_err(|e| {
-                self.make_parse_error(format!("Cannot read directory {}: {}", dir_path, e))
+                self.make_parse_error(format!("Cannot read directory {dir_path}: {e}"))
             })?;
 
             // Collect matching files
             let mut matching_files: Vec<PathBuf> = Vec::new();
             for entry in dir {
                 let entry = entry.map_err(|e| {
-                    self.make_parse_error(format!("Error reading directory entry: {}", e))
+                    self.make_parse_error(format!("Error reading directory entry: {e}"))
                 })?;
                 let path = entry.path();
 
@@ -993,7 +985,7 @@ impl ConfigParser {
     fn matches_pattern(filename: &str, pattern: &str) -> bool {
         // Simple implementation: convert glob pattern to regex
         let regex_pattern = pattern.replace('.', r"\.").replace('*', ".*").replace('?', ".");
-        let regex_pattern = format!("^{}$", regex_pattern);
+        let regex_pattern = format!("^{regex_pattern}$");
 
         if let Ok(re) = regex::Regex::new(&regex_pattern) {
             re.is_match(filename)
@@ -1009,7 +1001,7 @@ impl ConfigParser {
         if let Some(port_str) = value {
             let port = port_str
                 .parse::<u16>()
-                .map_err(|_| self.make_parse_error(format!("Invalid port number: {}", port_str)))?;
+                .map_err(|_| self.make_parse_error(format!("Invalid port number: {port_str}")))?;
             self.config.network.port = port;
         } else {
             return Err(self.make_parse_error("Missing port number".to_string()));
@@ -1021,7 +1013,7 @@ impl ConfigParser {
         if let Some(addr_str) = value {
             let addr = addr_str
                 .parse()
-                .map_err(|_| self.make_parse_error(format!("Invalid IP address: {}", addr_str)))?;
+                .map_err(|_| self.make_parse_error(format!("Invalid IP address: {addr_str}")))?;
             self.config.network.listen_addresses.push(addr);
         } else {
             return Err(self.make_parse_error("Missing IP address".to_string()));
@@ -1042,7 +1034,7 @@ impl ConfigParser {
         if let Some(size_str) = value {
             let size = size_str
                 .parse::<usize>()
-                .map_err(|_| self.make_parse_error(format!("Invalid cache size: {}", size_str)))?;
+                .map_err(|_| self.make_parse_error(format!("Invalid cache size: {size_str}")))?;
             self.config.dns.cache_size = size;
         } else {
             return Err(self.make_parse_error("Missing cache size".to_string()));
@@ -1070,7 +1062,7 @@ impl ConfigParser {
                     if server_addr.is_empty() {
                         // Authoritative domain (no forwarding)
                         let server = crate::types::ServerDetails::new_authoritative(domain.clone())
-                            .map_err(|e| self.make_parse_error(format!("Invalid domain: {}", e)))?;
+                            .map_err(|e| self.make_parse_error(format!("Invalid domain: {e}")))?;
 
                         info!(domain = %domain, "Authoritative domain (no forwarding)");
                         // Add to servers list but NOT to upstream_servers (no forwarding)
@@ -1081,7 +1073,7 @@ impl ConfigParser {
                             let ip = &server_addr[..hash_pos];
                             let port_str = &server_addr[hash_pos + 1..];
                             let port = port_str.parse::<u16>().map_err(|_| {
-                                self.make_parse_error(format!("Invalid port: {}", port_str))
+                                self.make_parse_error(format!("Invalid port: {port_str}"))
                             })?;
                             (ip, port)
                         } else {
@@ -1089,7 +1081,7 @@ impl ConfigParser {
                         };
 
                         let ip: IpAddr = ip_str.parse().map_err(|_| {
-                            self.make_parse_error(format!("Invalid IP address: {}", ip_str))
+                            self.make_parse_error(format!("Invalid IP address: {ip_str}"))
                         })?;
                         let socket_addr = SocketAddr::new(ip, port);
 
@@ -1097,7 +1089,7 @@ impl ConfigParser {
                         let server =
                             crate::types::ServerDetails::new(socket_addr, Some(domain.clone()), 0)
                                 .map_err(|e| {
-                                    self.make_parse_error(format!("Invalid server: {}", e))
+                                    self.make_parse_error(format!("Invalid server: {e}"))
                                 })?;
 
                         self.config.dns.upstream_servers.push(server.clone());
@@ -1105,7 +1097,7 @@ impl ConfigParser {
                     }
                 } else {
                     return Err(
-                        self.make_parse_error(format!("Invalid server format: {}", server_str))
+                        self.make_parse_error(format!("Invalid server format: {server_str}"))
                     );
                 }
             } else {
@@ -1113,22 +1105,22 @@ impl ConfigParser {
                 let (ip_str, port) = if let Some(hash_pos) = server_str.find('#') {
                     let ip = &server_str[..hash_pos];
                     let port_str = &server_str[hash_pos + 1..];
-                    let port = port_str.parse::<u16>().map_err(|_| {
-                        self.make_parse_error(format!("Invalid port: {}", port_str))
-                    })?;
+                    let port = port_str
+                        .parse::<u16>()
+                        .map_err(|_| self.make_parse_error(format!("Invalid port: {port_str}")))?;
                     (ip, port)
                 } else {
                     (server_str, 53)
                 };
 
-                let ip: IpAddr = ip_str.parse().map_err(|_| {
-                    self.make_parse_error(format!("Invalid IP address: {}", ip_str))
-                })?;
+                let ip: IpAddr = ip_str
+                    .parse()
+                    .map_err(|_| self.make_parse_error(format!("Invalid IP address: {ip_str}")))?;
                 let socket_addr = SocketAddr::new(ip, port);
 
                 // Create ServerDetails without domain restriction
                 let server = crate::types::ServerDetails::new(socket_addr, None::<String>, 0)
-                    .map_err(|e| self.make_parse_error(format!("Invalid server: {}", e)))?;
+                    .map_err(|e| self.make_parse_error(format!("Invalid server: {e}")))?;
 
                 self.config.dns.upstream_servers.push(server.clone());
                 self.config.dns.servers.push(server);
@@ -1147,7 +1139,7 @@ impl ConfigParser {
 
         let parts: Vec<&str> = range_str.split(',').collect();
         if parts.len() < 2 {
-            return Err(self.make_parse_error(format!("Invalid DHCP range format: {}", range_str)));
+            return Err(self.make_parse_error(format!("Invalid DHCP range format: {range_str}")));
         }
 
         // Parse start and end IPs
@@ -1247,7 +1239,7 @@ impl ConfigParser {
             (time_str, 1)
         };
 
-        let num: u64 = num_str.parse().map_err(|_| format!("Invalid number: {}", num_str))?;
+        let num: u64 = num_str.parse().map_err(|_| format!("Invalid number: {num_str}"))?;
 
         Ok(num * multiplier)
     }
@@ -1268,7 +1260,7 @@ impl ConfigParser {
 
         let parts: Vec<&str> = opt_str.split(',').collect();
         if parts.is_empty() {
-            return Err(self.make_parse_error(format!("Invalid DHCP option format: {}", opt_str)));
+            return Err(self.make_parse_error(format!("Invalid DHCP option format: {opt_str}")));
         }
 
         // Check for DHCPv6 option prefix (option6:)
@@ -1417,10 +1409,10 @@ impl ConfigParser {
     }
 
     fn parse_dnssec_timestamp(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
-        if let Some(_timestamp_str) = value {
+        if let Some(timestamp_str) = value {
             // Parse DNSSEC timestamp file path
             // For now, just log it
-            info!(timestamp = %_timestamp_str, "Would set DNSSEC timestamp file");
+            info!(timestamp = %timestamp_str, "Would set DNSSEC timestamp file");
         } else {
             return Err(self.make_parse_error("Missing timestamp file path".to_string()));
         }
@@ -1445,7 +1437,7 @@ impl ConfigParser {
                 }
             } else {
                 return Err(
-                    self.make_parse_error(format!("Invalid address record format: {}", record_str))
+                    self.make_parse_error(format!("Invalid address record format: {record_str}"))
                 );
             }
         } else {
@@ -1463,14 +1455,14 @@ impl ConfigParser {
                 let mut addresses = Vec::new();
                 for addr_str in &parts[1..] {
                     let ip = addr_str.parse().map_err(|_| {
-                        self.make_parse_error(format!("Invalid IP address: {}", addr_str))
+                        self.make_parse_error(format!("Invalid IP address: {addr_str}"))
                     })?;
                     addresses.push(ip);
                 }
                 self.config.dns.host_records.push((hostname, addresses));
             } else {
                 return Err(
-                    self.make_parse_error(format!("Invalid host record format: {}", record_str))
+                    self.make_parse_error(format!("Invalid host record format: {record_str}"))
                 );
             }
         } else {
@@ -1489,7 +1481,7 @@ impl ConfigParser {
                 self.config.dns.cname_records.push((alias, target));
             } else {
                 return Err(
-                    self.make_parse_error(format!("Invalid CNAME record format: {}", record_str))
+                    self.make_parse_error(format!("Invalid CNAME record format: {record_str}"))
                 );
             }
         } else {
@@ -1515,7 +1507,7 @@ impl ConfigParser {
                 self.config.dns.mx_records.push((domain, target, priority));
             } else {
                 return Err(
-                    self.make_parse_error(format!("Invalid MX record format: {}", record_str))
+                    self.make_parse_error(format!("Invalid MX record format: {record_str}"))
                 );
             }
         } else {
@@ -1560,7 +1552,7 @@ impl ConfigParser {
                 self.config.dns.srv_records.push((service, target, port, priority, weight));
             } else {
                 return Err(
-                    self.make_parse_error(format!("Invalid SRV record format: {}", record_str))
+                    self.make_parse_error(format!("Invalid SRV record format: {record_str}"))
                 );
             }
         } else {
@@ -1578,7 +1570,7 @@ impl ConfigParser {
                 self.config.dns.txt_records.push((name, text));
             } else {
                 return Err(
-                    self.make_parse_error(format!("Invalid TXT record format: {}", record_str))
+                    self.make_parse_error(format!("Invalid TXT record format: {record_str}"))
                 );
             }
         } else {
@@ -1597,7 +1589,7 @@ impl ConfigParser {
                 self.config.dns.ptr_records.push((name, target));
             } else {
                 return Err(
-                    self.make_parse_error(format!("Invalid PTR record format: {}", record_str))
+                    self.make_parse_error(format!("Invalid PTR record format: {record_str}"))
                 );
             }
         } else {
@@ -1636,61 +1628,68 @@ impl ConfigParser {
     }
 
     #[cfg(feature = "tftp")]
+    #[allow(clippy::unnecessary_wraps)] // Result for API consistency with other parse functions
     fn parse_enable_tftp(&mut self) -> Result<(), ConfigError> {
         self.config.tftp.enabled = true;
         Ok(())
     }
 
     #[cfg(not(feature = "tftp"))]
+    #[allow(clippy::unnecessary_wraps)] // Result for API consistency with other parse functions
     fn parse_enable_tftp(&mut self) -> Result<(), ConfigError> {
         warn!("TFTP not enabled in this build, ignoring enable-tftp option");
         Ok(())
     }
 
     #[cfg(feature = "tftp")]
+    #[allow(clippy::unnecessary_wraps)] // Result for API consistency with other parse functions
     fn parse_tftp_secure(&mut self) -> Result<(), ConfigError> {
         self.config.tftp.tftp_secure = true;
         Ok(())
     }
 
     #[cfg(not(feature = "tftp"))]
+    #[allow(clippy::unnecessary_wraps)] // Result for API consistency with other parse functions
     fn parse_tftp_secure(&mut self) -> Result<(), ConfigError> {
         warn!("TFTP not enabled in this build, ignoring tftp-secure option");
         Ok(())
     }
 
     #[cfg(feature = "tftp")]
+    #[allow(clippy::unnecessary_wraps)] // Result for API consistency with other parse functions
     fn parse_tftp_unique_root(&mut self) -> Result<(), ConfigError> {
         self.config.tftp.tftp_unique_root = true;
         Ok(())
     }
 
     #[cfg(not(feature = "tftp"))]
+    #[allow(clippy::unnecessary_wraps)] // Result for API consistency with other parse functions
     fn parse_tftp_unique_root(&mut self) -> Result<(), ConfigError> {
         warn!("TFTP not enabled in this build, ignoring tftp-unique-root option");
         Ok(())
     }
 
     #[cfg(feature = "tftp")]
+    #[allow(clippy::unnecessary_wraps)] // Result for API consistency with other parse functions
     fn parse_tftp_no_blocksize(&mut self) -> Result<(), ConfigError> {
         self.config.tftp.tftp_no_blocksize = true;
         Ok(())
     }
 
     #[cfg(not(feature = "tftp"))]
+    #[allow(clippy::unnecessary_wraps)] // Result for API consistency with other parse functions
     fn parse_tftp_no_blocksize(&mut self) -> Result<(), ConfigError> {
         warn!("TFTP not enabled in this build, ignoring tftp-no-blocksize option");
         Ok(())
     }
 
-    /// Helper to create ParseError with current file and line context.
+    /// Helper to create `ParseError` with current file and line context.
     fn make_parse_error(&self, reason: String) -> ConfigError {
         ConfigError::ParseError {
             file_path: self
                 .current_file
                 .as_ref()
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "<string>".to_string()),
+                .map_or_else(|| "<string>".to_string(), |p| p.display().to_string()),
             line_number: self.current_line,
             reason,
         }
@@ -1762,15 +1761,14 @@ mod tests {
 
     #[test]
     fn test_process_quotes_basic() {
-        let parser = ConfigParser::new();
-        let result = parser.process_quotes_and_escapes("option=\"value with spaces\"").unwrap();
+        let result =
+            ConfigParser::process_quotes_and_escapes("option=\"value with spaces\"").unwrap();
         assert_eq!(result, "option=value with spaces");
     }
 
     #[test]
     fn test_process_quotes_escape_sequences() {
-        let parser = ConfigParser::new();
-        let result = parser.process_quotes_and_escapes("option=\"tab\\there\"").unwrap();
+        let result = ConfigParser::process_quotes_and_escapes("option=\"tab\\there\"").unwrap();
         assert_eq!(result, "option=tab\there");
     }
 

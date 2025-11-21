@@ -96,7 +96,7 @@ use tracing_appender::{non_blocking, rolling};
 struct LogEntry {
     /// Log level (ERROR, WARN, INFO, DEBUG, TRACE)
     level: Level,
-    /// Log message content (truncated to MAX_MESSAGE bytes)
+    /// Log message content (truncated to `MAX_MESSAGE` bytes)
     message: String,
     /// Timestamp when the message was created
     #[allow(dead_code)]
@@ -112,7 +112,7 @@ struct LogEntry {
 ///
 /// # Fork Safety
 ///
-/// The service tracks the process PID at construction. After a fork(), the child
+/// The service tracks the process PID at construction. After a `fork()`, the child
 /// process has a different PID and will skip processing the parent's queued messages
 /// during `flush()`.
 ///
@@ -144,7 +144,7 @@ pub struct LoggingService {
     entries_lost: Arc<AtomicUsize>,
     /// PID at construction for fork-safety
     pid: u32,
-    /// Maximum queue capacity (LOG_MAX from constants.rs)
+    /// Maximum queue capacity (`LOG_MAX` from constants.rs)
     #[allow(dead_code)]
     capacity: usize,
 }
@@ -202,7 +202,7 @@ impl LoggingService {
     /// # Arguments
     ///
     /// * `level` - Log level (ERROR, WARN, INFO, DEBUG, TRACE)
-    /// * `message` - Log message content (will be truncated to MAX_MESSAGE bytes)
+    /// * `message` - Log message content (will be truncated to `MAX_MESSAGE` bytes)
     ///
     /// # Example
     ///
@@ -239,7 +239,7 @@ impl LoggingService {
 
         loop {
             match self.sender.try_send(entry.clone()) {
-                Ok(_) => break,
+                Ok(()) => break,
                 Err(mpsc::error::TrySendError::Full(_)) => {
                     // Queue is full - increment lost counter
                     self.entries_lost.fetch_add(1, Ordering::Relaxed);
@@ -271,7 +271,7 @@ impl LoggingService {
     ///
     /// # Fork Safety
     ///
-    /// After a fork(), the child process has a different PID. The flush operation
+    /// After a `fork()`, the child process has a different PID. The flush operation
     /// checks the current PID and skips processing if it differs from the original,
     /// preventing duplicate log entries from both parent and child.
     ///
@@ -290,6 +290,7 @@ impl LoggingService {
     /// # Ok(())
     /// # }
     /// ```
+    #[allow(clippy::unused_async)] // Maintains uniform async API across logger methods
     pub async fn flush(&mut self) -> Result<(), PlatformError> {
         // Fork-safety: Skip parent's queue if we're in a child process
         let current_pid = process::id();
@@ -346,6 +347,7 @@ impl LoggingService {
     /// # Ok(())
     /// # }
     /// ```
+    #[must_use]
     pub fn get_entries_lost(&self) -> usize {
         self.entries_lost.load(Ordering::Relaxed)
     }
@@ -355,7 +357,7 @@ impl LoggingService {
 ///
 /// This function configures the tracing subscriber with one or more output layers:
 /// - **journald** (Linux only): Native systemd journal integration
-/// - **android** (Android only): Android platform logging via __android_log_write
+/// - **android** (Android only): Android platform logging via __`android_log_write`
 /// - **file**: File-based logging with automatic daily rotation
 /// - **stderr**: Console output for development and debugging
 ///
@@ -427,7 +429,7 @@ pub fn log_init(
     #[cfg(target_os = "linux")]
     let journald_layer = if enable_journald {
         Some(tracing_journald::layer().map_err(|e| PlatformError::LoggingFailed {
-            reason: format!("Failed to initialize journald: {}", e),
+            reason: format!("Failed to initialize journald: {e}"),
         })?)
     } else {
         None
@@ -449,11 +451,11 @@ pub fn log_init(
     // Add file layer if path provided
     let file_layer = if let Some(log_path) = log_file {
         let log_dir = log_path.parent().ok_or_else(|| PlatformError::LoggingFailed {
-            reason: format!("Invalid log file path: {:?}", log_path),
+            reason: format!("Invalid log file path: {}", log_path.display()),
         })?;
 
         let log_file_name = log_path.file_name().ok_or_else(|| PlatformError::LoggingFailed {
-            reason: format!("Invalid log file name: {:?}", log_path),
+            reason: format!("Invalid log file name: {}", log_path.display()),
         })?;
 
         // Create rolling daily appender with non-blocking writer
@@ -479,7 +481,7 @@ pub fn log_init(
 
     // Initialize the global subscriber
     subscriber.try_init().map_err(|e| PlatformError::LoggingFailed {
-        reason: format!("Failed to set global subscriber: {}", e),
+        reason: format!("Failed to set global subscriber: {e}"),
     })?;
 
     Ok(())
@@ -546,7 +548,7 @@ pub fn die(message: &str, exit_code: i32) -> ! {
     tracing::error!("FATAL: {}", message);
 
     // Also print to stderr for visibility
-    eprintln!("dnsmasq: FATAL: {}", message);
+    eprintln!("dnsmasq: FATAL: {message}");
 
     // Terminate the process
     std::process::exit(exit_code);

@@ -158,8 +158,8 @@ pub trait PrivilegeManager: Send + Sync {
     /// # Arguments
     ///
     /// * `security_config` - Security configuration containing target user/group
-    /// * `retain_net_admin` - Whether to retain CAP_NET_ADMIN (Linux only, ignored elsewhere)
-    /// * `retain_net_raw` - Whether to retain CAP_NET_RAW (Linux only, ignored elsewhere)
+    /// * `retain_net_admin` - Whether to retain `CAP_NET_ADMIN` (Linux only, ignored elsewhere)
+    /// * `retain_net_raw` - Whether to retain `CAP_NET_RAW` (Linux only, ignored elsewhere)
     ///
     /// # Returns
     ///
@@ -199,7 +199,7 @@ pub trait PrivilegeManager: Send + Sync {
     ///
     /// # Arguments
     ///
-    /// * `enable_dhcp` - Whether DHCP server is enabled (requires CAP_NET_ADMIN, CAP_NET_RAW)
+    /// * `enable_dhcp` - Whether DHCP server is enabled (requires `CAP_NET_ADMIN`, `CAP_NET_RAW`)
     ///
     /// # Returns
     ///
@@ -223,6 +223,7 @@ pub struct LinuxPrivilegeManager;
 #[cfg(target_os = "linux")]
 impl LinuxPrivilegeManager {
     /// Create a new Linux privilege manager.
+    #[must_use]
     pub fn new() -> Self {
         Self
     }
@@ -234,13 +235,13 @@ impl LinuxPrivilegeManager {
     ///
     /// # Arguments
     ///
-    /// * `capabilities` - Capabilities to retain (CAP_NET_ADMIN, CAP_NET_RAW, etc.)
+    /// * `capabilities` - Capabilities to retain (`CAP_NET_ADMIN`, `CAP_NET_RAW`, etc.)
     ///
     /// # Returns
     ///
     /// * `Ok(())` - Capabilities successfully configured
     /// * `Err(PlatformError::CapabilityError)` - Capability operation failed
-    fn retain_capabilities(&self, capabilities: &[Capability]) -> Result<(), PlatformError> {
+    fn retain_capabilities(capabilities: &[Capability]) -> Result<(), PlatformError> {
         debug!("Retaining capabilities: {:?}", capabilities);
 
         // Enable capability retention across setuid using prctl(PR_SET_KEEPCAPS)
@@ -274,13 +275,13 @@ impl LinuxPrivilegeManager {
             cap_set.insert(*cap);
             caps::set(None, CapSet::Permitted, &cap_set).map_err(|e| {
                 PlatformError::CapabilityError {
-                    operation: format!("set permitted {:?}", cap),
+                    operation: format!("set permitted {cap:?}"),
                     reason: e.to_string(),
                 }
             })?;
             caps::set(None, CapSet::Effective, &cap_set).map_err(|e| {
                 PlatformError::CapabilityError {
-                    operation: format!("set effective {:?}", cap),
+                    operation: format!("set effective {cap:?}"),
                     reason: e.to_string(),
                 }
             })?;
@@ -310,11 +311,11 @@ impl PrivilegeManager for LinuxPrivilegeManager {
         let user = User::from_name(username)
             .map_err(|e| PlatformError::UserNotFound {
                 user: username.clone(),
-                reason: format!("Failed to lookup user '{}': {}", username, e),
+                reason: format!("Failed to lookup user '{username}': {e}"),
             })?
             .ok_or_else(|| PlatformError::UserNotFound {
                 user: username.clone(),
-                reason: format!("User '{}' not found in /etc/passwd", username),
+                reason: format!("User '{username}' not found in /etc/passwd"),
             })?;
 
         let uid = user.uid;
@@ -323,11 +324,11 @@ impl PrivilegeManager for LinuxPrivilegeManager {
             let group = Group::from_name(groupname)
                 .map_err(|e| PlatformError::UserNotFound {
                     user: groupname.clone(),
-                    reason: format!("Failed to lookup group '{}': {}", groupname, e),
+                    reason: format!("Failed to lookup group '{groupname}': {e}"),
                 })?
                 .ok_or_else(|| PlatformError::UserNotFound {
                     user: groupname.clone(),
-                    reason: format!("Group '{}' not found in /etc/group", groupname),
+                    reason: format!("Group '{groupname}' not found in /etc/group"),
                 })?;
             group.gid
         } else {
@@ -354,29 +355,29 @@ impl PrivilegeManager for LinuxPrivilegeManager {
         }
 
         // Retain capabilities before dropping privileges
-        if !capabilities.is_empty() {
-            self.retain_capabilities(&capabilities)?;
-        } else {
+        if capabilities.is_empty() {
             // Clear all capabilities if none requested
             caps::clear(None, CapSet::Effective).map_err(|e| PlatformError::CapabilityError {
                 operation: "clear all effective".to_string(),
                 reason: e.to_string(),
             })?;
+        } else {
+            Self::retain_capabilities(&capabilities)?;
         }
 
         // Drop to target group first (must be done before setuid on Linux)
         nix::unistd::setgid(gid).map_err(|e| PlatformError::PrivilegeDropFailed {
-            reason: format!("setgid({}) failed: {}", gid, e),
+            reason: format!("setgid({gid}) failed: {e}"),
         })?;
 
         // Clear supplementary groups
         nix::unistd::setgroups(&[gid]).map_err(|e| PlatformError::PrivilegeDropFailed {
-            reason: format!("setgroups failed: {}", e),
+            reason: format!("setgroups failed: {e}"),
         })?;
 
         // Drop to target user
         nix::unistd::setuid(uid).map_err(|e| PlatformError::PrivilegeDropFailed {
-            reason: format!("setuid({}) failed: {}", uid, e),
+            reason: format!("setuid({uid}) failed: {e}"),
         })?;
 
         // Re-apply capabilities after setuid (required even with PR_SET_KEEPCAPS)
@@ -386,7 +387,7 @@ impl PrivilegeManager for LinuxPrivilegeManager {
                 cap_set.insert(*cap);
                 caps::set(None, CapSet::Effective, &cap_set).map_err(|e| {
                     PlatformError::CapabilityError {
-                        operation: format!("re-apply effective {:?}", cap),
+                        operation: format!("re-apply effective {cap:?}"),
                         reason: e.to_string(),
                     }
                 })?;
@@ -429,15 +430,15 @@ impl PrivilegeManager for LinuxPrivilegeManager {
 
             let has_cap = caps::has_cap(None, CapSet::Permitted, capability).map_err(|e| {
                 PlatformError::CapabilityError {
-                    operation: format!("check permitted {:?}", capability),
+                    operation: format!("check permitted {capability:?}"),
                     reason: e.to_string(),
                 }
             })?;
 
             if !has_cap {
                 return Err(PlatformError::CapabilityError {
-                    operation: format!("verify {:?}", capability),
-                    reason: format!("Required capability {} is not in permitted set", cap_name),
+                    operation: format!("verify {capability:?}"),
+                    reason: format!("Required capability {cap_name} is not in permitted set"),
                 });
             }
 
@@ -803,8 +804,8 @@ impl PrivilegeManager for OpenBsdPrivilegeManager {
 /// # Arguments
 ///
 /// * `security_config` - Security configuration with target user/group
-/// * `retain_net_admin` - Retain CAP_NET_ADMIN on Linux (ignored on other platforms)
-/// * `retain_net_raw` - Retain CAP_NET_RAW on Linux (ignored on other platforms)
+/// * `retain_net_admin` - Retain `CAP_NET_ADMIN` on Linux (ignored on other platforms)
+/// * `retain_net_raw` - Retain `CAP_NET_RAW` on Linux (ignored on other platforms)
 ///
 /// # Returns
 ///
@@ -813,7 +814,7 @@ impl PrivilegeManager for OpenBsdPrivilegeManager {
 ///
 /// # Platform Behavior
 ///
-/// - **Linux**: Uses capabilities to retain CAP_NET_ADMIN and CAP_NET_RAW if requested
+/// - **Linux**: Uses capabilities to retain `CAP_NET_ADMIN` and `CAP_NET_RAW` if requested
 /// - **OpenBSD**: Uses pledge and unveil for promise-based restrictions
 /// - **FreeBSD/NetBSD/macOS**: Simple setuid/setgid without capabilities
 ///

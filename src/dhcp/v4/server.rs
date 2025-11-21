@@ -101,8 +101,8 @@ use crate::config::types::Config;
 // use crate::dhcp::common::{generate_xid, log_tags, match_netid}; // Unused for now
 use crate::dhcp::lease::LeaseManager;
 use crate::dhcp::v4::constants::{
-    BROADCAST_FLAG, MIN_PACKETSZ, MSG_TYPE_DECLINE, MSG_TYPE_DISCOVER,
-    MSG_TYPE_INFORM, MSG_TYPE_RELEASE, MSG_TYPE_REQUEST,
+    BROADCAST_FLAG, MIN_PACKETSZ, MSG_TYPE_DECLINE, MSG_TYPE_DISCOVER, MSG_TYPE_INFORM,
+    MSG_TYPE_RELEASE, MSG_TYPE_REQUEST,
 };
 use crate::dhcp::v4::message::DhcpMessage;
 use crate::dhcp::v4::options::{DhcpOption, MessageType};
@@ -123,15 +123,15 @@ use tokio::sync::RwLock;
 use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, warn};
 
-/// DHCPv4 server service providing async message handling and address allocation
+/// `DHCPv4` server service providing async message handling and address allocation
 ///
-/// Manages the complete DHCPv4 server lifecycle including packet reception, protocol processing,
+/// Manages the complete `DHCPv4` server lifecycle including packet reception, protocol processing,
 /// address allocation with conflict detection, lease management, DNS integration, and helper
-/// script execution. Replaces C dhcp_packet() and dhcp_reply() with async Rust implementation.
+/// script execution. Replaces C `dhcp_packet()` and `dhcp_reply()` with async Rust implementation.
 ///
 /// # Fields
 ///
-/// - `socket`: UDP socket bound to port 67 with SO_BROADCAST enabled
+/// - `socket`: UDP socket bound to port 67 with `SO_BROADCAST` enabled
 /// - `protocol`: RFC 2131 state machine for message processing
 /// - `lease_manager`: Persistent lease database with async access
 /// - `dns_cache`: DNS cache for hostname registration
@@ -170,15 +170,15 @@ pub struct DhcpV4Service {
     /// UDP socket bound to DHCP server port (67) with broadcast reception
     ///
     /// Replaces C daemon->dhcpfd with tokio async socket. Configured with:
-    /// - SO_REUSEADDR for restart without TIME_WAIT delays
-    /// - SO_BROADCAST for broadcast packet reception
-    /// - IP_PKTINFO/IPV6_PKTINFO for destination address retrieval
+    /// - `SO_REUSEADDR` for restart without `TIME_WAIT` delays
+    /// - `SO_BROADCAST` for broadcast packet reception
+    /// - `IP_PKTINFO/IPV6_PKTINFO` for destination address retrieval
     socket: Arc<DhcpSocket>,
 
-    /// DHCPv4 protocol state machine for message processing
+    /// `DHCPv4` protocol state machine for message processing
     ///
     /// Handles DISCOVER → OFFER and REQUEST → ACK/NAK state transitions per RFC 2131.
-    /// Replaces C rfc2131_packet() monolithic function with type-safe transitions.
+    /// Replaces C `rfc2131_packet()` monolithic function with type-safe transitions.
     protocol: DhcpProtocol,
 
     /// Lease database manager with async access and persistence
@@ -190,21 +190,21 @@ pub struct DhcpV4Service {
     /// DNS cache for hostname registration of DHCP leases
     ///
     /// Automatically registers allocated hostnames in DNS cache for name resolution.
-    /// Replaces C cache_add_dhcp_entry() calls with async cache updates.
+    /// Replaces C `cache_add_dhcp_entry()` calls with async cache updates.
     #[allow(dead_code)]
     dns_cache: Arc<RwLock<DnsCache>>,
 
     /// Helper process for external script execution on lease events
     ///
     /// Executes scripts with DNSMASQ_* environment variables on add/old/del events.
-    /// Replaces C queue_script() and helper.c privilege-separated execution.
+    /// Replaces C `queue_script()` and helper.c privilege-separated execution.
     #[allow(dead_code)]
     helper: Arc<HelperProcess>,
 
     /// Interface manager for enumeration and monitoring
     ///
     /// Discovers network interfaces and addresses for DHCP context association.
-    /// Replaces C iface_enumerate() callback pattern with async interface iteration.
+    /// Replaces C `iface_enumerate()` callback pattern with async interface iteration.
     interface_manager: Arc<InterfaceManager>,
 
     /// Server configuration with DHCP ranges, options, and policies
@@ -273,7 +273,7 @@ pub struct DhcpContext {
 }
 
 impl DhcpV4Service {
-    /// Creates a new DHCPv4 server service
+    /// Creates a new `DHCPv4` server service
     ///
     /// Initializes the service with all required dependencies. Does not start packet processing
     /// or bind to network interfaces; call `run()` to begin serving requests.
@@ -281,7 +281,7 @@ impl DhcpV4Service {
     /// # Arguments
     ///
     /// * `socket` - Bound UDP socket for DHCP server port (67)
-    /// * `protocol` - DHCPv4 protocol handler
+    /// * `protocol` - `DHCPv4` protocol handler
     /// * `lease_manager` - Lease database manager
     /// * `dns_cache` - DNS cache for hostname registration
     /// * `helper` - Helper process for script execution
@@ -332,18 +332,15 @@ impl DhcpV4Service {
         // Initialize DHCP contexts from configuration
         service.initialize_contexts().await?;
 
-        info!(
-            contexts = service.contexts.len(),
-            "DHCPv4 server service initialized"
-        );
+        info!(contexts = service.contexts.len(), "DHCPv4 server service initialized");
 
         Ok(service)
     }
 
-    /// Main service loop processing DHCPv4 packets
+    /// Main service loop processing `DHCPv4` packets
     ///
     /// Receives packets from UDP socket, parses them, dispatches to protocol handler,
-    /// and sends responses. Runs until terminated by signal or error. Replaces C dhcp_packet()
+    /// and sends responses. Runs until terminated by signal or error. Replaces C `dhcp_packet()`
     /// poll-based processing with async tokio event loop.
     ///
     /// # Returns
@@ -380,16 +377,16 @@ impl DhcpV4Service {
         }
     }
 
-    /// Receives and handles a single DHCPv4 packet
+    /// Receives and handles a single `DHCPv4` packet
     ///
     /// Reads packet from socket, parses DHCP message, dispatches to appropriate handler
     /// based on message type, generates response, and sends reply. Core packet processing
-    /// logic replacing C dhcp_reply() function.
+    /// logic replacing C `dhcp_reply()` function.
     ///
     /// # Process Flow
     ///
-    /// 1. Receive packet from UDP socket (recv_from)
-    /// 2. Parse DHCP message with bounds checking (parse_dhcp_message)
+    /// 1. Receive packet from UDP socket (`recv_from`)
+    /// 2. Parse DHCP message with bounds checking (`parse_dhcp_message`)
     /// 3. Validate magic cookie and minimum size
     /// 4. Extract message type from options
     /// 5. Dispatch to protocol handler (DISCOVER/REQUEST/etc.)
@@ -421,7 +418,7 @@ impl DhcpV4Service {
     ///
     /// Returns `DhcpError` if:
     /// - Socket recv fails
-    /// - Packet too small (< MIN_PACKETSZ)
+    /// - Packet too small (< `MIN_PACKETSZ`)
     /// - Invalid magic cookie
     /// - No message type option
     /// - Protocol handler fails
@@ -432,13 +429,9 @@ impl DhcpV4Service {
         let mut buffer = vec![0u8; 1500];
 
         // Receive packet from socket
-        let (len, source) = self
-            .socket
-            .recv_from(&mut buffer)
-            .await
-            .map_err(|e| DhcpError::V4ProtocolError {
-                reason: format!("Failed to receive packet: {}", e),
-            })?;
+        let (len, source) = self.socket.recv_from(&mut buffer).await.map_err(|e| {
+            DhcpError::V4ProtocolError { reason: format!("Failed to receive packet: {e}") }
+        })?;
 
         debug!(
             source = %source,
@@ -455,7 +448,7 @@ impl DhcpV4Service {
                 "Packet too small, discarding"
             );
             return Err(DhcpError::ParseFailed {
-                reason: format!("Packet too small: {} bytes (minimum {})", len, MIN_PACKETSZ),
+                reason: format!("Packet too small: {len} bytes (minimum {MIN_PACKETSZ})"),
             });
         }
 
@@ -473,25 +466,24 @@ impl DhcpV4Service {
         })?;
 
         // Extract message type from options
-        let message_type = message
-            .get_option(|opt| matches!(opt, DhcpOption::MessageType(_)))
-            .and_then(|opt| {
-                if let DhcpOption::MessageType(mt) = opt {
-                    Some(mt.to_u8())
-                } else {
-                    None
-                }
-            })
-            .ok_or_else(|| {
-                warn!(
-                    source = %source,
-                    xid = message.transaction_id(),
-                    "No message type option found"
-                );
-                DhcpError::ParseFailed {
-                    reason: "Missing message type option".to_string(),
-                }
-            })?;
+        let message_type =
+            message
+                .get_option(|opt| matches!(opt, DhcpOption::MessageType(_)))
+                .and_then(|opt| {
+                    if let DhcpOption::MessageType(mt) = opt {
+                        Some(mt.to_u8())
+                    } else {
+                        None
+                    }
+                })
+                .ok_or_else(|| {
+                    warn!(
+                        source = %source,
+                        xid = message.transaction_id(),
+                        "No message type option found"
+                    );
+                    DhcpError::ParseFailed { reason: "Missing message type option".to_string() }
+                })?;
 
         debug!(
             source = %source,
@@ -534,7 +526,7 @@ impl DhcpV4Service {
                     "Unknown or unsupported message type, discarding"
                 );
                 return Err(DhcpError::ParseFailed {
-                    reason: format!("Unknown message type: {}", message_type),
+                    reason: format!("Unknown message type: {message_type}"),
                 });
             }
         }
@@ -755,7 +747,7 @@ impl DhcpV4Service {
     ///
     /// Searches through DHCP contexts for an available address, checks static reservations,
     /// verifies availability in lease database, and performs ICMP ping test to detect conflicts.
-    /// Replaces C address_allocate() with async Rust implementation.
+    /// Replaces C `address_allocate()` with async Rust implementation.
     ///
     /// # Algorithm
     ///
@@ -813,7 +805,7 @@ impl DhcpV4Service {
         );
 
         // Check static reservations first
-        for static_lease in self.config.dhcp.static_leases.iter() {
+        for static_lease in &self.config.dhcp.static_leases {
             if &static_lease.mac == client_mac {
                 // Extract IPv4 address from IpAddr enum
                 if let std::net::IpAddr::V4(ipv4) = static_lease.ip {
@@ -850,18 +842,18 @@ impl DhcpV4Service {
             if Self::ip_in_range(req_addr, context.start, context.end)
                 && self.is_address_available(req_addr, client_mac).await?
             {
-                if !self.ping_test(req_addr).await? {
+                if self.ping_test(req_addr).await? {
+                    warn!(
+                        requested_ip = %req_addr,
+                        "Requested address failed ping test (in use)"
+                    );
+                } else {
                     info!(
                         mac = %client_mac,
                         requested_ip = %req_addr,
                         "Allocated requested address"
                     );
                     return Ok(req_addr);
-                } else {
-                    warn!(
-                        requested_ip = %req_addr,
-                        "Requested address failed ping test (in use)"
-                    );
                 }
             }
         }
@@ -900,7 +892,7 @@ impl DhcpV4Service {
                         candidate_ip = %candidate,
                         "Address failed ping test, skipping"
                     );
-                    continue;
+                    // Continue to next iteration
                 }
                 Err(e) => {
                     warn!(
@@ -929,7 +921,7 @@ impl DhcpV4Service {
     ///
     /// Sends ICMP echo (ping) to candidate address with timeout to detect conflicts.
     /// Per RFC 2131 section 3.1, servers SHOULD probe addresses before allocation.
-    /// Replaces C do_icmp_ping() synchronous probe with async tokio implementation.
+    /// Replaces C `do_icmp_ping()` synchronous probe with async tokio implementation.
     ///
     /// # C Equivalent
     ///
@@ -1008,15 +1000,12 @@ impl DhcpV4Service {
                 let recv_result =
                     timeout(Duration::from_millis(50), socket.recv(&mut recv_buf)).await;
 
-                match recv_result {
-                    Ok(Ok(_)) => {
-                        debug!(target_ip = %addr, "Ping response received, address in use");
-                        Ok(true)
-                    }
-                    Ok(Err(_)) | Err(_) => {
-                        debug!(target_ip = %addr, "Ping timeout, address available");
-                        Ok(false)
-                    }
+                if let Ok(Ok(_)) = recv_result {
+                    debug!(target_ip = %addr, "Ping response received, address in use");
+                    Ok(true)
+                } else {
+                    debug!(target_ip = %addr, "Ping timeout, address available");
+                    Ok(false)
                 }
             }
             Ok(Err(e)) => {
@@ -1037,7 +1026,7 @@ impl DhcpV4Service {
     /// Sends DHCP response message to client
     ///
     /// Serializes response message and sends via UDP. Determines destination based on
-    /// broadcast flag in client request and client IP address state. Replaces C send_packet()
+    /// broadcast flag in client request and client IP address state. Replaces C `send_packet()`
     /// with async tokio UDP send.
     ///
     /// # Destination Selection
@@ -1091,20 +1080,15 @@ impl DhcpV4Service {
         };
 
         // Send response
-        self.socket
-            .send_to(&response_bytes, dest_addr)
-            .await
-            .map_err(|e| {
-                error!(
-                    xid = message.transaction_id(),
-                    dest = %dest_addr,
-                    error = %e,
-                    "Failed to send DHCP response"
-                );
-                DhcpError::V4ProtocolError {
-                    reason: format!("Failed to send DHCP response: {}", e),
-                }
-            })?;
+        self.socket.send_to(&response_bytes, dest_addr).await.map_err(|e| {
+            error!(
+                xid = message.transaction_id(),
+                dest = %dest_addr,
+                error = %e,
+                "Failed to send DHCP response"
+            );
+            DhcpError::V4ProtocolError { reason: format!("Failed to send DHCP response: {e}") }
+        })?;
 
         debug!(
             xid = message.transaction_id(),
@@ -1119,7 +1103,7 @@ impl DhcpV4Service {
     /// Initializes DHCP contexts from configuration and interface enumeration
     ///
     /// Discovers network interfaces, matches configured DHCP ranges to interfaces,
-    /// and builds active DHCP contexts. Replaces C complete_context() callback pattern
+    /// and builds active DHCP contexts. Replaces C `complete_context()` callback pattern
     /// with async interface iteration.
     ///
     /// # C Equivalent
@@ -1147,20 +1131,11 @@ impl DhcpV4Service {
         info!("Initializing DHCP contexts");
 
         // Enumerate all network interfaces
-        let interfaces = self
-            .interface_manager
-            .enumerate_interfaces()
-            .await
-            .map_err(|e| {
-                DhcpError::V4ProtocolError {
-                    reason: format!("Failed to enumerate interfaces: {}", e),
-                }
-            })?;
+        let interfaces = self.interface_manager.enumerate_interfaces().await.map_err(|e| {
+            DhcpError::V4ProtocolError { reason: format!("Failed to enumerate interfaces: {e}") }
+        })?;
 
-        debug!(
-            interface_count = interfaces.len(),
-            "Discovered network interfaces"
-        );
+        debug!(interface_count = interfaces.len(), "Discovered network interfaces");
 
         // Build contexts from configuration
         let mut contexts = Vec::new();
@@ -1170,26 +1145,18 @@ impl DhcpV4Service {
             let interface = interfaces
                 .iter()
                 .find(|iface| {
-                    range.interface.is_none()
-                        || range.interface.as_ref() == Some(&iface.name)
+                    range.interface.is_none() || range.interface.as_ref() == Some(&iface.name)
                 })
-                .ok_or_else(|| {
-                    DhcpError::V4ProtocolError {
-                        reason: format!(
-                            "No interface found for range {:?}",
-                            range.interface
-                        ),
-                    }
+                .ok_or_else(|| DhcpError::V4ProtocolError {
+                    reason: format!("No interface found for range {:?}", range.interface),
                 })?;
 
             // Extract IPv4 addresses from IpAddr enums
-            let start_v4 = match range.start {
-                std::net::IpAddr::V4(ipv4) => ipv4,
-                _ => continue, // Skip non-IPv4 ranges
+            let std::net::IpAddr::V4(start_v4) = range.start else {
+                continue; // Skip non-IPv4 ranges
             };
-            let end_v4 = match range.end {
-                std::net::IpAddr::V4(ipv4) => ipv4,
-                _ => continue,
+            let std::net::IpAddr::V4(end_v4) = range.end else {
+                continue;
             };
 
             // Extract netmask or use default /24
@@ -1204,10 +1171,10 @@ impl DhcpV4Service {
             let broadcast_v4 = Ipv4Addr::from(network_bits | host_bits);
 
             // Convert lease time from Duration to u32 seconds
-            let lease_time_secs = range
-                .lease_time_override
-                .unwrap_or(self.config.dhcp.lease_time)
-                .as_secs() as u32;
+            // Casting u64 to u32 is safe because DHCP lease times never exceed 2^32 seconds
+            #[allow(clippy::cast_possible_truncation)]
+            let lease_time_secs =
+                range.lease_time_override.unwrap_or(self.config.dhcp.lease_time).as_secs() as u32;
 
             let context = DhcpContext {
                 start: start_v4,
@@ -1216,7 +1183,7 @@ impl DhcpV4Service {
                 interface_index: interface.index,
                 netmask: netmask_v4,
                 broadcast: broadcast_v4,
-                router: None, // TODO: Configure from global DHCP options
+                router: None,            // TODO: Configure from global DHCP options
                 dns_servers: Vec::new(), // TODO: Configure from global DHCP options
                 lease_time: lease_time_secs,
                 tags: Vec::new(), // TODO: Implement tag support
@@ -1234,10 +1201,7 @@ impl DhcpV4Service {
 
         self.contexts = contexts;
 
-        info!(
-            context_count = self.contexts.len(),
-            "DHCP contexts initialized"
-        );
+        info!(context_count = self.contexts.len(), "DHCP contexts initialized");
 
         Ok(())
     }
@@ -1245,7 +1209,7 @@ impl DhcpV4Service {
     /// Selects appropriate DHCP context for relayed request
     ///
     /// When DHCP request arrives via relay agent (giaddr != 0), selects context
-    /// based on relay agent's IP address. Replaces C narrow_context() function.
+    /// based on relay agent's IP address. Replaces C `narrow_context()` function.
     ///
     /// # C Equivalent
     ///

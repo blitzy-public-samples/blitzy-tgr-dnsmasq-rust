@@ -148,11 +148,11 @@
 //!
 //! | Platform   | Implementation Module | Backend Technology         |
 //! |------------|----------------------|----------------------------|
-//! | Linux      | `linux.rs`           | rtnetlink (NETLINK_ROUTE)  |
-//! | FreeBSD    | `bsd.rs`             | PF_ROUTE + BPF             |
-//! | OpenBSD    | `bsd.rs`             | PF_ROUTE + BPF             |
-//! | NetBSD     | `bsd.rs`             | PF_ROUTE + BPF             |
-//! | macOS      | `macos.rs`           | PF_ROUTE + BPF (macOS API) |
+//! | Linux      | `linux.rs`           | rtnetlink (`NETLINK_ROUTE`)  |
+//! | FreeBSD    | `bsd.rs`             | `PF_ROUTE` + BPF             |
+//! | OpenBSD    | `bsd.rs`             | `PF_ROUTE` + BPF             |
+//! | NetBSD     | `bsd.rs`             | `PF_ROUTE` + BPF             |
+//! | macOS      | `macos.rs`           | `PF_ROUTE` + BPF (macOS API) |
 //!
 //! # Factory Function: `create_platform_handler`
 //!
@@ -214,7 +214,7 @@
 //!
 //! All platform implementations are `Send + Sync` and can be safely shared across async tasks
 //! using `Arc<dyn NetworkPlatform>`. Internal state is protected by appropriate synchronization
-//! primitives (Mutex, RwLock) where needed.
+//! primitives (Mutex, `RwLock`) where needed.
 
 use std::boxed::Box;
 
@@ -247,19 +247,19 @@ pub use common::{InterfaceEvent, InterfaceFlags, NetworkInterface, NetworkPlatfo
 /// # Platform Selection Logic
 ///
 /// - **Linux** (`target_os = "linux"`): Returns `LinuxNetworkPlatform` using rtnetlink
-///   - Provides real-time interface monitoring via NETLINK_ROUTE multicast groups
+///   - Provides real-time interface monitoring via `NETLINK_ROUTE` multicast groups
 ///   - Superior performance through kernel push notifications vs. polling
 ///   - Supports all modern Linux distributions (kernels 2.6+)
 ///   - Compatible with Android AOSP builds
 ///
 /// - **BSD** (`target_os = "freebsd" | "openbsd" | "netbsd"`): Returns `BsdNetworkPlatform`
-///   - Uses PF_ROUTE routing sockets for interface change monitoring
+///   - Uses `PF_ROUTE` routing sockets for interface change monitoring
 ///   - Berkeley Packet Filter (BPF) for raw packet access via `/dev/bpf*`
-///   - ARP table enumeration via sysctl (NET_RT_FLAGS with RTF_LLINFO)
+///   - ARP table enumeration via sysctl (`NET_RT_FLAGS` with `RTF_LLINFO`)
 ///   - Compatible with all BSD variants (FreeBSD 13+, OpenBSD 7+, NetBSD 9+)
 ///
 /// - **macOS** (`target_os = "macos"`): Returns `MacOSNetworkPlatform`
-///   - Similar to BSD but uses macOS-specific APIs (SO_BINDTOIF instead of SO_BINDTODEVICE)
+///   - Similar to BSD but uses macOS-specific APIs (`SO_BINDTOIF` instead of `SO_BINDTODEVICE`)
 ///   - BPF device handling follows macOS patterns
 ///   - Excludes BSD features not supported on macOS (sysctl ARP enumeration)
 ///   - Compatible with macOS 10.15+ (Catalina and later)
@@ -306,7 +306,7 @@ pub use common::{InterfaceEvent, InterfaceFlags, NetworkInterface, NetworkPlatfo
 /// Returns platform-specific initialization errors:
 ///
 /// - **Linux**: `NetworkError::NetlinkFailed` if netlink socket creation fails
-///   - Insufficient permissions (requires CAP_NET_ADMIN or root)
+///   - Insufficient permissions (requires `CAP_NET_ADMIN` or root)
 ///   - Netlink socket binding failure
 ///   - Background task spawning failure
 ///
@@ -317,7 +317,7 @@ pub use common::{InterfaceEvent, InterfaceFlags, NetworkInterface, NetworkPlatfo
 ///
 /// - **macOS**: `NetworkError::RoutingFailed` similar to BSD
 ///   - BPF device enumeration failure
-///   - SO_BINDTOIF ioctl failure
+///   - `SO_BINDTOIF` ioctl failure
 ///
 /// # Examples
 ///

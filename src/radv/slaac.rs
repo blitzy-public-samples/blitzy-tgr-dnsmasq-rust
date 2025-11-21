@@ -2,23 +2,23 @@
 
 //! SLAAC (Stateless Address Autoconfiguration) address confirmation module
 //!
-//! This module implements IPv6 SLAAC address derivation from DHCPv4 lease MAC addresses
-//! using EUI-64 conversion (RFC 4291 Appendix A), duplicate address detection via ICMPv6
+//! This module implements IPv6 SLAAC address derivation from `DHCPv4` lease MAC addresses
+//! using EUI-64 conversion (RFC 4291 Appendix A), duplicate address detection via `ICMPv6`
 //! echo requests (ping), and DNS registration upon address confirmation.
 //!
 //! # Core Functions
 //!
 //! - [`slaac_add_addrs`] - Derives SLAAC addresses from MAC addresses and RA prefixes
-//! - [`periodic_slaac`] - Sends ICMPv6 echo requests with exponential backoff retry logic
+//! - [`periodic_slaac`] - Sends `ICMPv6` echo requests with exponential backoff retry logic
 //! - [`slaac_ping_reply`] - Processes echo replies to confirm addresses and trigger DNS registration
 //!
 //! # Features
 //!
 //! - EUI-64 MAC-to-IPv6 address conversion per RFC 4291
-//! - Duplicate address detection using ICMPv6 echo requests
+//! - Duplicate address detection using `ICMPv6` echo requests
 //! - Exponential backoff for ping retries (starts at 6, decrements to 0)
 //! - DNS registration of confirmed SLAAC addresses
-//! - Coordination with DHCPv4 lease management for MAC address retrieval
+//! - Coordination with `DHCPv4` lease management for MAC address retrieval
 //! - Router Advertisement module integration for prefix information
 //! - Async/await tokio pattern replacing C poll-based timing
 //! - Memory-safe address list management replacing C linked lists
@@ -26,15 +26,15 @@
 //! # C Implementation Reference
 //!
 //! Based on: src/slaac.c
-//! - slaac_add_addrs() - lines 412-512 (address derivation)
-//! - periodic_slaac() - lines 514-549 (periodic ping transmission)
-//! - slaac_ping_reply() - lines 551-606 (echo reply processing)
+//! - `slaac_add_addrs()` - lines 412-512 (address derivation)
+//! - `periodic_slaac()` - lines 514-549 (periodic ping transmission)
+//! - `slaac_ping_reply()` - lines 551-606 (echo reply processing)
 //!
 //! # Architecture Note
 //!
 //! This module is designed to be decoupled from the DNS cache implementation
 //! to maintain clear dependency boundaries. The `slaac_ping_reply` function
-//! validates ICMPv6 echo reply packets and returns a boolean indicating whether
+//! validates `ICMPv6` echo reply packets and returns a boolean indicating whether
 //! DNS registration should occur. The caller is responsible for:
 //! 1. Matching the confirmed address to the appropriate DHCP lease
 //! 2. Calling `update_all_lease_dns` from `dhcp::lease::dns_integration`
@@ -96,20 +96,20 @@ use std::time::Instant;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument, warn};
 
-/// DHCPv6 context flag indicating RA-names mode is enabled.
+/// `DHCPv6` context flag indicating RA-names mode is enabled.
 ///
-/// When this flag is set on a DhcpContext, SLAAC addresses derived from
-/// DHCPv4 leases should be registered in DNS after confirmation.
+/// When this flag is set on a `DhcpContext`, SLAAC addresses derived from
+/// `DHCPv4` leases should be registered in DNS after confirmation.
 ///
-/// Corresponds to C CONTEXT_RA_NAME (0x2000) in dnsmasq.h line 865.
+/// Corresponds to C `CONTEXT_RA_NAME` (0x2000) in dnsmasq.h line 865.
 pub const CONTEXT_RA_NAME: u32 = 0x2000;
 
-/// DHCPv6 context flag indicating this is an old context.
+/// `DHCPv6` context flag indicating this is an old context.
 ///
 /// Old contexts are skipped during SLAAC address derivation unless
 /// force=true is specified.
 ///
-/// Corresponds to C CONTEXT_OLD (0x4000) in dnsmasq.h line 866.
+/// Corresponds to C `CONTEXT_OLD` (0x4000) in dnsmasq.h line 866.
 pub const CONTEXT_OLD: u32 = 0x4000;
 
 /// Initial backoff counter value for SLAAC ping attempts.
@@ -118,33 +118,33 @@ pub const CONTEXT_OLD: u32 = 0x4000;
 /// decremented on each ping attempt. When it reaches 0, the address
 /// is either confirmed (if echo reply received) or timed out (if no reply).
 ///
-/// Corresponds to C PING_BACKOFF in slaac.c line 423.
+/// Corresponds to C `PING_BACKOFF` in slaac.c line 423.
 #[allow(dead_code)]
 const PING_BACKOFF_INITIAL: u8 = 6;
 
 /// Wait time in seconds between ping attempts for SLAAC duplicate detection.
 ///
-/// ICMPv6 echo requests are sent at this interval until address is confirmed
+/// `ICMPv6` echo requests are sent at this interval until address is confirmed
 /// or backoff counter reaches 0.
 ///
 /// Corresponds to C ping timing logic in slaac.c line 527.
 #[allow(dead_code)]
 const PING_WAIT_SECS: u64 = 10;
 
-/// ICMPv6 Echo Reply message type constant.
+/// `ICMPv6` Echo Reply message type constant.
 ///
-/// Used to validate received packets in slaac_ping_reply().
+/// Used to validate received packets in `slaac_ping_reply()`.
 const ICMP6_ECHO_REPLY: u8 = 129;
 
-/// Global atomic counter for ICMPv6 ping identifiers.
+/// Global atomic counter for `ICMPv6` ping identifiers.
 ///
-/// Replaces C static int ping_id in slaac.c line 418.
-/// Provides thread-safe identifier generation for ICMPv6 echo request packets.
+/// Replaces C static int `ping_id` in slaac.c line 418.
+/// Provides thread-safe identifier generation for `ICMPv6` echo request packets.
 static PING_ID_COUNTER: AtomicU16 = AtomicU16::new(1);
 
 /// SLAAC-derived IPv6 address tracking structure.
 ///
-/// Represents a single SLAAC address derived from a DHCPv4 lease MAC address.
+/// Represents a single SLAAC address derived from a `DHCPv4` lease MAC address.
 /// Tracks confirmation state through backoff counter and ping timing.
 ///
 /// Replaces C `struct slaac_address` in dnsmasq.h lines 1094-1099.
@@ -169,19 +169,19 @@ static PING_ID_COUNTER: AtomicU16 = AtomicU16::new(1);
 pub struct SlaacAddress {
     /// The derived SLAAC IPv6 address.
     ///
-    /// Constructed from DHCPv4 lease MAC address using EUI-64 conversion
-    /// and DHCPv6 context prefix from Router Advertisement configuration.
+    /// Constructed from `DHCPv4` lease MAC address using EUI-64 conversion
+    /// and `DHCPv6` context prefix from Router Advertisement configuration.
     pub addr: Ipv6Addr,
 
     /// Timestamp of last ping transmission.
     ///
-    /// Uses monotonic Instant for reliable interval timing, replacing C time_t.
-    /// Updated each time an ICMPv6 echo request is sent for this address.
+    /// Uses monotonic Instant for reliable interval timing, replacing C `time_t`.
+    /// Updated each time an `ICMPv6` echo request is sent for this address.
     pub ping_time: Instant,
 
     /// Exponential backoff counter for ping retries.
     ///
-    /// Starts at PING_BACKOFF_INITIAL (6), decremented on each ping attempt.
+    /// Starts at `PING_BACKOFF_INITIAL` (6), decremented on each ping attempt.
     /// When reaches 0: address is confirmed if echo reply received, or
     /// timed out and removed if no reply received.
     pub backoff: u8,
@@ -205,7 +205,7 @@ pub enum SlaacError {
     #[error("Failed to register SLAAC address in DNS: {0}")]
     DnsRegistrationFailed(String),
 
-    /// Received invalid ICMPv6 packet.
+    /// Received invalid `ICMPv6` packet.
     #[error("Invalid ICMPv6 packet: {0}")]
     InvalidPacket(String),
 }
@@ -220,8 +220,8 @@ pub enum SlaacError {
 ///
 /// # Arguments
 ///
-/// * `mac` - MAC address bytes (6 bytes) from DHCPv4 lease
-/// * `prefix` - IPv6 /64 prefix from DHCPv6 context
+/// * `mac` - MAC address bytes (6 bytes) from `DHCPv4` lease
+/// * `prefix` - IPv6 /64 prefix from `DHCPv6` context
 ///
 /// # Returns
 ///
@@ -272,18 +272,18 @@ pub fn eui64_from_mac(mac: &[u8; 6], prefix: &Ipv6Addr) -> Ipv6Addr {
     )
 }
 
-/// Derive SLAAC addresses for a DHCPv4 lease from Router Advertisement prefixes.
+/// Derive SLAAC addresses for a `DHCPv4` lease from Router Advertisement prefixes.
 ///
-/// Iterates through all DHCPv6 contexts (RA prefixes), derives SLAAC addresses
+/// Iterates through all `DHCPv6` contexts (RA prefixes), derives SLAAC addresses
 /// using EUI-64 conversion from the lease's MAC address, and initializes
 /// tracking structures for duplicate address detection.
 ///
 /// # Arguments
 ///
-/// * `lease` - Mutable reference to DHCPv4 lease to add SLAAC addresses to
-/// * `dhcp_contexts` - Slice of DHCPv6 contexts containing RA prefix configuration
-/// * `now` - Current timestamp for ping_time initialization
-/// * `force` - If true, process even CONTEXT_OLD contexts
+/// * `lease` - Mutable reference to `DHCPv4` lease to add SLAAC addresses to
+/// * `dhcp_contexts` - Slice of `DHCPv6` contexts containing RA prefix configuration
+/// * `now` - Current timestamp for `ping_time` initialization
+/// * `force` - If true, process even `CONTEXT_OLD` contexts
 ///
 /// # Returns
 ///
@@ -310,7 +310,7 @@ pub fn eui64_from_mac(mac: &[u8; 6], prefix: &Ipv6Addr) -> Ipv6Addr {
 ///
 /// # C Equivalent
 ///
-/// Based on: src/slaac.c slaac_add_addrs() function lines 412-512
+/// Based on: src/slaac.c `slaac_add_addrs()` function lines 412-512
 #[instrument(skip(lease, dhcp_contexts), fields(interface = %lease.interface))]
 pub async fn slaac_add_addrs(
     lease: &mut Lease,
@@ -319,12 +319,11 @@ pub async fn slaac_add_addrs(
     force: bool,
 ) -> Result<(), SlaacError> {
     // Extract MAC address from lease
-    let mac = match &lease.mac {
-        Some(mac) => mac.octets(),
-        None => {
-            debug!("Lease has no MAC address, cannot derive SLAAC addresses");
-            return Err(SlaacError::MacConversionFailed("Lease has no MAC address".to_string()));
-        }
+    let mac = if let Some(mac) = &lease.mac {
+        mac.octets()
+    } else {
+        debug!("Lease has no MAC address, cannot derive SLAAC addresses");
+        return Err(SlaacError::MacConversionFailed("Lease has no MAC address".to_string()));
     };
 
     // Initialize SLAAC address vector if not present
@@ -377,12 +376,9 @@ pub async fn slaac_add_addrs(
         }
 
         // Extract prefix from context start6 (assumes /64)
-        let prefix = match context.start6 {
-            crate::types::IpAddr::V6(addr) => addr,
-            _ => {
-                warn!("DHCPv6 context has non-IPv6 prefix, skipping");
-                continue;
-            }
+        let crate::types::IpAddr::V6(prefix) = context.start6 else {
+            warn!("DHCPv6 context has non-IPv6 prefix, skipping");
+            continue;
         };
 
         // Derive SLAAC address using EUI-64 conversion
@@ -414,16 +410,16 @@ pub async fn slaac_add_addrs(
     Ok(())
 }
 
-/// Calculate ICMPv6 checksum with IPv6 pseudo-header.
+/// Calculate `ICMPv6` checksum with IPv6 pseudo-header.
 ///
-/// Implements RFC 2463 checksum calculation for ICMPv6 packets, including
+/// Implements RFC 2463 checksum calculation for `ICMPv6` packets, including
 /// the IPv6 pseudo-header as specified in RFC 2460 Section 8.1.
 ///
 /// # Arguments
 ///
 /// * `src` - Source IPv6 address
 /// * `dst` - Destination IPv6 address
-/// * `packet` - ICMPv6 packet bytes (type, code, checksum field (0), data)
+/// * `packet` - `ICMPv6` packet bytes (type, code, checksum field (0), data)
 ///
 /// # Returns
 ///
@@ -431,25 +427,25 @@ pub async fn slaac_add_addrs(
 ///
 /// # Algorithm
 ///
-/// 1. Construct pseudo-header: src_addr + dst_addr + length + next_header
+/// 1. Construct pseudo-header: `src_addr` + `dst_addr` + length + `next_header`
 /// 2. Sum pseudo-header as 16-bit words with one's complement arithmetic
-/// 3. Sum ICMPv6 packet as 16-bit words
+/// 3. Sum `ICMPv6` packet as 16-bit words
 /// 4. Fold carries and take one's complement
 ///
 /// # C Equivalent
 ///
-/// Based on: C checksum calculation in various files, standard ICMPv6 checksum
+/// Based on: C checksum calculation in various files, standard `ICMPv6` checksum
 fn calculate_icmpv6_checksum(src: Ipv6Addr, dst: Ipv6Addr, packet: &[u8]) -> u16 {
     let mut sum: u32 = 0;
 
     // Add source address (16 bytes = 8 u16 words)
     for segment in src.segments() {
-        sum += segment as u32;
+        sum += u32::from(segment);
     }
 
     // Add destination address (16 bytes = 8 u16 words)
     for segment in dst.segments() {
-        sum += segment as u32;
+        sum += u32::from(segment);
     }
 
     // Add ICMPv6 length (upper layer packet length)
@@ -466,12 +462,12 @@ fn calculate_icmpv6_checksum(src: Ipv6Addr, dst: Ipv6Addr, packet: &[u8]) -> u16
         if i + 1 < packet.len() {
             // Two bytes available - combine into u16
             let word = u16::from_be_bytes([packet[i], packet[i + 1]]);
-            sum += word as u32;
+            sum += u32::from(word);
             i += 2;
         } else {
             // Odd byte at end - pad with 0
             let word = u16::from_be_bytes([packet[i], 0]);
-            sum += word as u32;
+            sum += u32::from(word);
             i += 1;
         }
     }
@@ -485,9 +481,9 @@ fn calculate_icmpv6_checksum(src: Ipv6Addr, dst: Ipv6Addr, packet: &[u8]) -> u16
     !sum as u16
 }
 
-/// Construct ICMPv6 Echo Request packet for SLAAC duplicate detection.
+/// Construct `ICMPv6` Echo Request packet for SLAAC duplicate detection.
 ///
-/// Builds a minimal ICMPv6 echo request packet with:
+/// Builds a minimal `ICMPv6` echo request packet with:
 /// - Type: 128 (Echo Request)
 /// - Code: 0
 /// - Checksum: Calculated with IPv6 pseudo-header
@@ -502,11 +498,11 @@ fn calculate_icmpv6_checksum(src: Ipv6Addr, dst: Ipv6Addr, packet: &[u8]) -> u16
 ///
 /// # Returns
 ///
-/// Complete ICMPv6 Echo Request packet bytes ready for transmission
+/// Complete `ICMPv6` Echo Request packet bytes ready for transmission
 ///
 /// # C Equivalent
 ///
-/// Based on: src/slaac.c periodic_slaac() lines 527-540
+/// Based on: src/slaac.c `periodic_slaac()` lines 527-540
 #[instrument(skip(src, target))]
 fn construct_icmpv6_echo_request(src: Ipv6Addr, target: Ipv6Addr) -> Vec<u8> {
     // Get next ping identifier (atomic increment)
@@ -550,19 +546,19 @@ fn construct_icmpv6_echo_request(src: Ipv6Addr, target: Ipv6Addr) -> Vec<u8> {
     packet
 }
 
-/// Periodic SLAAC duplicate address detection via ICMPv6 echo requests.
+/// Periodic SLAAC duplicate address detection via `ICMPv6` echo requests.
 ///
-/// Iterates through all DHCPv4 leases with pending SLAAC addresses, sends
-/// ICMPv6 echo requests for duplicate detection, and manages backoff counters.
+/// Iterates through all `DHCPv4` leases with pending SLAAC addresses, sends
+/// `ICMPv6` echo requests for duplicate detection, and manages backoff counters.
 /// Addresses with backoff=0 that haven't been confirmed are removed (timeout).
 ///
-/// This function should be called periodically (every PING_WAIT_SECS seconds)
+/// This function should be called periodically (every `PING_WAIT_SECS` seconds)
 /// from the main event loop.
 ///
 /// # Arguments
 ///
-/// * `leases` - Shared reference to all DHCPv4 leases
-/// * `socket` - ICMPv6 socket for transmitting echo requests
+/// * `leases` - Shared reference to all `DHCPv4` leases
+/// * `socket` - `ICMPv6` socket for transmitting echo requests
 ///
 /// # Returns
 ///
@@ -592,7 +588,7 @@ fn construct_icmpv6_echo_request(src: Ipv6Addr, target: Ipv6Addr) -> Vec<u8> {
 ///
 /// # C Equivalent
 ///
-/// Based on: src/slaac.c periodic_slaac() function lines 514-549
+/// Based on: src/slaac.c `periodic_slaac()` function lines 514-549
 #[instrument(skip(leases, socket))]
 pub async fn periodic_slaac(
     leases: Arc<RwLock<Vec<Lease>>>,
@@ -658,16 +654,16 @@ pub async fn periodic_slaac(
     Ok(())
 }
 
-/// Process ICMPv6 Echo Reply for SLAAC address confirmation.
+/// Process `ICMPv6` Echo Reply for SLAAC address confirmation.
 ///
-/// Validates received ICMPv6 echo reply packets, matches them to pending
+/// Validates received `ICMPv6` echo reply packets, matches them to pending
 /// SLAAC addresses, and marks addresses as confirmed. Upon confirmation,
 /// returns true to indicate that DNS registration should be triggered by
 /// the caller.
 ///
 /// # Arguments
 ///
-/// * `packet` - Raw ICMPv6 packet bytes received from socket
+/// * `packet` - Raw `ICMPv6` packet bytes received from socket
 /// * `src` - Source IPv6 address of reply (should match pinged SLAAC address)
 ///
 /// # Returns
@@ -696,7 +692,7 @@ pub async fn periodic_slaac(
 ///
 /// # C Equivalent
 ///
-/// Based on: src/slaac.c slaac_ping_reply() function lines 551-606
+/// Based on: src/slaac.c `slaac_ping_reply()` function lines 551-606
 #[instrument(skip(packet))]
 pub async fn slaac_ping_reply(packet: &[u8], src: Ipv6Addr) -> Result<bool, SlaacError> {
     // Validate packet length (minimum: type + code + checksum + id + seq = 8 bytes)

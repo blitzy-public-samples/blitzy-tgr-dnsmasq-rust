@@ -255,15 +255,15 @@ use tokio::net::UdpSocket;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
-/// Unified DHCP service coordinating DHCPv4 and DHCPv6 server operations.
+/// Unified DHCP service coordinating `DHCPv4` and `DHCPv6` server operations.
 ///
 /// `DhcpService` replaces the C implementation's separate `dhcp_packet()` and `dhcp6_packet()`
-/// functions with a unified async event loop using `tokio::select!` to multiplex both DHCPv4
-/// (port 67) and DHCPv6 (port 547) sockets concurrently.
+/// functions with a unified async event loop using `tokio::select!` to multiplex both `DHCPv4`
+/// (port 67) and `DHCPv6` (port 547) sockets concurrently.
 ///
 /// # Ownership Model
 ///
-/// The service owns the UDP sockets for both DHCPv4 and DHCPv6, but shares configuration and
+/// The service owns the UDP sockets for both `DHCPv4` and `DHCPv6`, but shares configuration and
 /// lease manager via `Arc` to enable concurrent access from helper scripts and DNS integration:
 ///
 /// - **Exclusive ownership**: `v4_socket`, `v6_socket` (owned by service)
@@ -294,28 +294,28 @@ use tracing::{debug, error, info, warn};
 ///
 /// This provides equivalent performance with better composability and resource efficiency.
 pub struct DhcpService {
-    /// DHCPv4 service instance handling RFC 2131 protocol operations.
+    /// `DHCPv4` service instance handling RFC 2131 protocol operations.
     ///
-    /// Created during initialization if DHCPv4 is enabled in configuration (default).
-    /// None if `--no-dhcp` is specified or no DHCPv4 ranges are configured.
-    /// 
+    /// Created during initialization if `DHCPv4` is enabled in configuration (default).
+    /// None if `--no-dhcp` is specified or no `DHCPv4` ranges are configured.
+    ///
     /// The service owns its socket internally and runs its own event loop.
     v4_service: Option<DhcpV4Service>,
 
-    /// DHCPv6 service instance handling RFC 3315 protocol operations.
+    /// `DHCPv6` service instance handling RFC 3315 protocol operations.
     ///
-    /// Created during initialization if DHCPv6 is enabled (feature flag "dhcp6") and
+    /// Created during initialization if `DHCPv6` is enabled (feature flag "dhcp6") and
     /// IPv6 address ranges or prefix delegation is configured.
-    /// 
+    ///
     /// The service owns its socket internally and runs its own event loop.
     #[cfg(feature = "dhcp6")]
     v6_service: Option<DhcpV6Service>,
 
-    /// Unified lease manager coordinating DHCPv4 and DHCPv6 lease operations.
+    /// Unified lease manager coordinating `DHCPv4` and `DHCPv6` lease operations.
     ///
     /// Shared via Arc<RwLock> to enable concurrent access from:
-    /// - DHCPv4 service (lease allocation, renewal, release)
-    /// - DHCPv6 service (IA_NA allocation, prefix delegation)
+    /// - `DHCPv4` service (lease allocation, renewal, release)
+    /// - `DHCPv6` service (`IA_NA` allocation, prefix delegation)
     /// - DNS integration (hostname registration from leases)
     /// - Helper scripts (lease change notification)
     /// - D-Bus interface (lease query operations)
@@ -336,7 +336,7 @@ pub struct DhcpService {
 }
 
 impl DhcpService {
-    /// Create new DHCP service with unified DHCPv4 and DHCPv6 coordination.
+    /// Create new DHCP service with unified `DHCPv4` and `DHCPv6` coordination.
     ///
     /// Replaces C functions `dhcp_init()` and `dhcp6_init()` with a unified initialization
     /// that creates both services with all required dependencies.
@@ -344,7 +344,7 @@ impl DhcpService {
     /// # Arguments
     ///
     /// * `config` - Daemon configuration with DHCP ranges, options, and server settings
-    /// * `lease_manager` - Shared lease database for both DHCPv4 and DHCPv6
+    /// * `lease_manager` - Shared lease database for both `DHCPv4` and `DHCPv6`
     /// * `dns_cache` - DNS cache for hostname registration from DHCP leases
     /// * `helper` - Helper process executor for lease change scripts
     /// * `interface_manager` - Network interface manager for interface-aware DHCP
@@ -353,8 +353,8 @@ impl DhcpService {
     ///
     /// - `Ok(DhcpService)`: Service successfully initialized
     /// - `Err(DhcpError::SocketError)`: Socket creation or binding failed
-    /// - `Err(DhcpError::V4ProtocolError)`: DHCPv4 initialization failed
-    /// - `Err(DhcpError::V6ProtocolError)`: DHCPv6 initialization failed
+    /// - `Err(DhcpError::V4ProtocolError)`: `DHCPv4` initialization failed
+    /// - `Err(DhcpError::V6ProtocolError)`: `DHCPv6` initialization failed
     ///
     /// # C Equivalence
     ///
@@ -410,7 +410,10 @@ impl DhcpService {
         info!("Initializing DHCP service");
 
         // Initialize DHCPv4 service if configured
-        let v4_service = if !config.dhcp.v4_ranges.is_empty() {
+        let v4_service = if config.dhcp.v4_ranges.is_empty() {
+            debug!("DHCPv4 disabled by configuration");
+            None
+        } else {
             debug!("Initializing DHCPv4 service");
 
             // Bind DHCPv4 socket to port 67
@@ -420,20 +423,17 @@ impl DhcpService {
                 .listen_addresses
                 .iter()
                 .find(|addr| matches!(addr, std::net::IpAddr::V4(_)))
-                .map(|addr| format!("{}:67", addr))
-                .unwrap_or_else(|| "0.0.0.0:67".to_string());
+                .map_or_else(|| "0.0.0.0:67".to_string(), |addr| format!("{addr}:67"));
 
             debug!("Binding DHCPv4 socket to {}", bind_addr);
 
             let udp_socket = UdpSocket::bind(&bind_addr).await.map_err(|e| {
-                DhcpError::SocketError(format!("Failed to bind DHCPv4 socket to {}: {}", bind_addr, e))
+                DhcpError::SocketError(format!("Failed to bind DHCPv4 socket to {bind_addr}: {e}"))
             })?;
 
             // Enable broadcast (required for DHCPOFFER to 255.255.255.255)
-            udp_socket.set_broadcast(true).map_err(|e| {
-                DhcpError::V4ProtocolError {
-                    reason: format!("Failed to set SO_BROADCAST: {}", e),
-                }
+            udp_socket.set_broadcast(true).map_err(|e| DhcpError::V4ProtocolError {
+                reason: format!("Failed to set SO_BROADCAST: {e}"),
             })?;
 
             debug!("DHCPv4 socket successfully bound with broadcast enabled");
@@ -465,36 +465,34 @@ impl DhcpService {
 
             info!("DHCPv4 service initialized on port 67");
             Some(service)
-        } else {
-            debug!("DHCPv4 disabled by configuration");
-            None
         };
 
         // Initialize DHCPv6 service if configured and feature enabled
         #[cfg(feature = "dhcp6")]
-        let v6_service = if !config.dhcp.v6_ranges.is_empty() {
+        let v6_service = if config.dhcp.v6_ranges.is_empty() {
+            debug!("DHCPv6 disabled by configuration or feature flag");
+            None
+        } else {
             debug!("Initializing DHCPv6 service");
 
             // DHCPv6 service creates its own socket internally
-            let service = DhcpV6Service::new(config.clone(), lease_manager.clone())
-                .await
-                .map_err(|e| {
+            let service =
+                DhcpV6Service::new(config.clone(), lease_manager.clone()).await.map_err(|e| {
                     error!("Failed to initialize DHCPv6 service: {}", e);
                     e
                 })?;
 
             info!("DHCPv6 service initialized");
             Some(service)
-        } else {
-            debug!("DHCPv6 disabled by configuration or feature flag");
-            None
         };
 
         // Verify at least one DHCP service is enabled
         #[cfg(not(feature = "dhcp6"))]
         if v4_service.is_none() {
             return Err(DhcpError::V4ProtocolError {
-                reason: "No DHCP services enabled - DHCPv4 disabled and DHCPv6 feature not compiled".to_string(),
+                reason:
+                    "No DHCP services enabled - DHCPv4 disabled and DHCPv6 feature not compiled"
+                        .to_string(),
             });
         }
 
@@ -516,17 +514,10 @@ impl DhcpService {
         })
     }
 
-
-
-
-
-    /// Receive and dispatch a single DHCP packet from either DHCPv4 or DHCPv6 socket.
-
-
     /// Run the DHCP service event loop indefinitely.
     ///
     /// This is the main entry point for DHCP service operation. It spawns separate
-    /// tokio tasks for DHCPv4 and DHCPv6 services (if enabled) and waits for any
+    /// tokio tasks for `DHCPv4` and `DHCPv6` services (if enabled) and waits for any
     /// task to complete or error. Each service runs its own event loop independently.
     ///
     /// # Returns
@@ -555,25 +546,21 @@ impl DhcpService {
         info!("DHCP service starting event loop");
 
         // Spawn DHCPv4 service task if available
-        let v4_handle = if let Some(mut v4_service) = self.v4_service.take() {
-            Some(tokio::spawn(async move {
+        let v4_handle = self.v4_service.take().map(|mut v4_service| {
+            tokio::spawn(async move {
                 info!("DHCPv4 service task starting");
                 v4_service.run().await
-            }))
-        } else {
-            None
-        };
+            })
+        });
 
         // Spawn DHCPv6 service task if available
         #[cfg(feature = "dhcp6")]
-        let v6_handle = if let Some(mut v6_service) = self.v6_service.take() {
-            Some(tokio::spawn(async move {
+        let v6_handle = self.v6_service.take().map(|mut v6_service| {
+            tokio::spawn(async move {
                 info!("DHCPv6 service task starting");
                 v6_service.run().await
-            }))
-        } else {
-            None
-        };
+            })
+        });
 
         #[cfg(not(feature = "dhcp6"))]
         let v6_handle: Option<tokio::task::JoinHandle<Result<(), DhcpError>>> = None;
@@ -595,7 +582,7 @@ impl DhcpService {
                             Err(e) => {
                                 error!("DHCPv4 service task panicked: {}", e);
                                 Err(DhcpError::V4ProtocolError {
-                                    reason: format!("Task panic: {}", e),
+                                    reason: format!("Task panic: {e}"),
                                 })
                             }
                         }
@@ -613,7 +600,7 @@ impl DhcpService {
                             Err(e) => {
                                 error!("DHCPv6 service task panicked: {}", e);
                                 Err(DhcpError::V6ProtocolError {
-                                    reason: format!("Task panic: {}", e),
+                                    reason: format!("Task panic: {e}"),
                                 })
                             }
                         }
@@ -633,9 +620,7 @@ impl DhcpService {
                     }
                     Err(e) => {
                         error!("DHCPv4 service task panicked: {}", e);
-                        Err(DhcpError::V4ProtocolError {
-                            reason: format!("Task panic: {}", e),
-                        })
+                        Err(DhcpError::V4ProtocolError { reason: format!("Task panic: {e}") })
                     }
                 }
             }
@@ -652,47 +637,43 @@ impl DhcpService {
                     }
                     Err(e) => {
                         error!("DHCPv6 service task panicked: {}", e);
-                        Err(DhcpError::V6ProtocolError {
-                            reason: format!("Task panic: {}", e),
-                        })
+                        Err(DhcpError::V6ProtocolError { reason: format!("Task panic: {e}") })
                     }
                 }
             }
             (None, None) => {
                 // No services available - should not happen if new() validation works
                 error!("No DHCP services available to run");
-                Err(DhcpError::V4ProtocolError {
-                    reason: "No DHCP services available".to_string(),
-                })
+                Err(DhcpError::V4ProtocolError { reason: "No DHCP services available".to_string() })
             }
         }
     }
 
-    /// Get reference to DHCPv4 service if enabled.
+    /// Get reference to `DHCPv4` service if enabled.
     ///
-    /// Returns `None` if DHCPv4 is disabled in configuration.
+    /// Returns `None` if `DHCPv4` is disabled in configuration.
     pub fn v4_service(&self) -> Option<&DhcpV4Service> {
         self.v4_service.as_ref()
     }
 
-    /// Get mutable reference to DHCPv4 service if enabled.
+    /// Get mutable reference to `DHCPv4` service if enabled.
     ///
-    /// Returns `None` if DHCPv4 is disabled in configuration.
+    /// Returns `None` if `DHCPv4` is disabled in configuration.
     pub fn v4_service_mut(&mut self) -> Option<&mut DhcpV4Service> {
         self.v4_service.as_mut()
     }
 
-    /// Get reference to DHCPv6 service if enabled.
+    /// Get reference to `DHCPv6` service if enabled.
     ///
-    /// Returns `None` if DHCPv6 is disabled or feature not compiled.
+    /// Returns `None` if `DHCPv6` is disabled or feature not compiled.
     #[cfg(feature = "dhcp6")]
     pub fn v6_service(&self) -> Option<&DhcpV6Service> {
         self.v6_service.as_ref()
     }
 
-    /// Get mutable reference to DHCPv6 service if enabled.
+    /// Get mutable reference to `DHCPv6` service if enabled.
     ///
-    /// Returns `None` if DHCPv6 is disabled or feature not compiled.
+    /// Returns `None` if `DHCPv6` is disabled or feature not compiled.
     #[cfg(feature = "dhcp6")]
     pub fn v6_service_mut(&mut self) -> Option<&mut DhcpV6Service> {
         self.v6_service.as_mut()

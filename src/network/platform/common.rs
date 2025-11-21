@@ -143,7 +143,7 @@ pub struct NetworkInterface {
 
     /// Kernel interface index (unique identifier)
     ///
-    /// Used for socket binding via SO_BINDTODEVICE (Linux) or IP_BOUND_IF (BSD).
+    /// Used for socket binding via `SO_BINDTODEVICE` (Linux) or `IP_BOUND_IF` (BSD).
     /// Index 0 is reserved for "any interface". Typical range: 1-255.
     pub index: u32,
 
@@ -188,6 +188,7 @@ impl NetworkInterface {
     ///     // Can bind sockets to this interface
     /// }
     /// ```
+    #[must_use]
     pub fn is_up(&self) -> bool {
         self.flags.contains(InterfaceFlags::UP)
     }
@@ -196,6 +197,7 @@ impl NetworkInterface {
     ///
     /// Loopback interfaces are typically excluded from external-facing services
     /// but included for local testing and queries.
+    #[must_use]
     pub fn is_loopback(&self) -> bool {
         self.flags.contains(InterfaceFlags::LOOPBACK)
     }
@@ -204,13 +206,15 @@ impl NetworkInterface {
     ///
     /// Point-to-point interfaces require special handling for broadcast addresses
     /// and may not support standard DHCP operations.
+    #[must_use]
     pub fn is_point_to_point(&self) -> bool {
         self.flags.contains(InterfaceFlags::POINT_TO_POINT)
     }
 
     /// Check if interface supports multicast
     ///
-    /// Required for mDNS, DHCPv6 (multicast to ff02::1:2), and some DNS-SD operations.
+    /// Required for mDNS, `DHCPv6` (multicast to `ff02::1:2`), and some DNS-SD operations.
+    #[must_use]
     pub fn is_multicast(&self) -> bool {
         self.flags.contains(InterfaceFlags::MULTICAST)
     }
@@ -221,6 +225,7 @@ impl NetworkInterface {
     /// a pure loopback (unless explicitly configured to listen on loopback).
     ///
     /// This implements the C logic from network.c's interface validation.
+    #[must_use]
     pub fn is_usable(&self) -> bool {
         self.is_up() && !self.addresses.is_empty()
     }
@@ -308,7 +313,7 @@ pub enum InterfaceEvent {
 /// and macOS uses a combination of both.
 ///
 /// All methods are async to support tokio-based event loop integration, replacing
-/// C's poll() event loop with Rust async/await.
+/// C's `poll()` event loop with Rust async/await.
 ///
 /// # Platform Implementations
 ///
@@ -319,21 +324,21 @@ pub enum InterfaceEvent {
 /// # C Equivalent
 ///
 /// This trait unifies platform-specific functions scattered across network.c:
-/// - `enumerate_interfaces()`: Replaces C's getifaddrs(), SIOCGIFCONF patterns
+/// - `enumerate_interfaces()`: Replaces C's `getifaddrs()`, SIOCGIFCONF patterns
 /// - `subscribe_to_changes()`: Replaces netlink.c (Linux) and bpf.c (BSD) monitoring
-/// - `index_to_name()`: Replaces if_indextoname() calls
+/// - `index_to_name()`: Replaces `if_indextoname()` calls
 #[async_trait]
 pub trait NetworkPlatform: Send + Sync + std::fmt::Debug {
     /// Enumerate all network interfaces on the system
     ///
     /// Returns a complete list of interfaces with their addresses, flags, and properties.
-    /// This replaces C's getifaddrs() on modern systems or SIOCGIFCONF on legacy platforms.
+    /// This replaces C's `getifaddrs()` on modern systems or SIOCGIFCONF on legacy platforms.
     ///
     /// # Platform-Specific Behavior
     ///
     /// - **Linux**: Uses rtnetlink to query interface list
-    /// - **BSD**: Uses getifaddrs() via nix crate
-    /// - **macOS**: Uses getifaddrs() with macOS-specific flags
+    /// - **BSD**: Uses `getifaddrs()` via nix crate
+    /// - **macOS**: Uses `getifaddrs()` with macOS-specific flags
     ///
     /// # Errors
     ///
@@ -362,8 +367,8 @@ pub trait NetworkPlatform: Send + Sync + std::fmt::Debug {
     ///
     /// # Platform-Specific Behavior
     ///
-    /// - **Linux**: Opens NETLINK_ROUTE socket with RTMGRP_* subscriptions
-    /// - **BSD**: Opens PF_ROUTE socket with RTM_* message filtering
+    /// - **Linux**: Opens `NETLINK_ROUTE` socket with RTMGRP_* subscriptions
+    /// - **BSD**: Opens `PF_ROUTE` socket with RTM_* message filtering
     /// - **macOS**: Uses System Configuration framework or routing socket
     ///
     /// # Errors
@@ -397,7 +402,7 @@ pub trait NetworkPlatform: Send + Sync + std::fmt::Debug {
 
     /// Convert interface index to interface name
     ///
-    /// Maps kernel interface index to human-readable name. This replaces C's if_indextoname()
+    /// Maps kernel interface index to human-readable name. This replaces C's `if_indextoname()`
     /// system call with an async version.
     ///
     /// # Arguments
@@ -435,8 +440,8 @@ pub trait NetworkPlatform: Send + Sync + std::fmt::Debug {
     /// # Platform-Specific Behavior
     ///
     /// - **Linux**: Reads /proc/net/arp or uses rtnetlink neighbor queries
-    /// - **BSD**: Uses routing socket RTM_GET messages with RTF_LLINFO
-    /// - **macOS**: Uses sysctl NET_RT_FLAGS with RTF_LLINFO
+    /// - **BSD**: Uses routing socket `RTM_GET` messages with `RTF_LLINFO`
+    /// - **macOS**: Uses sysctl `NET_RT_FLAGS` with `RTF_LLINFO`
     ///
     /// # Errors
     ///

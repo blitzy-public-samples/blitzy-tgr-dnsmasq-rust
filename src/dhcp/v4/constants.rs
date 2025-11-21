@@ -67,7 +67,7 @@
 // Network Port Definitions
 // ================================================================================================
 
-/// Standard DHCPv4 server listening port (privileged port, requires root/capabilities)
+/// Standard `DHCPv4` server listening port (privileged port, requires root/capabilities)
 ///
 /// Server binds to this port to receive DHCPDISCOVER, DHCPREQUEST, DHCPRELEASE,
 /// DHCPDECLINE, and DHCPINFORM messages from clients on port 68.
@@ -78,7 +78,7 @@
 /// to the 'DHCP client' port (68)."
 pub const PORT_SERVER: u16 = 67;
 
-/// Standard DHCPv4 client listening port
+/// Standard `DHCPv4` client listening port
 ///
 /// Clients bind to this port to receive DHCPOFFER and DHCPACK messages from servers.
 /// Server sends responses to this port even for clients without IP address yet.
@@ -87,7 +87,7 @@ pub const PORT_SERVER: u16 = 67;
 /// RFC 2131 Section 4.1
 pub const PORT_CLIENT: u16 = 68;
 
-/// Alternate DHCPv4 server port for non-privileged or testing deployments
+/// Alternate `DHCPv4` server port for non-privileged or testing deployments
 ///
 /// Non-standard port avoiding privileged binding requirement. Configured via
 /// `--dhcp-alternate-port` option. Used in development and specialized scenarios.
@@ -96,7 +96,7 @@ pub const PORT_CLIENT: u16 = 68;
 /// This is a dnsmasq extension, not defined in RFC 2131.
 pub const PORT_SERVER_ALT: u16 = 1067;
 
-/// Alternate DHCPv4 client port corresponding to alternate server port
+/// Alternate `DHCPv4` client port corresponding to alternate server port
 ///
 /// Client-side alternate port for use with `PORT_SERVER_ALT` deployments.
 ///
@@ -126,11 +126,11 @@ pub const PORT_PXE: u16 = 4011;
 /// # RFC Reference
 /// RFC 2131 Section 3: "The first four octets of the 'options' field of the DHCP
 /// message contain the (decimal) values 99, 130, 83 and 99."
-pub const MAGIC_COOKIE: u32 = 0x63825363;
+pub const MAGIC_COOKIE: u32 = 0x6382_5363;
 
 /// Maximum DHCP option data buffer size including null terminator
 ///
-/// DHCPv4 options have maximum length of 255 bytes per RFC 2132. This buffer
+/// `DHCPv4` options have maximum length of 255 bytes per RFC 2132. This buffer
 /// size accommodates the maximum option data length (255) plus a terminating
 /// null byte (1) for C string safety when options contain text data.
 ///
@@ -141,7 +141,7 @@ pub const MAGIC_COOKIE: u32 = 0x63825363;
 /// RFC 2132 Section 2 (option format)
 pub const DHCP_BUFF_SZ: usize = 256;
 
-/// Minimum DHCPv4 packet size to satisfy Linux in-kernel DHCP client
+/// Minimum `DHCPv4` packet size to satisfy Linux in-kernel DHCP client
 ///
 /// The Linux kernel's built-in DHCP client silently discards packets smaller
 /// than 300 bytes regardless of actual packet validity. Dnsmasq pads outgoing
@@ -424,8 +424,8 @@ pub const OPTION_ROUTER: u8 = 3;
 /// RFC 2132 Section 3.8
 pub const OPTION_DNS_SERVER: u8 = 6;
 
-/// Alias for OPTION_DNS_SERVER for C compatibility.
-/// The C implementation uses OPTION_DNSSERVER naming.
+/// Alias for `OPTION_DNS_SERVER` for C compatibility.
+/// The C implementation uses `OPTION_DNSSERVER` naming.
 pub const OPTION_DNSSERVER: u8 = OPTION_DNS_SERVER;
 
 /// Option 12: Host Name (variable length string)
@@ -446,7 +446,7 @@ pub const OPTION_HOSTNAME: u8 = 12;
 /// Option 15: Domain Name (variable length string)
 ///
 /// Specifies the domain name for DNS resolution and hostname qualification.
-/// Combined with OPTION_HOSTNAME forms FQDN.
+/// Combined with `OPTION_HOSTNAME` forms FQDN.
 ///
 /// # Example
 /// "example.com"
@@ -455,8 +455,8 @@ pub const OPTION_HOSTNAME: u8 = 12;
 /// RFC 2132 Section 3.17
 pub const OPTION_DOMAIN_NAME: u8 = 15;
 
-/// Alias for OPTION_DOMAIN_NAME for C compatibility.
-/// The C implementation uses OPTION_DOMAINNAME naming.
+/// Alias for `OPTION_DOMAIN_NAME` for C compatibility.
+/// The C implementation uses `OPTION_DOMAINNAME` naming.
 pub const OPTION_DOMAINNAME: u8 = OPTION_DOMAIN_NAME;
 
 /// Option 28: Broadcast Address (4 bytes)
@@ -474,7 +474,7 @@ pub const OPTION_BROADCAST: u8 = 28;
 /// Option 43: Vendor-Specific Information (variable length)
 ///
 /// Opaque vendor-specific data. Format and content defined by vendor (identified
-/// by OPTION_VENDOR_ID). PXE uses this for boot menu and server discovery.
+/// by `OPTION_VENDOR_ID`). PXE uses this for boot menu and server discovery.
 ///
 /// # RFC Reference
 /// RFC 2132 Section 8.4
@@ -524,7 +524,7 @@ pub const OPTION_OVERLOAD: u8 = 52;
 /// This option MUST be present in every DHCP message per RFC 2131.
 ///
 /// # Values
-/// See MSG_TYPE_* constants (DISCOVER through LEASEACTIVE)
+/// See `MSG_TYPE`_* constants (DISCOVER through LEASEACTIVE)
 ///
 /// # RFC Reference
 /// RFC 2132 Section 9.6
@@ -555,8 +555,8 @@ pub const OPTION_SERVER_IDENTIFIER: u8 = 54;
 /// RFC 2132 Section 9.8
 pub const OPTION_PARAMETER_LIST: u8 = 55;
 
-/// Alias for OPTION_PARAMETER_LIST for C compatibility.
-/// The C implementation uses OPTION_REQUESTED_OPTIONS naming.
+/// Alias for `OPTION_PARAMETER_LIST` for C compatibility.
+/// The C implementation uses `OPTION_REQUESTED_OPTIONS` naming.
 /// RFC 2132 calls this "Parameter Request List".
 pub const OPTION_REQUESTED_OPTIONS: u8 = OPTION_PARAMETER_LIST;
 
@@ -602,7 +602,7 @@ pub const OPTION_T2: u8 = 59;
 /// vendor-specific option delivery.
 ///
 /// # PXE Usage
-/// PXE clients include "PXEClient" string.
+/// PXE clients include "`PXEClient`" string.
 ///
 /// # Example
 /// "PXEClient:Arch:00000:UNDI:002001"
@@ -626,7 +626,7 @@ pub const OPTION_CLIENT_ID: u8 = 61;
 /// Option 66: TFTP Server Name (variable length string)
 ///
 /// Hostname or IP address (as string) of TFTP server for network boot.
-/// Alternative to 'siaddr' field in DHCP packet. Used with OPTION_FILENAME.
+/// Alternative to 'siaddr' field in DHCP packet. Used with `OPTION_FILENAME`.
 ///
 /// # RFC Reference
 /// RFC 2132 Section 9.4
@@ -751,13 +751,13 @@ pub const OPTION_SUBNET_SELECT: u8 = 118;
 /// Option 119: Domain Search (variable length, DNS search list)
 ///
 /// List of domain suffixes for DNS hostname resolution search. Encoded as
-/// DNS wire format compressed domain names. Alternative to single OPTION_DOMAIN_NAME.
+/// DNS wire format compressed domain names. Alternative to single `OPTION_DOMAIN_NAME`.
 ///
 /// # Example
-/// ["example.com", "internal.example.com"] for multi-level domain searching
+/// `["example.com", "internal.example.com"]` for multi-level domain searching
 ///
 /// # Usage
-/// Modern alternative to OPTION_DOMAIN_NAME (15) supporting multiple search domains.
+/// Modern alternative to `OPTION_DOMAIN_NAME` (15) supporting multiple search domains.
 /// Client tries each domain suffix in order when resolving unqualified hostnames.
 ///
 /// # RFC Reference
@@ -766,14 +766,14 @@ pub const OPTION_DOMAIN_SEARCH: u8 = 119;
 
 /// Option 120: SIP Servers (variable length)
 ///
-/// Session Initiation Protocol (SIP) server addresses for VoIP configuration.
+/// Session Initiation Protocol (SIP) server addresses for `VoIP` configuration.
 /// Can contain IPv4 addresses or DNS names for SIP proxy servers.
 ///
 /// # Format
 /// Can be encoded as IPv4 addresses (4 bytes each) or DNS names.
 ///
 /// # Usage
-/// Enables automatic VoIP phone configuration by providing SIP server locations.
+/// Enables automatic `VoIP` phone configuration by providing SIP server locations.
 ///
 /// # RFC Reference
 /// RFC 3361
@@ -789,7 +789,7 @@ pub const OPTION_SIP_SERVER: u8 = 120;
 ///
 /// # Usage
 /// Allows vendors to provide detailed device classification information
-/// beyond simple vendor ID string in OPTION_VENDOR_ID (60).
+/// beyond simple vendor ID string in `OPTION_VENDOR_ID` (60).
 ///
 /// # RFC Reference
 /// RFC 3925 Section 3
@@ -805,7 +805,7 @@ pub const OPTION_VENDOR_IDENT: u8 = 124;
 /// allowing multiple vendors' data in single option.
 ///
 /// # Usage
-/// Used in OPTION_VENDOR_IDENT (124) and OPTION_VENDOR_IDENT_OPT (125) to
+/// Used in `OPTION_VENDOR_IDENT` (124) and `OPTION_VENDOR_IDENT_OPT` (125) to
 /// enable vendor-specific configuration while maintaining interoperability.
 ///
 /// # RFC Reference
@@ -814,7 +814,7 @@ pub const OPTION_VENDOR_IDENT_OPT: u8 = 125;
 
 /// Option 161: Manufacturer Usage Description (MUD) URL (variable length)
 ///
-/// URL pointing to manufacturer's device security profile for IoT device policy.
+/// URL pointing to manufacturer's device security profile for `IoT` device policy.
 /// Enables automated network access control based on manufacturer specifications.
 ///
 /// # Format
@@ -822,7 +822,7 @@ pub const OPTION_VENDOR_IDENT_OPT: u8 = 125;
 /// and required network access patterns.
 ///
 /// # Usage
-/// IoT devices provide MUD URL during DHCP discovery. Network infrastructure
+/// `IoT` devices provide MUD URL during DHCP discovery. Network infrastructure
 /// fetches MUD file and applies appropriate security policies automatically.
 ///
 /// # Security
@@ -978,7 +978,7 @@ pub const SUBOPT_PXE_MENU_PROMPT: u8 = 10;
 
 /// PXE Suboption 71: Boot Item (variable length)
 ///
-/// Describes a specific boot option in PXE boot menu. Referenced by SUBOPT_PXE_MENU entries.
+/// Describes a specific boot option in PXE boot menu. Referenced by `SUBOPT_PXE_MENU` entries.
 /// Used to define available boot images per architecture.
 ///
 /// # Format
@@ -994,7 +994,7 @@ pub const SUBOPT_PXE_BOOT_ITEM: u8 = 71;
 
 /// IANA enterprise number for Broadband Forum (formerly DSL Forum)
 ///
-/// Used in OPTION_VENDOR_IDENT (124) and OPTION_VENDOR_IDENT_OPT (125) to
+/// Used in `OPTION_VENDOR_IDENT` (124) and `OPTION_VENDOR_IDENT_OPT` (125) to
 /// identify Broadband Forum vendor-specific data. Broadband Forum develops
 /// standards for broadband network architectures, including TR-069 CWMP,
 /// TR-101 migration to Ethernet, and TR-111 DHCP options.

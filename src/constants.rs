@@ -243,14 +243,14 @@ pub const EDNS_PKTSZ: usize = 4096;
 // DNSSEC SECURITY LIMITS
 // ============================================================================
 
-/// DNSSEC validation maximum work units to prevent DoS.
+/// DNSSEC validation maximum work units to prevent `DoS`.
 ///
 /// Total work units consumed during DNSSEC validation of a single query.
 /// Each signature check, key fetch, and chain traversal consumes work units.
 /// Exceeded limit terminates validation and returns SERVFAIL.
 ///
 /// **Default**: 100 work units
-/// **Purpose**: Prevent algorithmic complexity DoS attacks
+/// **Purpose**: Prevent algorithmic complexity `DoS` attacks
 /// **Attack vector**: Adversary creates deeply nested DNSSEC chains
 /// **Behavior**: Limit exceeded returns SERVFAIL (validation failed)
 /// **Typical**: Legitimate validations consume 5-20 work units
@@ -258,7 +258,7 @@ pub const DNSSEC_LIMIT_WORK: usize = 100;
 
 /// DNSSEC maximum cryptographic operations per query.
 ///
-/// Maximum number of signature verifications (RSA, ECDSA, EdDSA) performed
+/// Maximum number of signature verifications (RSA, ECDSA, `EdDSA`) performed
 /// during validation of a single query. Exceeding limit terminates validation.
 ///
 /// **Default**: 50 signature verifications
@@ -274,7 +274,7 @@ pub const DNSSEC_LIMIT_CRYPTO: usize = 50;
 /// of existence validation. High iteration counts cause CPU exhaustion.
 ///
 /// **Default**: 500 iterations maximum
-/// **Purpose**: Prevent CPU DoS from expensive NSEC3 hash computations
+/// **Purpose**: Prevent CPU `DoS` from expensive NSEC3 hash computations
 /// **Attack vector**: NSEC3 with iterations=10000+ causes second-scale delays
 /// **RFC Guidance**: RFC 5155 recommends <100 iterations for security
 /// **Behavior**: Records with iterations > limit treated as insecure
@@ -363,7 +363,7 @@ pub const DHCP_PACKET_MAX: usize = 16384;
 /// **Persistence**: Critical for lease survival across daemon restarts
 pub const LEASE_RETRY: usize = 60;
 
-/// Default DHCPv4 lease time in seconds.
+/// Default `DHCPv4` lease time in seconds.
 ///
 /// Lease duration assigned when client doesn't request specific time and
 /// dhcp-range configuration doesn't specify default.
@@ -374,10 +374,10 @@ pub const LEASE_RETRY: usize = 60;
 /// **RFC Compliance**: RFC 2131 leaves default to administrator
 pub const DEFLEASE: usize = 3600;
 
-/// Default DHCPv6 lease time in seconds.
+/// Default `DHCPv6` lease time in seconds.
 ///
-/// IPv6 lease duration for non-temporary addresses (IA_NA) when not
-/// explicitly configured. Matches DHCPv4 default for consistency.
+/// IPv6 lease duration for non-temporary addresses (`IA_NA`) when not
+/// explicitly configured. Matches `DHCPv4` default for consistency.
 ///
 /// **Default**: 3600 seconds (1 hour)
 /// **Tunable via**: dhcp-range option for IPv6
@@ -501,7 +501,7 @@ pub const HOSTSFILE: &str = "/etc/hosts";
 /// Default path to system ethers file for MAC-to-IP mappings.
 ///
 /// Optional file mapping Ethernet MAC addresses to IP addresses for static
-/// DHCP reservations. Format: MAC_address hostname
+/// DHCP reservations. Format: `MAC_address` hostname
 ///
 /// **Default**: /etc/ethers (traditional Unix location)
 /// **Tunable via**: --read-ethers command-line option
@@ -659,17 +659,17 @@ pub const CHGRP: &str = "dip";
 /// **Default**: "uk.org.thekelleys.dnsmasq"
 /// **Tunable via**: --dbus-service-name command-line option
 /// **Platform**: Linux, BSD, macOS with D-Bus daemon installed
-/// **API**: SetServers, ClearCache, GetVersion, GetMetrics methods
+/// **API**: `SetServers`, `ClearCache`, `GetVersion`, `GetMetrics` methods
 pub const DNSMASQ_SERVICE: &str = "uk.org.thekelleys.dnsmasq";
 
-/// UBus service name for control interface (OpenWrt).
+/// `UBus` service name for control interface (`OpenWrt`).
 ///
-/// Service name registered on OpenWrt's ubus for control and monitoring.
+/// Service name registered on `OpenWrt`'s ubus for control and monitoring.
 /// Used in OpenWrt-based routers and embedded systems.
 ///
 /// **Default**: "dnsmasq"
-/// **Platform**: OpenWrt Linux distribution only
-/// **Purpose**: Integration with OpenWrt management framework
+/// **Platform**: `OpenWrt` Linux distribution only
+/// **Purpose**: Integration with `OpenWrt` management framework
 /// **API**: Similar functionality to D-Bus interface
 pub const UBUS_SERVICE_NAME: &str = "dnsmasq";
 

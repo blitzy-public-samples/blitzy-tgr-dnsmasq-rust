@@ -76,9 +76,9 @@ use nom::{
 };
 use std::net::Ipv4Addr;
 
-/// DHCPv4 Message
+/// `DHCPv4` Message
 ///
-/// Represents a complete DHCPv4 packet with fixed header fields and variable-length options.
+/// Represents a complete `DHCPv4` packet with fixed header fields and variable-length options.
 /// This struct provides memory-safe access to all DHCP message fields, replacing C's
 /// direct struct access patterns with Rust's ownership model.
 ///
@@ -143,11 +143,11 @@ pub struct DhcpMessage {
     pub(crate) chaddr: [u8; DHCP_CHADDR_MAX],
 
     /// Optional server host name, null-terminated string (64 bytes)
-    /// May contain options if OPTION_OVERLOAD indicates sname overload
+    /// May contain options if `OPTION_OVERLOAD` indicates sname overload
     pub(crate) sname: [u8; 64],
 
     /// Boot file name, null-terminated string (128 bytes)
-    /// May contain options if OPTION_OVERLOAD indicates file overload
+    /// May contain options if `OPTION_OVERLOAD` indicates file overload
     pub(crate) file: [u8; 128],
 
     /// Parsed DHCP options (after magic cookie validation)
@@ -155,7 +155,7 @@ pub struct DhcpMessage {
 }
 
 impl DhcpMessage {
-    /// Create a new DHCPv4 message with default values
+    /// Create a new `DHCPv4` message with default values
     ///
     /// Initializes a message with zeros for all fields. The caller must populate
     /// fields as appropriate for the message type (DISCOVER, OFFER, REQUEST, etc.).
@@ -174,6 +174,7 @@ impl DhcpMessage {
     /// msg.set_op(BOOTREQUEST);
     /// msg.set_xid(0x12345678);
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self {
             op: 0,
@@ -222,6 +223,7 @@ impl DhcpMessage {
     /// let mut reply = DhcpMessage::new_reply(&request);
     /// reply.set_yiaddr("192.168.1.100".parse().unwrap());
     /// ```
+    #[must_use]
     pub fn new_reply(request: &DhcpMessage) -> Self {
         let mut reply = Self::new();
         reply.op = BOOTREPLY;
@@ -234,7 +236,7 @@ impl DhcpMessage {
         reply
     }
 
-    /// Parse a DHCPv4 message from wire format
+    /// Parse a `DHCPv4` message from wire format
     ///
     /// Uses nom parser combinators for safe, bounds-checked parsing. This replaces
     /// the C implementation's direct struct overlay and pointer arithmetic with
@@ -245,7 +247,7 @@ impl DhcpMessage {
     /// 1. Fixed header (236 bytes): Parses all standard DHCP fields
     /// 2. Magic cookie validation: Verifies 0x63825363 at start of options
     /// 3. Options parsing: Extracts variable-length options with TLV encoding
-    /// 4. OPTION_OVERLOAD handling: If present, also parses options from sname/file
+    /// 4. `OPTION_OVERLOAD` handling: If present, also parses options from sname/file
     ///
     /// # Arguments
     ///
@@ -270,6 +272,7 @@ impl DhcpMessage {
     ///     Err(e) => eprintln!("Parse error: {}", e),
     /// }
     /// ```
+    #[allow(clippy::similar_names)] // RFC 2131 standard field names: ciaddr, yiaddr, siaddr, giaddr, chaddr
     pub fn parse_dhcp_message(input: &[u8]) -> Result<Self, DhcpError> {
         // Check minimum packet size (236 bytes fixed header + 4 bytes magic cookie)
         if input.len() < 240 {
@@ -284,19 +287,20 @@ impl DhcpMessage {
         // Parse fixed header using nom combinators for safe, bounds-checked parsing
         let (remaining, (op, htype, hlen, hops, xid, secs, flags)) =
             parse_fixed_header_part1(input).map_err(|e| DhcpError::ParseFailed {
-                reason: format!("Failed to parse header part 1: {}", e),
+                reason: format!("Failed to parse header part 1: {e}"),
             })?;
 
         // Parse IPv4 addresses (ciaddr, yiaddr, siaddr, giaddr)
         let (remaining, (ciaddr, yiaddr, siaddr, giaddr)) = parse_ipv4_addresses(remaining)
             .map_err(|e| DhcpError::ParseFailed {
-                reason: format!("Failed to parse IP addresses: {}", e),
+                reason: format!("Failed to parse IP addresses: {e}"),
             })?;
 
         // Parse chaddr (16 bytes), sname (64 bytes), file (128 bytes)
-        let (remaining, (chaddr, sname, file)) = parse_variable_fields(remaining).map_err(|e| {
-            DhcpError::ParseFailed { reason: format!("Failed to parse variable fields: {}", e) }
+        let (remaining, chaddr_sname_file) = parse_variable_fields(remaining).map_err(|e| {
+            DhcpError::ParseFailed { reason: format!("Failed to parse variable fields: {e}") }
         })?;
+        let (chaddr, sname, file) = chaddr_sname_file;
 
         // Verify and consume magic cookie (0x63825363)
         let (remaining, _cookie) = verify(be_u32, |&cookie| cookie == MAGIC_COOKIE)(remaining)
@@ -353,28 +357,28 @@ impl DhcpMessage {
         })
     }
 
-    /// Serialize DHCPv4 message to wire format
+    /// Serialize `DHCPv4` message to wire format
     ///
     /// Constructs a wire-format DHCP packet suitable for network transmission.
-    /// Uses BytesMut for safe buffer management, replacing C's manual pointer
+    /// Uses `BytesMut` for safe buffer management, replacing C's manual pointer
     /// manipulation with bounds-checked buffer operations.
     ///
     /// # Wire Format Construction
     ///
     /// 1. Fixed header (236 bytes): All fields in network byte order
     /// 2. Magic cookie (4 bytes): 0x63825363
-    /// 3. Options (variable): TLV-encoded options with OPTION_END
-    /// 4. Padding: Zeros to reach MIN_PACKETSZ (300 bytes) for Linux compatibility
+    /// 3. Options (variable): TLV-encoded options with `OPTION_END`
+    /// 4. Padding: Zeros to reach `MIN_PACKETSZ` (300 bytes) for Linux compatibility
     ///
     /// # Minimum Packet Size
     ///
-    /// Linux kernel requires DHCP packets to be at least 300 bytes (MIN_PACKETSZ).
+    /// Linux kernel requires DHCP packets to be at least 300 bytes (`MIN_PACKETSZ`).
     /// Packets shorter than this are rejected. This function automatically pads
     /// with zeros to meet this requirement.
     ///
     /// # Returns
     ///
-    /// Returns `Bytes` containing the complete wire-format packet ready for sendto().
+    /// Returns `Bytes` containing the complete wire-format packet ready for `sendto()`.
     ///
     /// # Example
     ///
@@ -385,6 +389,7 @@ impl DhcpMessage {
     /// let packet = msg.serialize_dhcp_message();
     /// // packet can now be sent via UDP socket
     /// ```
+    #[must_use]
     pub fn serialize_dhcp_message(&self) -> Bytes {
         // Pre-allocate buffer with minimum packet size to avoid reallocations
         let mut buf = BytesMut::with_capacity(MIN_PACKETSZ);
@@ -435,6 +440,7 @@ impl DhcpMessage {
 
     /// Get the operation code (BOOTREQUEST=1 or BOOTREPLY=2)
     #[inline]
+    #[must_use]
     pub fn operation_code(&self) -> u8 {
         self.op
     }
@@ -444,42 +450,49 @@ impl DhcpMessage {
     /// The transaction ID is a random number chosen by the client used to
     /// match requests with replies.
     #[inline]
+    #[must_use]
     pub fn transaction_id(&self) -> u32 {
         self.xid
     }
 
     /// Get the hardware address type
     #[inline]
+    #[must_use]
     pub fn htype(&self) -> u8 {
         self.htype
     }
 
     /// Get the hardware address length
     #[inline]
+    #[must_use]
     pub fn hlen(&self) -> u8 {
         self.hlen
     }
 
     /// Get the hop count
     #[inline]
+    #[must_use]
     pub fn hops(&self) -> u8 {
         self.hops
     }
 
     /// Get the seconds elapsed since client began acquisition
     #[inline]
+    #[must_use]
     pub fn secs(&self) -> u16 {
         self.secs
     }
 
     /// Get the flags field (bit 0 = broadcast flag)
     #[inline]
+    #[must_use]
     pub fn flags(&self) -> u16 {
         self.flags
     }
 
     /// Get the client IP address (ciaddr)
     #[inline]
+    #[must_use]
     pub fn ciaddr(&self) -> Ipv4Addr {
         self.ciaddr
     }
@@ -488,6 +501,7 @@ impl DhcpMessage {
     ///
     /// This is the IP address offered or assigned by the server.
     #[inline]
+    #[must_use]
     pub fn yiaddr(&self) -> Ipv4Addr {
         self.yiaddr
     }
@@ -496,12 +510,14 @@ impl DhcpMessage {
     ///
     /// This is typically the TFTP server address for network booting.
     #[inline]
+    #[must_use]
     pub fn siaddr(&self) -> Ipv4Addr {
         self.siaddr
     }
 
     /// Get the relay agent IP address (giaddr)
     #[inline]
+    #[must_use]
     pub fn giaddr(&self) -> Ipv4Addr {
         self.giaddr
     }
@@ -510,14 +526,16 @@ impl DhcpMessage {
     ///
     /// Returns a slice of the first `hlen` bytes of the chaddr field.
     /// For Ethernet, this is typically 6 bytes (MAC address).
+    #[must_use]
     pub fn chaddr(&self) -> &[u8] {
+        #[allow(clippy::cast_possible_truncation)] // DHCP_CHADDR_MAX is 16, fits in u8
         let len = self.hlen.min(DHCP_CHADDR_MAX as u8) as usize;
         &self.chaddr[..len]
     }
 
-    /// Get the client hardware address as a MacAddress
+    /// Get the client hardware address as a `MacAddress`
     ///
-    /// Converts the chaddr field to a MacAddress type for type-safe handling.
+    /// Converts the chaddr field to a `MacAddress` type for type-safe handling.
     /// Only the first `hlen` bytes are considered valid.
     ///
     /// # Returns
@@ -541,18 +559,21 @@ impl DhcpMessage {
 
     /// Get the server name field as a slice
     #[inline]
+    #[must_use]
     pub fn sname(&self) -> &[u8] {
         &self.sname
     }
 
     /// Get the boot file name field as a slice
     #[inline]
+    #[must_use]
     pub fn file(&self) -> &[u8] {
         &self.file
     }
 
     /// Get all options
     #[inline]
+    #[must_use]
     pub fn options(&self) -> &[DhcpOption] {
         &self.options
     }
@@ -560,7 +581,7 @@ impl DhcpMessage {
     /// Get a specific option by matching its type
     ///
     /// Searches the options list for an option matching the provided predicate.
-    /// This replaces C's option_find() pointer walking with iterator-based searching.
+    /// This replaces C's `option_find()` pointer walking with iterator-based searching.
     ///
     /// # Arguments
     ///
@@ -597,6 +618,7 @@ impl DhcpMessage {
     /// # Returns
     ///
     /// Returns `Some(Ipv4Addr)` if the option is present, or `None` otherwise.
+    #[must_use]
     pub fn requested_ip_address(&self) -> Option<Ipv4Addr> {
         self.options.iter().find_map(|opt| {
             if let DhcpOption::RequestedIpAddress(addr) = opt {
@@ -614,6 +636,7 @@ impl DhcpMessage {
     /// # Returns
     ///
     /// Returns `Some(Ipv4Addr)` if the option is present, or `None` otherwise.
+    #[must_use]
     pub fn server_identifier(&self) -> Option<Ipv4Addr> {
         self.options.iter().find_map(|opt| {
             if let DhcpOption::ServerId(addr) = opt {
@@ -719,7 +742,10 @@ impl DhcpMessage {
         let bytes = mac.as_bytes();
         let len = bytes.len().min(DHCP_CHADDR_MAX);
         self.chaddr[..len].copy_from_slice(&bytes[..len]);
-        self.hlen = len as u8;
+        #[allow(clippy::cast_possible_truncation)] // len is min(bytes.len(), 16), guaranteed ≤ 16
+        {
+            self.hlen = len as u8;
+        }
     }
 }
 
@@ -779,7 +805,7 @@ fn parse_variable_fields(input: &[u8]) -> IResult<&[u8], VariableFields> {
 
 /// Find the overload option value if present
 ///
-/// Searches the options list for OPTION_OVERLOAD (52) and returns its value.
+/// Searches the options list for `OPTION_OVERLOAD` (52) and returns its value.
 ///
 /// # Returns
 ///

@@ -649,7 +649,12 @@ impl MockDnsServer {
     /// * `rtype` - Record type (A, AAAA, etc.)
     /// * `ip` - IP address to return in A/AAAA record
     #[allow(dead_code)]
-    pub fn with_response(self, name: impl Into<String>, _rtype: RecordType, ip: impl Into<String>) -> Self {
+    pub fn with_response(
+        self,
+        name: impl Into<String>,
+        _rtype: RecordType,
+        ip: impl Into<String>,
+    ) -> Self {
         let responses = self.responses.clone();
         let name = name.into();
         let ip = ip.into();
@@ -772,7 +777,7 @@ impl MockDnsServer {
                                 let query_name = format!("{:?}", question); // Simplified: just use debug format
                                 received_queries.lock().await.push(query_name);
                             }
-                            
+
                             // Build simple response based on configured map
                             // (Simplified for test infrastructure)
                             let _ = socket.send_to(b"mock_response", peer).await;
@@ -814,9 +819,8 @@ impl MockDnsServer {
         // In a real test, you'd await this properly
         // For simplicity, we're using blocking here
         tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                self.received_queries.lock().await.contains(&name.to_string())
-            })
+            tokio::runtime::Handle::current()
+                .block_on(async { self.received_queries.lock().await.contains(&name.to_string()) })
         })
     }
 
@@ -825,12 +829,7 @@ impl MockDnsServer {
     pub fn query_count(&self, name: &str) -> usize {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                self.received_queries
-                    .lock()
-                    .await
-                    .iter()
-                    .filter(|q| *q == name)
-                    .count()
+                self.received_queries.lock().await.iter().filter(|q| *q == name).count()
             })
         })
     }
@@ -1053,7 +1052,10 @@ pub async fn send_dns_query(
 ) -> std::io::Result<usize> {
     // Serialize the DNS message to bytes
     let bytes = query.to_bytes().map_err(|e| {
-        std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Failed to serialize DNS message: {}", e))
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Failed to serialize DNS message: {}", e),
+        )
     })?;
     socket.send_to(&bytes, server).await
 }

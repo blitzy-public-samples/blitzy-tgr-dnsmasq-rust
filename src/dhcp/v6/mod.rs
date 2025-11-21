@@ -13,16 +13,16 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! DHCPv6 (Dynamic Host Configuration Protocol for IPv6) subsystem module.
+//! `DHCPv6` (Dynamic Host Configuration Protocol for IPv6) subsystem module.
 //!
-//! This module provides complete DHCPv6 server functionality for stateful and stateless
+//! This module provides complete `DHCPv6` server functionality for stateful and stateless
 //! IPv6 address configuration, replacing the C implementation from `src/dhcp6.c`,
 //! `src/rfc3315.c`, `src/outpacket.c`, and `src/dhcp6-protocol.h` (totaling approximately
 //! 7000 lines of C code) with memory-safe async Rust.
 //!
 //! # Architecture Overview
 //!
-//! The DHCPv6 subsystem is organized into five coordinated components:
+//! The `DHCPv6` subsystem is organized into five coordinated components:
 //!
 //! ```text
 //! ┌────────────────────────────────────────────────────────────────────┐
@@ -68,11 +68,11 @@
 //!
 //! # RFC 3315 Compliance
 //!
-//! This implementation provides full RFC 3315 compliance for DHCPv6 protocol operations:
+//! This implementation provides full RFC 3315 compliance for `DHCPv6` protocol operations:
 //!
 //! ## Message Types
 //!
-//! - **SOLICIT (1)**: Client discovers available DHCPv6 servers
+//! - **SOLICIT (1)**: Client discovers available `DHCPv6` servers
 //! - **ADVERTISE (2)**: Server announces availability and addresses
 //! - **REQUEST (3)**: Client requests specific server's addresses
 //! - **CONFIRM (4)**: Client validates addresses after network change
@@ -88,13 +88,13 @@
 //!
 //! ## Identity Association Types
 //!
-//! - **IA_NA**: Identity Association for Non-temporary Addresses (Option 3)
-//! - **IA_TA**: Identity Association for Temporary Addresses (Option 4)
-//! - **IA_PD**: Identity Association for Prefix Delegation (Option 25, RFC 3633)
+//! - **`IA_NA`**: Identity Association for Non-temporary Addresses (Option 3)
+//! - **`IA_TA`**: Identity Association for Temporary Addresses (Option 4)
+//! - **`IA_PD`**: Identity Association for Prefix Delegation (Option 25, RFC 3633)
 //!
 //! ## Operation Modes
 //!
-//! ### Stateful DHCPv6 (M=1 in Router Advertisement)
+//! ### Stateful `DHCPv6` (M=1 in Router Advertisement)
 //!
 //! The server assigns and tracks IPv6 addresses with lease management:
 //!
@@ -127,7 +127,7 @@
 //!   |                                |
 //! ```
 //!
-//! ### Stateless DHCPv6 (O=1, M=0 in Router Advertisement)
+//! ### Stateless `DHCPv6` (O=1, M=0 in Router Advertisement)
 //!
 //! The server provides configuration without address assignment:
 //!
@@ -159,20 +159,20 @@
 //!
 //! # Router Advertisement Coordination
 //!
-//! DHCPv6 operation mode is controlled by M (Managed address) and O (Other configuration)
-//! flags in IPv6 Router Advertisement messages (ICMPv6 type 134). The DHCPv6 server
+//! `DHCPv6` operation mode is controlled by M (Managed address) and O (Other configuration)
+//! flags in IPv6 Router Advertisement messages (`ICMPv6` type 134). The `DHCPv6` server
 //! coordinates with the Router Advertisement module to ensure consistent behavior:
 //!
 //! | M Flag | O Flag | Behavior                                          |
 //! |--------|--------|---------------------------------------------------|
-//! | 0      | 0      | SLAAC only, no DHCPv6                             |
-//! | 0      | 1      | SLAAC + stateless DHCPv6 (config only)            |
-//! | 1      | 0      | Stateful DHCPv6 for addresses + SLAAC for config  |
-//! | 1      | 1      | Stateful DHCPv6 for addresses and configuration   |
+//! | 0      | 0      | SLAAC only, no `DHCPv6`                             |
+//! | 0      | 1      | SLAAC + stateless `DHCPv6` (config only)            |
+//! | 1      | 0      | Stateful `DHCPv6` for addresses + SLAAC for config  |
+//! | 1      | 1      | Stateful `DHCPv6` for addresses and configuration   |
 //!
-//! # Prefix Delegation (IA_PD, RFC 3633)
+//! # Prefix Delegation (`IA_PD`, RFC 3633)
 //!
-//! For hierarchical network deployments, DHCPv6 supports prefix delegation allowing
+//! For hierarchical network deployments, `DHCPv6` supports prefix delegation allowing
 //! routers to obtain IPv6 prefixes for their downstream networks:
 //!
 //! ```rust,ignore
@@ -204,7 +204,7 @@
 //!
 //! # DUID (DHCP Unique Identifier)
 //!
-//! DHCPv6 uses DUIDs instead of MAC addresses for client identification, providing
+//! `DHCPv6` uses DUIDs instead of MAC addresses for client identification, providing
 //! stable identity across network changes. Three DUID types are supported:
 //!
 //! ## DUID-LLT (Link-Layer Time, Type 1)
@@ -236,7 +236,7 @@
 //!
 //! # Lease Time Management
 //!
-//! DHCPv6 uses three timers for lease lifecycle management:
+//! `DHCPv6` uses three timers for lease lifecycle management:
 //!
 //! - **Preferred Lifetime**: Time until address becomes deprecated (default: T1 = 3600s)
 //! - **Valid Lifetime**: Time until address becomes invalid (default: 86400s = DEFLEASE6)
@@ -356,10 +356,10 @@
 //! |--------------------------|----------------------------------|------------------------------------|
 //! | Buffer Overflow          | Manual bounds checking failure   | Compile-time slice bounds checking |
 //! | Use-After-Free           | Manual lifetime tracking         | Borrow checker enforces lifetimes  |
-//! | Double-Free              | Multiple free() on same pointer  | Drop trait executes exactly once   |
-//! | Memory Leak              | Missing free() calls             | Automatic Drop on scope exit       |
+//! | Double-Free              | Multiple `free()` on same pointer  | Drop trait executes exactly once   |
+//! | Memory Leak              | Missing `free()` calls             | Automatic Drop on scope exit       |
 //! | Null Pointer Deref       | Unchecked NULL pointer access    | Option<T> forces explicit handling |
-//! | Data Race                | Unsynchronized global state      | RwLock provides synchronized access|
+//! | Data Race                | Unsynchronized global state      | `RwLock` provides synchronized access|
 //! | Integer Overflow         | Unchecked arithmetic             | Checked arithmetic or wrapping ops |
 //!
 //! ## Example: Buffer Overflow Prevention
@@ -385,7 +385,7 @@
 //!
 //! ## Runtime Event Loop Integration
 //!
-//! The DHCPv6 service integrates with the main tokio runtime event loop:
+//! The `DHCPv6` service integrates with the main tokio runtime event loop:
 //!
 //! ```rust,ignore
 //! // In src/runtime/event_loop.rs
@@ -399,7 +399,7 @@
 //!
 //! ## Lease Database Integration
 //!
-//! DHCPv6 leases are persisted through the shared lease manager:
+//! `DHCPv6` leases are persisted through the shared lease manager:
 //!
 //! ```rust,ignore
 //! use crate::dhcp::lease::LeaseManager;
@@ -421,7 +421,7 @@
 //!
 //! ## Router Advertisement Coordination
 //!
-//! DHCPv6 mode is determined by RA flags:
+//! `DHCPv6` mode is determined by RA flags:
 //!
 //! ```rust,ignore
 //! use crate::radv::RadVService;
@@ -532,7 +532,7 @@
 //!
 //! # Module Organization
 //!
-//! This module serves as the public API entry point for DHCPv6 functionality, re-exporting
+//! This module serves as the public API entry point for `DHCPv6` functionality, re-exporting
 //! the primary types from child modules to provide a clean interface:
 //!
 //! ```rust,ignore
@@ -547,7 +547,7 @@
 //!
 //! # Thread Safety
 //!
-//! All DHCPv6 operations are async-safe and can be used in concurrent contexts:
+//! All `DHCPv6` operations are async-safe and can be used in concurrent contexts:
 //!
 //! - `Arc<Config>` provides shared immutable configuration
 //! - `Arc<RwLock<LeaseManager>>` ensures synchronized lease database access
@@ -557,14 +557,14 @@
 //! # Performance Characteristics
 //!
 //! - **Message parsing**: O(n) where n is packet size, single-pass nom parsing
-//! - **Option lookup**: O(1) HashMap access by option code
+//! - **Option lookup**: O(1) `HashMap` access by option code
 //! - **Address allocation**: O(log n) for pool iteration with available addresses
-//! - **Lease database**: O(1) lookup by client DUID using HashMap index
+//! - **Lease database**: O(1) lookup by client DUID using `HashMap` index
 //! - **Response serialization**: O(m) where m is number of options, single-pass encoding
 //!
 //! # Error Handling
 //!
-//! All DHCPv6 operations return `Result<T, DhcpError>` for explicit error handling:
+//! All `DHCPv6` operations return `Result<T, DhcpError>` for explicit error handling:
 //!
 //! ```rust,ignore
 //! pub enum DhcpError {
@@ -581,7 +581,7 @@
 //!
 //! # Testing Strategy
 //!
-//! DHCPv6 implementation includes comprehensive test coverage:
+//! `DHCPv6` implementation includes comprehensive test coverage:
 //!
 //! - **Unit tests**: Protocol message parsing, option encoding, DUID validation
 //! - **Integration tests**: Complete SOLICIT→ADVERTISE→REQUEST→REPLY exchanges
@@ -591,10 +591,10 @@
 //!
 //! # See Also
 //!
-//! - RFC 3315: Dynamic Host Configuration Protocol for IPv6 (DHCPv6)
-//! - RFC 3633: IPv6 Prefix Options for DHCPv6
-//! - RFC 4704: The DHCPv6 Client FQDN Option
-//! - RFC 8415: Dynamic Host Configuration Protocol for IPv6 (DHCPv6) - obsoletes 3315
+//! - RFC 3315: Dynamic Host Configuration Protocol for IPv6 (`DHCPv6`)
+//! - RFC 3633: IPv6 Prefix Options for `DHCPv6`
+//! - RFC 4704: The `DHCPv6` Client FQDN Option
+//! - RFC 8415: Dynamic Host Configuration Protocol for IPv6 (`DHCPv6`) - obsoletes 3315
 
 // Child module declarations
 pub mod constants;
@@ -605,27 +605,21 @@ pub mod server;
 
 // Re-export primary types for clean external API
 // Note: DhcpV6Server is exported as DhcpV6Service for consistency with service naming convention
-pub use server::DhcpV6Server as DhcpV6Service;
 pub use message::DhcpV6Message;
 pub use options::OptionBuilder;
 pub use protocol::DhcpV6StateMachine;
+pub use server::DhcpV6Server as DhcpV6Service;
 
 // Re-export constants module for convenience
 pub use constants::{
-    PORT_SERVER, PORT_CLIENT,
-    MSG_SOLICIT, MSG_ADVERTISE, MSG_REQUEST, MSG_CONFIRM, MSG_RENEW,
-    MSG_REBIND, MSG_REPLY, MSG_RELEASE, MSG_DECLINE, MSG_RECONFIGURE,
-    MSG_INFORMATION_REQUEST, MSG_RELAY_FORW, MSG_RELAY_REPL,
-    OPTION_CLIENT_ID, OPTION_SERVER_ID, OPTION_IA_NA, OPTION_IA_TA,
-    OPTION_IAADDR, OPTION_ORO, OPTION_PREFERENCE, OPTION_ELAPSED_TIME,
-    OPTION_STATUS_CODE, OPTION_RAPID_COMMIT, OPTION_USER_CLASS,
-    OPTION_VENDOR_CLASS, OPTION_VENDOR_OPTS, OPTION_DNS_SERVER,
-    OPTION_DOMAIN_SEARCH, OPTION_IA_PD, OPTION_IAPREFIX,
-    OPTION_FQDN, OPTION_NTP_SERVER, OPTION_CLIENT_MAC,
-    NTP_SUBOPTION_SRV_ADDR, NTP_SUBOPTION_MC_ADDR, NTP_SUBOPTION_SRV_FQDN,
-    STATUS_SUCCESS, STATUS_UNSPEC, STATUS_NOADDRS, STATUS_NOBINDING,
-    STATUS_NOTONCLIENT, STATUS_NOTONLINK, STATUS_USEMULTICAST,
-    STATUS_NOPREFIXAVAIL,
-    DUID_LLT, DUID_EN, DUID_LL, DUID_UUID,
-    ALL_RELAY_AGENTS_AND_SERVERS, ALL_SERVERS,
+    ALL_RELAY_AGENTS_AND_SERVERS, ALL_SERVERS, DUID_EN, DUID_LL, DUID_LLT, DUID_UUID,
+    MSG_ADVERTISE, MSG_CONFIRM, MSG_DECLINE, MSG_INFORMATION_REQUEST, MSG_REBIND, MSG_RECONFIGURE,
+    MSG_RELAY_FORW, MSG_RELAY_REPL, MSG_RELEASE, MSG_RENEW, MSG_REPLY, MSG_REQUEST, MSG_SOLICIT,
+    NTP_SUBOPTION_MC_ADDR, NTP_SUBOPTION_SRV_ADDR, NTP_SUBOPTION_SRV_FQDN, OPTION_CLIENT_ID,
+    OPTION_CLIENT_MAC, OPTION_DNS_SERVER, OPTION_DOMAIN_SEARCH, OPTION_ELAPSED_TIME, OPTION_FQDN,
+    OPTION_IAADDR, OPTION_IAPREFIX, OPTION_IA_NA, OPTION_IA_PD, OPTION_IA_TA, OPTION_NTP_SERVER,
+    OPTION_ORO, OPTION_PREFERENCE, OPTION_RAPID_COMMIT, OPTION_SERVER_ID, OPTION_STATUS_CODE,
+    OPTION_USER_CLASS, OPTION_VENDOR_CLASS, OPTION_VENDOR_OPTS, PORT_CLIENT, PORT_SERVER,
+    STATUS_NOADDRS, STATUS_NOBINDING, STATUS_NOPREFIXAVAIL, STATUS_NOTONCLIENT, STATUS_NOTONLINK,
+    STATUS_SUCCESS, STATUS_UNSPEC, STATUS_USEMULTICAST,
 };

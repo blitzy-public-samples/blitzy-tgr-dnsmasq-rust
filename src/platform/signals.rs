@@ -91,7 +91,7 @@ use tracing::{debug, error, info, instrument, warn};
 /// Signal events representing POSIX signals handled by dnsmasq.
 ///
 /// This enum maps POSIX signals to semantic events, replacing C's EVENT_* constants
-/// from dnsmasq.c (EVENT_RELOAD, EVENT_TERM, EVENT_DUMP, EVENT_ALARM, etc.).
+/// from dnsmasq.c (`EVENT_RELOAD`, `EVENT_TERM`, `EVENT_DUMP`, `EVENT_ALARM`, etc.).
 ///
 /// # C Equivalent
 ///
@@ -125,7 +125,7 @@ use tracing::{debug, error, info, instrument, warn};
 pub enum SignalEvent {
     /// SIGHUP: Configuration reload requested.
     ///
-    /// Triggers ConfigReloader::handle_reload() to:
+    /// Triggers `ConfigReloader::handle_reload()` to:
     /// - Re-read dnsmasq.conf and included files
     /// - Clear DNS cache
     /// - Reload /etc/hosts
@@ -134,7 +134,7 @@ pub enum SignalEvent {
 
     /// SIGTERM/SIGINT: Graceful shutdown requested.
     ///
-    /// Triggers TaskManager::shutdown() to:
+    /// Triggers `TaskManager::shutdown()` to:
     /// - Broadcast shutdown signal to all tasks
     /// - Flush DHCP leases to disk
     /// - Close all sockets
@@ -143,7 +143,7 @@ pub enum SignalEvent {
 
     /// SIGUSR1: DNS cache statistics dump requested.
     ///
-    /// Triggers DnsCache::get_stats() and logs:
+    /// Triggers `DnsCache::get_stats()` and logs:
     /// - Total cache entries
     /// - Cache hit rate
     /// - Evictions and expirations
@@ -152,8 +152,8 @@ pub enum SignalEvent {
     /// SIGUSR2: System metrics reporting and log rotation.
     ///
     /// Triggers:
-    /// - MetricsCollector::report_all() - DNS/DHCP/DNSSEC metrics
-    /// - LoggingService::flush() - Log file rotation
+    /// - `MetricsCollector::report_all()` - DNS/DHCP/DNSSEC metrics
+    /// - `LoggingService::flush()` - Log file rotation
     ReportMetrics,
 
     /// SIGCHLD: Child process terminated.
@@ -163,7 +163,7 @@ pub enum SignalEvent {
     /// - TCP DNS connection handlers
     /// - Lua script execution
     ///
-    /// Replaces C's EVENT_CHILD handler in async_event().
+    /// Replaces C's `EVENT_CHILD` handler in `async_event()`.
     ChildExited,
 
     /// SIGALRM: Timer event for periodic operations.
@@ -173,7 +173,7 @@ pub enum SignalEvent {
     /// - /etc/resolv.conf monitoring
     /// - Upstream server health checks
     ///
-    /// In Rust implementation, replaced by tokio interval timers in TaskManager,
+    /// In Rust implementation, replaced by tokio interval timers in `TaskManager`,
     /// but kept for compatibility with legacy timer-based code paths.
     AlarmFired,
 }
@@ -219,7 +219,7 @@ pub struct SignalHandlers {
 }
 
 impl SignalHandlers {
-    /// Creates a new SignalHandlers with service dependencies.
+    /// Creates a new `SignalHandlers` with service dependencies.
     ///
     /// # Arguments
     ///
@@ -231,7 +231,7 @@ impl SignalHandlers {
     ///
     /// # Returns
     ///
-    /// A new SignalHandlers instance ready for use with setup_signal_handlers().
+    /// A new `SignalHandlers` instance ready for use with `setup_signal_handlers()`.
     ///
     /// # Example
     ///
@@ -251,18 +251,12 @@ impl SignalHandlers {
         metrics_collector: Arc<RwLock<MetricsCollector>>,
         logging_service: Arc<RwLock<LoggingService>>,
     ) -> Self {
-        Self {
-            config_reloader,
-            dns_cache,
-            shutdown_handle,
-            metrics_collector,
-            logging_service,
-        }
+        Self { config_reloader, dns_cache, shutdown_handle, metrics_collector, logging_service }
     }
 
     /// Handles SIGHUP: Configuration reload without daemon restart.
     ///
-    /// Invokes ConfigReloader::handle_reload() which:
+    /// Invokes `ConfigReloader::handle_reload()` which:
     /// 1. Re-reads dnsmasq.conf and all included files
     /// 2. Validates new configuration
     /// 3. Clears DNS cache
@@ -270,7 +264,7 @@ impl SignalHandlers {
     /// 5. Reopens log files
     /// 6. Atomically updates shared Config state
     ///
-    /// Replaces C's clear_cache_and_reload() function.
+    /// Replaces C's `clear_cache_and_reload()` function.
     ///
     /// # Errors
     ///
@@ -278,7 +272,7 @@ impl SignalHandlers {
     #[instrument(skip(self))]
     pub async fn handle_sighup(&self) -> Result<()> {
         info!("SIGHUP received: reloading configuration");
-        
+
         match self.config_reloader.write().await.handle_reload().await {
             Ok(()) => {
                 info!("Configuration reloaded successfully");
@@ -293,7 +287,7 @@ impl SignalHandlers {
 
     /// Handles SIGTERM: Graceful shutdown with cleanup.
     ///
-    /// Invokes ShutdownHandle::shutdown() which:
+    /// Invokes `ShutdownHandle::shutdown()` which:
     /// 1. Broadcasts shutdown signal to all async tasks
     /// 2. Waits for in-flight DNS queries to complete
     /// 3. Flushes DHCP leases to disk
@@ -301,7 +295,7 @@ impl SignalHandlers {
     /// 5. Waits for helper scripts to terminate
     /// 6. Flushes logs
     ///
-    /// Replaces C's shutdown sequence in async_event(EVENT_TERM).
+    /// Replaces C's shutdown sequence in `async_event(EVENT_TERM)`.
     ///
     /// # Errors
     ///
@@ -309,7 +303,7 @@ impl SignalHandlers {
     #[instrument(skip(self))]
     pub async fn handle_sigterm(&self) -> Result<()> {
         info!("SIGTERM received: initiating graceful shutdown");
-        
+
         self.shutdown_handle.shutdown().await;
         info!("Graceful shutdown completed");
         Ok(())
@@ -326,7 +320,7 @@ impl SignalHandlers {
     #[instrument(skip(self))]
     pub async fn handle_sigint(&self) -> Result<()> {
         info!("SIGINT received: initiating graceful shutdown");
-        
+
         self.shutdown_handle.shutdown().await;
         info!("Graceful shutdown completed");
         Ok(())
@@ -334,13 +328,13 @@ impl SignalHandlers {
 
     /// Handles SIGUSR1: Dumps DNS cache statistics to log.
     ///
-    /// Retrieves cache statistics via DnsCache::get_stats() and logs:
+    /// Retrieves cache statistics via `DnsCache::get_stats()` and logs:
     /// - Total cache entries
     /// - Cache size limits
     /// - Cache hit/miss rates
     /// - Evictions and expirations
     ///
-    /// Replaces C's dump_cache() function called from async_event(EVENT_DUMP).
+    /// Replaces C's `dump_cache()` function called from `async_event(EVENT_DUMP)`.
     ///
     /// # Errors
     ///
@@ -348,10 +342,10 @@ impl SignalHandlers {
     #[instrument(skip(self))]
     pub async fn handle_sigusr1(&self) -> Result<()> {
         info!("SIGUSR1 received: dumping DNS cache statistics");
-        
+
         let cache = self.dns_cache.read().await;
         let stats = cache.get_stats();
-        
+
         info!(
             entries = stats.current_size,
             capacity = stats.capacity,
@@ -360,14 +354,16 @@ impl SignalHandlers {
             evictions = stats.evictions,
             "DNS cache statistics"
         );
-        
+
         // Calculate and log hit rate
         let total_queries = stats.hits + stats.misses;
         if total_queries > 0 {
+            #[allow(clippy::cast_precision_loss)]
+            // Acceptable precision loss for statistics display
             let hit_rate = (stats.hits as f64 / total_queries as f64) * 100.0;
             info!(hit_rate = format!("{:.2}%", hit_rate), "Cache hit rate");
         }
-        
+
         debug!("DNS cache statistics dumped to log");
         Ok(())
     }
@@ -375,17 +371,17 @@ impl SignalHandlers {
     /// Handles SIGUSR2: Reports metrics and rotates logs.
     ///
     /// Performs two operations:
-    /// 1. Calls report_all() to log comprehensive metrics:
+    /// 1. Calls `report_all()` to log comprehensive metrics:
     ///    - DNS query counts and latencies
     ///    - Cache hit rates and evictions
     ///    - DHCP lease allocations and expirations
     ///    - DNSSEC validation statistics
-    /// 2. Calls flush_log() to:
+    /// 2. Calls `flush_log()` to:
     ///    - Close current log file
     ///    - Reopen log file (enables log rotation)
     ///    - Flush pending log entries
     ///
-    /// Replaces C's statistics logging and log_reopen() from async_event().
+    /// Replaces C's statistics logging and `log_reopen()` from `async_event()`.
     ///
     /// # Errors
     ///
@@ -393,12 +389,12 @@ impl SignalHandlers {
     #[instrument(skip(self))]
     pub async fn handle_sigusr2(&self) -> Result<()> {
         info!("SIGUSR2 received: reporting metrics and rotating logs");
-        
+
         // Report all metrics first
         let collector = self.metrics_collector.read().await;
         report_all(&collector);
         info!("Metrics reported successfully");
-        
+
         // Flush and rotate logs
         let mut logging_service = self.logging_service.write().await;
         match flush_log(&mut logging_service).await {
@@ -424,20 +420,20 @@ impl SignalHandlers {
     /// Uses non-blocking waitpid(-1, WNOHANG) to reap all exited children.
     /// Logs any helper script failures for debugging.
     ///
-    /// Replaces C's EVENT_CHILD handler in async_event().
+    /// Replaces C's `EVENT_CHILD` handler in `async_event()`.
     ///
     /// # Errors
     ///
-    /// Returns error if waitpid() system call fails (unlikely).
+    /// Returns error if `waitpid()` system call fails (unlikely).
     #[instrument(skip(self))]
     pub async fn handle_sigchld(&self) -> Result<()> {
         debug!("SIGCHLD received: reaping child processes");
-        
+
         #[cfg(unix)]
         {
             use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
             use nix::unistd::Pid;
-            
+
             loop {
                 match waitpid(Pid::from_raw(-1), Some(WaitPidFlag::WNOHANG)) {
                     Ok(WaitStatus::Exited(pid, status)) => {
@@ -464,7 +460,6 @@ impl SignalHandlers {
                     }
                     Ok(_) => {
                         // Other wait statuses (Stopped, Continued) - ignore for now
-                        continue;
                     }
                     Err(nix::errno::Errno::ECHILD) => {
                         // No child processes exist
@@ -473,18 +468,18 @@ impl SignalHandlers {
                     }
                     Err(e) => {
                         error!("waitpid failed: {}", e);
-                        return Err(anyhow::anyhow!("waitpid failed: {}", e))
+                        return Err(anyhow::anyhow!("waitpid failed: {e}"))
                             .context("SIGCHLD handler: failed to reap child processes");
                     }
                 }
             }
         }
-        
+
         #[cfg(not(unix))]
         {
             warn!("SIGCHLD handling not supported on non-UNIX platforms");
         }
-        
+
         Ok(())
     }
 
@@ -496,7 +491,7 @@ impl SignalHandlers {
     /// - /etc/resolv.conf monitoring
     ///
     /// In Rust implementation, these operations are typically handled by
-    /// tokio interval timers in TaskManager background tasks. This handler
+    /// tokio interval timers in `TaskManager` background tasks. This handler
     /// is retained for compatibility but may be a no-op if all periodic
     /// operations have been migrated to tokio timers.
     ///
@@ -506,11 +501,11 @@ impl SignalHandlers {
     #[instrument(skip(self))]
     pub async fn handle_sigalrm(&self) -> Result<()> {
         debug!("SIGALRM received: timer event (may be handled by tokio timers)");
-        
+
         // In modern Rust implementation, periodic operations are handled by
         // tokio::time::interval in TaskManager, so this may be a no-op.
         // Kept for compatibility with legacy alarm-based code paths.
-        
+
         warn!("SIGALRM received but periodic operations use tokio timers");
         Ok(())
     }
@@ -519,18 +514,18 @@ impl SignalHandlers {
 /// Sets up signal handlers using tokio's async signal facilities.
 ///
 /// Creates dedicated async tasks for each signal type, where each task:
-/// 1. Creates a tokio::signal::unix::Signal stream for the signal
+/// 1. Creates a `tokio::signal::unix::Signal` stream for the signal
 /// 2. Loops awaiting signal receipt
-/// 3. Invokes the appropriate SignalHandlers method
+/// 3. Invokes the appropriate `SignalHandlers` method
 /// 4. Continues until task is cancelled
 ///
 /// # Arguments
 ///
-/// * `handlers` - SignalHandlers instance with service dependencies
+/// * `handlers` - `SignalHandlers` instance with service dependencies
 ///
 /// # Returns
 ///
-/// Returns Vec<JoinHandle<()>> containing task handles for all signal handler tasks.
+/// Returns Vec<`JoinHandle`<()>> containing task handles for all signal handler tasks.
 /// These handles can be awaited for graceful shutdown or cancelled to stop signal handling.
 ///
 /// # Errors
@@ -553,25 +548,23 @@ impl SignalHandlers {
 /// }
 /// ```
 #[instrument(skip(handlers))]
-pub async fn setup_signal_handlers(
-    handlers: SignalHandlers,
-) -> Result<Vec<JoinHandle<()>>> {
+pub async fn setup_signal_handlers(handlers: SignalHandlers) -> Result<Vec<JoinHandle<()>>> {
     use tokio::signal::unix::{signal, SignalKind};
-    
+
     let mut join_handles = Vec::new();
-    
+
     // Wrap handlers in Arc once for sharing across all signal handler tasks
     let handlers = Arc::new(handlers);
-    
+
     info!("Setting up signal handlers for SIGHUP, SIGTERM, SIGINT, SIGUSR1, SIGUSR2, SIGCHLD, SIGALRM");
-    
+
     // SIGHUP handler - Configuration reload
     {
         let handlers_clone = Arc::clone(&handlers);
-        
-        let mut sighup = signal(SignalKind::hangup())
-            .context("Failed to register SIGHUP handler")?;
-        
+
+        let mut sighup =
+            signal(SignalKind::hangup()).context("Failed to register SIGHUP handler")?;
+
         let handle = task::spawn(async move {
             loop {
                 sighup.recv().await;
@@ -580,18 +573,18 @@ pub async fn setup_signal_handlers(
                 }
             }
         });
-        
+
         join_handles.push(handle);
         debug!("SIGHUP handler task spawned");
     }
-    
+
     // SIGTERM handler - Graceful shutdown
     {
         let handlers_clone = Arc::clone(&handlers);
-        
-        let mut sigterm = signal(SignalKind::terminate())
-            .context("Failed to register SIGTERM handler")?;
-        
+
+        let mut sigterm =
+            signal(SignalKind::terminate()).context("Failed to register SIGTERM handler")?;
+
         let handle = task::spawn(async move {
             sigterm.recv().await;
             if let Err(e) = handlers_clone.handle_sigterm().await {
@@ -599,18 +592,18 @@ pub async fn setup_signal_handlers(
             }
             // After SIGTERM, exit the loop to allow graceful shutdown
         });
-        
+
         join_handles.push(handle);
         debug!("SIGTERM handler task spawned");
     }
-    
+
     // SIGINT handler - Graceful shutdown (Ctrl-C)
     {
         let handlers_clone = Arc::clone(&handlers);
-        
-        let mut sigint = signal(SignalKind::interrupt())
-            .context("Failed to register SIGINT handler")?;
-        
+
+        let mut sigint =
+            signal(SignalKind::interrupt()).context("Failed to register SIGINT handler")?;
+
         let handle = task::spawn(async move {
             sigint.recv().await;
             if let Err(e) = handlers_clone.handle_sigint().await {
@@ -618,18 +611,18 @@ pub async fn setup_signal_handlers(
             }
             // After SIGINT, exit the loop to allow graceful shutdown
         });
-        
+
         join_handles.push(handle);
         debug!("SIGINT handler task spawned");
     }
-    
+
     // SIGUSR1 handler - Dump DNS cache statistics
     {
         let handlers_clone = Arc::clone(&handlers);
-        
-        let mut sigusr1 = signal(SignalKind::user_defined1())
-            .context("Failed to register SIGUSR1 handler")?;
-        
+
+        let mut sigusr1 =
+            signal(SignalKind::user_defined1()).context("Failed to register SIGUSR1 handler")?;
+
         let handle = task::spawn(async move {
             loop {
                 sigusr1.recv().await;
@@ -638,18 +631,18 @@ pub async fn setup_signal_handlers(
                 }
             }
         });
-        
+
         join_handles.push(handle);
         debug!("SIGUSR1 handler task spawned");
     }
-    
+
     // SIGUSR2 handler - Report metrics and rotate logs
     {
         let handlers_clone = Arc::clone(&handlers);
-        
-        let mut sigusr2 = signal(SignalKind::user_defined2())
-            .context("Failed to register SIGUSR2 handler")?;
-        
+
+        let mut sigusr2 =
+            signal(SignalKind::user_defined2()).context("Failed to register SIGUSR2 handler")?;
+
         let handle = task::spawn(async move {
             loop {
                 sigusr2.recv().await;
@@ -658,18 +651,18 @@ pub async fn setup_signal_handlers(
                 }
             }
         });
-        
+
         join_handles.push(handle);
         debug!("SIGUSR2 handler task spawned");
     }
-    
+
     // SIGCHLD handler - Reap zombie child processes
     {
         let handlers_clone = Arc::clone(&handlers);
-        
-        let mut sigchld = signal(SignalKind::child())
-            .context("Failed to register SIGCHLD handler")?;
-        
+
+        let mut sigchld =
+            signal(SignalKind::child()).context("Failed to register SIGCHLD handler")?;
+
         let handle = task::spawn(async move {
             loop {
                 sigchld.recv().await;
@@ -678,18 +671,18 @@ pub async fn setup_signal_handlers(
                 }
             }
         });
-        
+
         join_handles.push(handle);
         debug!("SIGCHLD handler task spawned");
     }
-    
+
     // SIGALRM handler - Timer events (compatibility)
     {
         let handlers_clone = Arc::clone(&handlers);
-        
-        let mut sigalrm = signal(SignalKind::alarm())
-            .context("Failed to register SIGALRM handler")?;
-        
+
+        let mut sigalrm =
+            signal(SignalKind::alarm()).context("Failed to register SIGALRM handler")?;
+
         let handle = task::spawn(async move {
             loop {
                 sigalrm.recv().await;
@@ -698,15 +691,12 @@ pub async fn setup_signal_handlers(
                 }
             }
         });
-        
+
         join_handles.push(handle);
         debug!("SIGALRM handler task spawned");
     }
-    
-    info!(
-        handlers_count = join_handles.len(),
-        "Signal handlers successfully installed"
-    );
-    
+
+    info!(handlers_count = join_handles.len(), "Signal handlers successfully installed");
+
     Ok(join_handles)
 }

@@ -45,9 +45,9 @@
 //!
 //! # Platform Support
 //!
-//! - **Linux**: Uses rtnetlink for neighbor table queries (RTM_GETNEIGH)
-//! - **BSD**: Uses routing sockets with CTL_NET.PF_ROUTE.0.AF_INET.NET_RT_FLAGS.RTF_LLINFO
-//! - **macOS**: Uses sysctl NET_RT_FLAGS with RTF_LLINFO for ARP table access
+//! - **Linux**: Uses rtnetlink for neighbor table queries (`RTM_GETNEIGH`)
+//! - **BSD**: Uses routing sockets with `CTL_NET.PF_ROUTE.0.AF_INET.NET_RT_FLAGS.RTF_LLINFO`
+//! - **macOS**: Uses sysctl `NET_RT_FLAGS` with `RTF_LLINFO` for ARP table access
 //!
 //! # Memory Safety Improvements
 //!
@@ -55,11 +55,11 @@
 //!
 //! - **Linked List → Vec**: C's manual pointer-based `struct arp_record` linked list replaced
 //!   with `Vec<ArpRecord>`, eliminating use-after-free and memory leak vulnerabilities
-//! - **Status Flags → Enum**: C integer constants (ARP_MARK=0, ARP_FOUND=1, etc.) replaced
+//! - **Status Flags → Enum**: C integer constants (`ARP_MARK=0`, `ARP_FOUND=1`, etc.) replaced
 //!   with type-safe `ArpStatus` enum preventing invalid state values
 //! - **Manual Memory Management → RAII**: C's malloc/free with freelist replaced with Rust's
 //!   automatic memory management via Vec growth/shrinkage
-//! - **Callback → Method**: C's filter_mac() callback function replaced with internal method
+//! - **Callback → Method**: C's `filter_mac()` callback function replaced with internal method
 //!   eliminating function pointer safety concerns
 //!
 //! # Usage Example
@@ -145,7 +145,7 @@ const ARP_CACHE_REFRESH_INTERVAL_SECS: u64 = 90;
 
 /// ARP cache entry status tracking lifecycle state during cache synchronization.
 ///
-/// Replaces C implementation's integer constants (ARP_MARK=0, ARP_FOUND=1, ARP_NEW=2, ARP_EMPTY=3)
+/// Replaces C implementation's integer constants (`ARP_MARK=0`, `ARP_FOUND=1`, `ARP_NEW=2`, `ARP_EMPTY=3`)
 /// with type-safe enum providing compile-time validation and exhaustive pattern matching.
 ///
 /// # State Transitions
@@ -217,7 +217,7 @@ pub enum ArpStatus {
 ///
 /// # Memory Layout
 ///
-/// - Size: ~48 bytes (16-byte IpAddr + 6-byte MAC + 8-byte Instant + status + padding)
+/// - Size: ~48 bytes (16-byte `IpAddr` + 6-byte MAC + 8-byte Instant + status + padding)
 /// - No raw pointers unlike C version's `next` field
 /// - Automatic memory management via Vec ownership
 ///
@@ -244,7 +244,7 @@ struct ArpRecord {
 
     /// Hardware MAC address (6 bytes for Ethernet).
     ///
-    /// `None` represents ARP_EMPTY state (IP known but no MAC address available yet).
+    /// `None` represents `ARP_EMPTY` state (IP known but no MAC address available yet).
     /// `Some(MacAddress)` represents entries with confirmed MAC addresses.
     mac: Option<MacAddress>,
 
@@ -377,7 +377,9 @@ impl ArpCache {
     ) -> Self {
         Self {
             entries: Vec::new(),
-            last_refresh: Instant::now() - Duration::from_secs(ARP_CACHE_REFRESH_INTERVAL_SECS + 1),
+            last_refresh: Instant::now()
+                .checked_sub(Duration::from_secs(ARP_CACHE_REFRESH_INTERVAL_SECS + 1))
+                .unwrap(),
             platform,
             config,
             helper,
@@ -398,11 +400,11 @@ impl ArpCache {
     ///
     /// The `lazy` parameter controls negative caching behavior:
     ///
-    /// - **lazy = false**: Reject ARP_EMPTY entries (no MAC address), force kernel refresh
-    /// - **lazy = true**: Accept ARP_EMPTY entries as negative cache hits (prevents repeated
+    /// - **lazy = false**: Reject `ARP_EMPTY` entries (no MAC address), force kernel refresh
+    /// - **lazy = true**: Accept `ARP_EMPTY` entries as negative cache hits (prevents repeated
     ///   kernel queries for non-existent mappings)
     ///
-    /// If no MAC address found after kernel refresh, creates ARP_EMPTY entry to cache the
+    /// If no MAC address found after kernel refresh, creates `ARP_EMPTY` entry to cache the
     /// negative result.
     ///
     /// # Arguments
@@ -436,7 +438,11 @@ impl ArpCache {
     /// let mac = cache.find_mac(&ip, true).await?;
     /// ```
     #[instrument(skip(self), fields(ip = %ip, lazy = lazy))]
-    pub async fn find_mac(&mut self, ip: &IpAddr, lazy: bool) -> Result<Option<MacAddress>, NetworkError> {
+    pub async fn find_mac(
+        &mut self,
+        ip: &IpAddr,
+        lazy: bool,
+    ) -> Result<Option<MacAddress>, NetworkError> {
         let now = Instant::now();
         let cache_age = now.duration_since(self.last_refresh);
 
@@ -455,8 +461,10 @@ impl ArpCache {
             match entry.status {
                 ArpStatus::Empty if !lazy => {
                     // Non-lazy mode: reject negative cache, will create new empty entry below
-                    debug!("Found ARP_EMPTY entry for {} in non-lazy mode, treating as cache miss", ip);
-                    continue;
+                    debug!(
+                        "Found ARP_EMPTY entry for {} in non-lazy mode, treating as cache miss",
+                        ip
+                    );
                 }
                 ArpStatus::Empty => {
                     // Lazy mode: accept negative cache result
@@ -465,7 +473,10 @@ impl ArpCache {
                 }
                 _ => {
                     // Return MAC address if available
-                    debug!("Found ARP entry for {}: mac={:?}, status={:?}", ip, entry.mac, entry.status);
+                    debug!(
+                        "Found ARP entry for {}: mac={:?}, status={:?}",
+                        ip, entry.mac, entry.status
+                    );
                     return Ok(entry.mac);
                 }
             }
@@ -496,14 +507,14 @@ impl ArpCache {
     ///
     /// # Platform-Specific Behavior
     ///
-    /// - **Linux**: Uses rtnetlink RTM_GETNEIGH to enumerate neighbor table
-    /// - **BSD**: Uses routing socket RTM_GET with RTF_LLINFO flag
-    /// - **macOS**: Uses sysctl NET_RT_FLAGS with RTF_LLINFO
+    /// - **Linux**: Uses rtnetlink `RTM_GETNEIGH` to enumerate neighbor table
+    /// - **BSD**: Uses routing socket `RTM_GET` with `RTF_LLINFO` flag
+    /// - **macOS**: Uses sysctl `NET_RT_FLAGS` with `RTF_LLINFO`
     ///
     /// # Errors
     ///
     /// Returns `NetworkError::RoutingFailed` if kernel ARP table cannot be read due to:
-    /// - Insufficient permissions (requires CAP_NET_ADMIN on Linux)
+    /// - Insufficient permissions (requires `CAP_NET_ADMIN` on Linux)
     /// - System call failure
     /// - Platform-specific API errors
     ///
@@ -535,14 +546,13 @@ impl ArpCache {
         debug!("Marked {} non-empty entries for refresh validation", marked_count);
 
         // Phase 2: Enumerate kernel ARP table and update cache
-        let kernel_entries = self.platform.enumerate_arp_entries().await
-            .map_err(|e| {
-                error!("Failed to enumerate kernel ARP table: {}", e);
-                NetworkError::RoutingFailed {
-                    operation: "enumerate_arp_entries".to_string(),
-                    reason: e.to_string(),
-                }
-            })?;
+        let kernel_entries = self.platform.enumerate_arp_entries().await.map_err(|e| {
+            error!("Failed to enumerate kernel ARP table: {}", e);
+            NetworkError::RoutingFailed {
+                operation: "enumerate_arp_entries".to_string(),
+                reason: e.to_string(),
+            }
+        })?;
 
         debug!("Enumerated {} entries from kernel ARP table", kernel_entries.len());
 
@@ -570,7 +580,10 @@ impl ArpCache {
 
                 if entry.status == ArpStatus::Empty {
                     // Empty entry now has MAC address - promote to new
-                    debug!("Empty entry for {} now has MAC {}, promoting to New", kernel_ip, kernel_mac);
+                    debug!(
+                        "Empty entry for {} now has MAC {}, promoting to New",
+                        kernel_ip, kernel_mac
+                    );
                     entry.mac = Some(kernel_mac);
                     entry.status = ArpStatus::New;
                     entry.last_seen = now;
@@ -583,8 +596,10 @@ impl ArpCache {
                         found_count += 1;
                     } else {
                         // MAC changed - mark as new
-                        debug!("MAC changed for {}: {} -> {}, marking as New", 
-                            kernel_ip, existing_mac, kernel_mac);
+                        debug!(
+                            "MAC changed for {}: {} -> {}, marking as New",
+                            kernel_ip, existing_mac, kernel_mac
+                        );
                         entry.mac = Some(kernel_mac);
                         entry.status = ArpStatus::New;
                         entry.last_seen = now;
@@ -608,8 +623,10 @@ impl ArpCache {
             }
         }
 
-        info!("ARP cache refresh complete: {} confirmed, {} new, {} updated", 
-            found_count, new_count, updated_count);
+        info!(
+            "ARP cache refresh complete: {} confirmed, {} new, {} updated",
+            found_count, new_count, updated_count
+        );
 
         // Phase 3: Remove unconfirmed entries (still marked)
         let mut removed_count = 0;
@@ -638,8 +655,8 @@ impl ArpCache {
     /// Implements incremental notification processing matching C's `do_arp_script_run()`
     /// (src/arp.c lines 445-475). Each invocation processes at most one pending change:
     ///
-    /// 1. If deletion queue not empty: notify one deletion (ACTION_ARP_DEL)
-    /// 2. Else if entries have `ArpStatus::New`: notify one addition (ACTION_ARP), promote to `Found`
+    /// 1. If deletion queue not empty: notify one deletion (`ACTION_ARP_DEL`)
+    /// 2. Else if entries have `ArpStatus::New`: notify one addition (`ACTION_ARP`), promote to `Found`
     /// 3. Else: all notifications complete, return false
     ///
     /// This incremental design prevents blocking the event loop during large topology changes
@@ -677,14 +694,13 @@ impl ArpCache {
                 if let Some(mac) = deleted_entry.mac {
                     info!("Notifying script: device disappeared - {} ({})", deleted_entry.ip, mac);
                     let helper = self.helper.read().await;
-                    queue_arp(&helper, mac, deleted_entry.ip, false)
-                        .map_err(|e| {
-                            error!("Failed to queue ARP deletion script: {}", e);
-                            NetworkError::RoutingFailed {
-                                operation: "queue_arp_deletion".to_string(),
-                                reason: e.to_string(),
-                            }
-                        })?;
+                    queue_arp(&helper, mac, deleted_entry.ip, false).map_err(|e| {
+                        error!("Failed to queue ARP deletion script: {}", e);
+                        NetworkError::RoutingFailed {
+                            operation: "queue_arp_deletion".to_string(),
+                            reason: e.to_string(),
+                        }
+                    })?;
                 }
             }
             return Ok(true); // More deletions may remain
@@ -697,14 +713,13 @@ impl ArpCache {
                     if let Some(ref mac) = entry.mac {
                         info!("Notifying script: new device discovered - {} ({})", entry.ip, mac);
                         let helper = self.helper.read().await;
-                        queue_arp(&helper, *mac, entry.ip, true)
-                            .map_err(|e| {
-                                error!("Failed to queue ARP addition script: {}", e);
-                                NetworkError::RoutingFailed {
-                                    operation: "queue_arp_addition".to_string(),
-                                    reason: e.to_string(),
-                                }
-                            })?;
+                        queue_arp(&helper, *mac, entry.ip, true).map_err(|e| {
+                            error!("Failed to queue ARP addition script: {}", e);
+                            NetworkError::RoutingFailed {
+                                operation: "queue_arp_addition".to_string(),
+                                reason: e.to_string(),
+                            }
+                        })?;
                     }
                 }
                 entry.status = ArpStatus::Found;
@@ -739,12 +754,8 @@ mod tests {
         let ip: IpAddr = "192.168.1.100".parse().unwrap();
         let mac = MacAddress::from_bytes([0x00, 0x11, 0x22, 0x33, 0x44, 0x55]);
 
-        let record = ArpRecord {
-            ip,
-            mac: Some(mac),
-            status: ArpStatus::Found,
-            last_seen: Instant::now(),
-        };
+        let record =
+            ArpRecord { ip, mac: Some(mac), status: ArpStatus::Found, last_seen: Instant::now() };
 
         assert_eq!(record.ip, ip);
         assert_eq!(record.mac.unwrap().octets(), mac.octets());

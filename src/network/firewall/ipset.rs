@@ -188,7 +188,7 @@
 //!
 //! ## Traffic Shaping
 //!
-//! Apply QoS policies based on domain classification:
+//! Apply `QoS` policies based on domain classification:
 //!
 //! ```bash
 //! # Create ipset
@@ -205,10 +205,10 @@
 //!
 //! All operations return `Result<(), FirewallError>` with structured error types:
 //!
-//! - **SetNotFound**: Named ipset does not exist (administrator must pre-create sets)
-//! - **AddressNotSupported**: IPv6 address on legacy kernel (< 2.6.32)
-//! - **ProtocolError**: Netlink communication failure, permission denied, socket error
-//! - **DeviceNotFound**: Netlink subsystem not loaded, /proc/sys/net/netfilter unavailable
+//! - **`SetNotFound`**: Named ipset does not exist (administrator must pre-create sets)
+//! - **`AddressNotSupported`**: IPv6 address on legacy kernel (< 2.6.32)
+//! - **`ProtocolError`**: Netlink communication failure, permission denied, socket error
+//! - **`DeviceNotFound`**: Netlink subsystem not loaded, /proc/sys/net/netfilter unavailable
 //!
 //! Errors are logged but non-fatal - DNS resolution continues even if ipset population fails,
 //! preventing firewall issues from disrupting name resolution services.
@@ -261,6 +261,9 @@
 //!
 //! GPL-2.0-or-later OR GPL-3.0-or-later
 
+// Netlink protocol encoding requires intentional casts and C ABI struct field names
+#![allow(clippy::cast_possible_truncation, clippy::struct_field_names)]
+
 use async_trait::async_trait;
 use bytes::{BufMut, BytesMut};
 use nix::sys::socket::{
@@ -280,7 +283,7 @@ use super::{FirewallBackend, FirewallError, Result};
 // Constants: ipset netlink protocol definitions
 // ============================================================================
 
-/// Netfilter subsystem identifier for ipset (NFNL_SUBSYS_IPSET)
+/// Netfilter subsystem identifier for ipset (`NFNL_SUBSYS_IPSET`)
 const NFNL_SUBSYS_IPSET: u8 = 6;
 
 /// ipset protocol version
@@ -289,7 +292,7 @@ const IPSET_PROTOCOL: u8 = 6;
 /// Maximum length for ipset name (includes null terminator)
 const IPSET_MAXNAMELEN: usize = 32;
 
-/// Netlink message buffer size (matches C BUFF_SZ)
+/// Netlink message buffer size (matches C `BUFF_SZ`)
 const BUFF_SZ: usize = 256;
 
 // ipset netlink command codes
@@ -332,7 +335,7 @@ struct NlMsgHdr {
     nlmsg_len: u32,
     /// Message type: command code | (subsystem << 8)
     nlmsg_type: u16,
-    /// Message flags (NLM_F_REQUEST, etc.)
+    /// Message flags (`NLM_F_REQUEST`, etc.)
     nlmsg_flags: u16,
     /// Sequence number (typically 0 for fire-and-forget)
     nlmsg_seq: u32,
@@ -344,9 +347,9 @@ struct NlMsgHdr {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct NfGenMsg {
-    /// Address family: AF_INET (2) or AF_INET6 (10)
+    /// Address family: `AF_INET` (2) or `AF_INET6` (10)
     nfgen_family: u8,
-    /// Netlink protocol version: NFNETLINK_V0 (0)
+    /// Netlink protocol version: `NFNETLINK_V0` (0)
     version: u8,
     /// Resource ID (typically 0 for ipset)
     res_id: u16, // Network byte order (__be16)
@@ -358,7 +361,7 @@ struct NfGenMsg {
 struct NlAttr {
     /// Length of attribute including header and payload
     nla_len: u16,
-    /// Attribute type, may include NLA_F_NESTED or NLA_F_NET_BYTEORDER flags
+    /// Attribute type, may include `NLA_F_NESTED` or `NLA_F_NET_BYTEORDER` flags
     nla_type: u16,
 }
 
@@ -390,7 +393,7 @@ const fn nl_align(len: usize) -> usize {
     (len + 3) & !3
 }
 
-/// Detect Linux kernel version by parsing uname() output.
+/// Detect Linux kernel version by parsing `uname()` output.
 ///
 /// Returns tuple (major, minor, patch) representing kernel version.
 /// Used to determine whether to use modern netlink API (≥2.6.32) or
@@ -410,7 +413,7 @@ const fn nl_align(len: usize) -> usize {
 /// ```
 fn detect_kernel_version() -> Result<(u32, u32, u32)> {
     let utsname = uname().map_err(|e| {
-        FirewallError::ProtocolError(format!("Failed to get kernel version via uname(): {}", e))
+        FirewallError::ProtocolError(format!("Failed to get kernel version via uname(): {e}"))
     })?;
 
     let release = utsname.release().to_string_lossy();
@@ -420,22 +423,21 @@ fn detect_kernel_version() -> Result<(u32, u32, u32)> {
 
     if parts.len() < 3 {
         return Err(FirewallError::ProtocolError(format!(
-            "Invalid kernel release format: {}",
-            release
+            "Invalid kernel release format: {release}"
         )));
     }
 
-    let major = parts[0].parse::<u32>().map_err(|e| {
-        FirewallError::ProtocolError(format!("Failed to parse major version: {}", e))
-    })?;
+    let major = parts[0]
+        .parse::<u32>()
+        .map_err(|e| FirewallError::ProtocolError(format!("Failed to parse major version: {e}")))?;
 
-    let minor = parts[1].parse::<u32>().map_err(|e| {
-        FirewallError::ProtocolError(format!("Failed to parse minor version: {}", e))
-    })?;
+    let minor = parts[1]
+        .parse::<u32>()
+        .map_err(|e| FirewallError::ProtocolError(format!("Failed to parse minor version: {e}")))?;
 
-    let patch = parts[2].parse::<u32>().map_err(|e| {
-        FirewallError::ProtocolError(format!("Failed to parse patch version: {}", e))
-    })?;
+    let patch = parts[2]
+        .parse::<u32>()
+        .map_err(|e| FirewallError::ProtocolError(format!("Failed to parse patch version: {e}")))?;
 
     debug!(major = major, minor = minor, patch = patch, "Detected kernel version");
 
@@ -484,6 +486,7 @@ impl IpsetBackend {
     /// let mut backend = IpsetBackend::new();
     /// backend.initialize().await?;
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self { socket_fd: None, is_legacy_kernel: false, kernel_version: None }
     }
@@ -509,6 +512,7 @@ impl IpsetBackend {
     /// backend.initialize().await?;
     /// assert!(backend.socket_fd.is_some());
     /// ```
+    #[allow(clippy::unused_async)] // Future-proofs API for potential async initialization requirements
     pub async fn initialize(&mut self) -> Result<()> {
         // Detect kernel version
         let version = detect_kernel_version()?;
@@ -529,7 +533,7 @@ impl IpsetBackend {
             let fd =
                 socket(NixAddressFamily::Inet, SockType::Raw, SockFlag::empty(), SockProtocol::Raw)
                     .map_err(|e| {
-                        FirewallError::ProtocolError(format!("Failed to create raw socket: {}", e))
+                        FirewallError::ProtocolError(format!("Failed to create raw socket: {e}"))
                     })?;
 
             self.socket_fd = Some(fd.as_raw_fd());
@@ -547,14 +551,14 @@ impl IpsetBackend {
                 SockProtocol::NetlinkNetFilter,
             )
             .map_err(|e| {
-                FirewallError::ProtocolError(format!("Failed to create netlink socket: {}", e))
+                FirewallError::ProtocolError(format!("Failed to create netlink socket: {e}"))
             })?;
 
             // Bind netlink socket
             let addr = NetlinkAddr::new(0, 0); // pid=0 (kernel assigns), groups=0
             let raw_fd = fd.as_raw_fd();
             bind(raw_fd, &addr).map_err(|e| {
-                FirewallError::ProtocolError(format!("Failed to bind netlink socket: {}", e))
+                FirewallError::ProtocolError(format!("Failed to bind netlink socket: {e}"))
             })?;
 
             self.socket_fd = Some(raw_fd);
@@ -577,6 +581,7 @@ impl IpsetBackend {
     /// # Panics
     ///
     /// Panics if called before `initialize()`.
+    #[must_use]
     pub fn is_legacy_kernel(&self) -> bool {
         self.is_legacy_kernel
     }
@@ -584,6 +589,7 @@ impl IpsetBackend {
     /// Get detected kernel version as (major, minor, patch) tuple.
     ///
     /// Returns `None` if `initialize()` has not been called yet.
+    #[must_use]
     pub fn detect_kernel_version(&self) -> Option<(u32, u32, u32)> {
         self.kernel_version
     }
@@ -591,7 +597,7 @@ impl IpsetBackend {
     /// Add IP address to ipset using modern netlink API (kernel ≥ 2.6.32).
     ///
     /// Constructs netlink message with nested attributes and sends to kernel via
-    /// NETLINK_NETFILTER socket. Supports both IPv4 and IPv6 addresses.
+    /// `NETLINK_NETFILTER` socket. Supports both IPv4 and IPv6 addresses.
     ///
     /// # Message Structure
     ///
@@ -606,7 +612,7 @@ impl IpsetBackend {
     /// # Errors
     ///
     /// Returns error if:
-    /// - Set name exceeds IPSET_MAXNAMELEN (32 chars)
+    /// - Set name exceeds `IPSET_MAXNAMELEN` (32 chars)
     /// - Socket send fails
     /// - Message construction fails
     async fn new_add_to_ipset(&self, set_name: &str, ip: IpAddr, remove: bool) -> Result<()> {
@@ -643,7 +649,7 @@ impl IpsetBackend {
             let nlh = NlMsgHdr {
                 nlmsg_len: nl_align(mem::size_of::<NlMsgHdr>()) as u32,
                 nlmsg_type: (if remove { IPSET_CMD_DEL } else { IPSET_CMD_ADD })
-                    | ((NFNL_SUBSYS_IPSET as u16) << 8),
+                    | (u16::from(NFNL_SUBSYS_IPSET) << 8),
                 nlmsg_flags: NLM_F_REQUEST,
                 nlmsg_seq: 0,
                 nlmsg_pid: 0,
@@ -767,14 +773,13 @@ impl IpsetBackend {
                         "Failed to send ipset netlink message"
                     );
                     Err(FirewallError::ProtocolError(format!(
-                        "Failed to send netlink message: {}",
-                        e
+                        "Failed to send netlink message: {e}"
                     )))
                 }
             }
         })
         .await
-        .map_err(|e| FirewallError::ProtocolError(format!("Blocking task panicked: {}", e)))?
+        .map_err(|e| FirewallError::ProtocolError(format!("Blocking task panicked: {e}")))?
     }
 
     /// Add or remove IPv4 address to/from ipset using legacy setsockopt API (kernel < 2.6.32).
@@ -801,7 +806,7 @@ impl IpsetBackend {
 
         // Validate set name length
         if set_name.len() >= IPSET_MAXNAMELEN {
-            return Err(FirewallError::SetNotFound(format!("ipset name too long: {}", set_name)));
+            return Err(FirewallError::SetNotFound(format!("ipset name too long: {set_name}")));
         }
 
         let set_name_owned = set_name.to_string();
@@ -826,8 +831,8 @@ impl IpsetBackend {
                     socket_fd,
                     libc::SOL_IP,
                     83, // IP_SET socket option
-                    &mut req_get as *mut _ as *mut libc::c_void,
-                    &mut optlen,
+                    (&raw mut req_get).cast::<libc::c_void>(),
+                    &raw mut optlen,
                 )
             };
 
@@ -839,15 +844,16 @@ impl IpsetBackend {
                     "Failed to get ipset ID via getsockopt"
                 );
                 return Err(FirewallError::SetNotFound(format!(
-                    "ipset '{}' not found or getsockopt failed: {}",
-                    set_name_owned, err
+                    "ipset '{set_name_owned}' not found or getsockopt failed: {err}"
                 )));
             }
 
             // Extract set index from response (reused in union)
+            #[allow(clippy::cast_ptr_alignment)]
+            // Union field from kernel struct, guaranteed properly aligned
             let set_index = unsafe {
                 // set_name is a union with index, read as u16
-                let ptr = req_get.set_name.as_ptr() as *const u16;
+                let ptr = req_get.set_name.as_ptr().cast::<u16>();
                 *ptr
             };
 
@@ -866,7 +872,7 @@ impl IpsetBackend {
                     socket_fd,
                     libc::SOL_IP,
                     83,
-                    &req_adt as *const _ as *const libc::c_void,
+                    (&raw const req_adt).cast::<libc::c_void>(),
                     mem::size_of::<IpSetReqAdt>() as libc::socklen_t,
                 )
             };
@@ -882,8 +888,7 @@ impl IpsetBackend {
                     operation
                 );
                 return Err(FirewallError::AddressFailed(format!(
-                    "setsockopt failed for {} operation: {}",
-                    operation, err
+                    "setsockopt failed for {operation} operation: {err}"
                 )));
             }
 
@@ -897,7 +902,7 @@ impl IpsetBackend {
             Ok(())
         })
         .await
-        .map_err(|e| FirewallError::ProtocolError(format!("Blocking task panicked: {}", e)))?
+        .map_err(|e| FirewallError::ProtocolError(format!("Blocking task panicked: {e}")))?
     }
 }
 
@@ -922,9 +927,9 @@ impl FirewallBackend for IpsetBackend {
     ///
     /// # Errors
     ///
-    /// - **SetNotFound**: ipset does not exist (admin must create it)
-    /// - **AddressNotSupported**: IPv6 on legacy kernel
-    /// - **ProtocolError**: Socket communication failure
+    /// - **`SetNotFound`**: ipset does not exist (admin must create it)
+    /// - **`AddressNotSupported`**: IPv6 on legacy kernel
+    /// - **`ProtocolError`**: Socket communication failure
     async fn add_to_set(&self, domain: &str, ip: IpAddr, set_name: &str) -> Result<()> {
         info!(
             domain = domain,

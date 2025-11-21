@@ -61,7 +61,7 @@ use crate::types::RecordType;
 
 /// DNSSEC validation status representing the result of chain-of-trust verification.
 ///
-/// Maps to C implementation's STAT_SECURE/INSECURE/BOGUS constants but with
+/// Maps to C implementation's `STAT_SECURE/INSECURE/BOGUS` constants but with
 /// type safety and Extended DNS Error (EDE) code mapping per RFC 8914.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValidationStatus {
@@ -86,10 +86,11 @@ pub enum ValidationStatus {
 
 impl ValidationStatus {
     /// Maps validation status to Extended DNS Error code per RFC 8914.
+    #[must_use]
     pub fn to_extended_error_code(&self) -> u16 {
         match self {
-            ValidationStatus::Secure => 0,        // No error
-            ValidationStatus::Insecure => 0,      // No error - unsigned is valid state
+            // No error - both secure and unsigned/insecure are valid states
+            ValidationStatus::Secure | ValidationStatus::Insecure => 0,
             ValidationStatus::Bogus => 6,         // EDE_DNSSEC_BOGUS
             ValidationStatus::Indeterminate => 7, // EDE_DNSSEC_INDETERMINATE
         }
@@ -134,12 +135,13 @@ pub struct ValidationResult {
 
     /// Extended DNS Error code per RFC 8914.
     /// Provides machine-readable error code for client diagnostics
-    /// (0=no error, 6=DNSSEC_BOGUS, 7=DNSSEC_INDETERMINATE, etc.).
+    /// (0=no error, `6=DNSSEC_BOGUS`, `7=DNSSEC_INDETERMINATE`, etc.).
     pub extended_error_code: u16,
 }
 
 impl ValidationResult {
     /// Creates a successful validation result with Secure status.
+    #[must_use]
     pub fn secure() -> Self {
         Self {
             status: ValidationStatus::Secure,
@@ -151,6 +153,7 @@ impl ValidationResult {
     }
 
     /// Creates an insecure validation result for unsigned zones.
+    #[must_use]
     pub fn insecure() -> Self {
         Self {
             status: ValidationStatus::Insecure,
@@ -184,23 +187,23 @@ impl ValidationResult {
     }
 }
 
-/// Counter tracking resource usage during DNSSEC validation for DoS prevention.
+/// Counter tracking resource usage during DNSSEC validation for `DoS` prevention.
 ///
-/// Implements resource limits from `src/constants.rs` (DNSSEC_LIMIT_WORK,
-/// DNSSEC_LIMIT_CRYPTO, DNSSEC_LIMIT_NSEC3_ITERS) to prevent validation DoS
+/// Implements resource limits from `src/constants.rs` (`DNSSEC_LIMIT_WORK`,
+/// `DNSSEC_LIMIT_CRYPTO`, `DNSSEC_LIMIT_NSEC3_ITERS`) to prevent validation `DoS`
 /// attacks via excessive queries, signature verifications, or hash iterations.
 ///
 /// Replaces C implementation's manual counter parameters passed through
 /// validation call chain with type-safe struct encapsulating limit logic.
 #[derive(Debug, Clone)]
 pub struct ValidationCounter {
-    /// Number of validation queries performed (max DNSSEC_LIMIT_WORK).
+    /// Number of validation queries performed (max `DNSSEC_LIMIT_WORK`).
     pub work_count: usize,
 
     /// Number of signature verification failures (max 20).
     pub sig_fail_count: usize,
 
-    /// Number of cryptographic operations performed (max DNSSEC_LIMIT_CRYPTO).
+    /// Number of cryptographic operations performed (max `DNSSEC_LIMIT_CRYPTO`).
     pub crypto_count: usize,
 
     /// Maximum validation queries allowed.
@@ -215,6 +218,7 @@ pub struct ValidationCounter {
 
 impl ValidationCounter {
     /// Creates a new validation counter with default limits from constants.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             work_count: 0,
@@ -227,11 +231,13 @@ impl ValidationCounter {
     }
 
     /// Checks if work limit exceeded.
+    #[must_use]
     pub fn check_work_limit(&self) -> bool {
         self.work_count >= self.max_work
     }
 
     /// Checks if crypto limit exceeded.
+    #[must_use]
     pub fn check_crypto_limit(&self) -> bool {
         self.crypto_count >= self.max_crypto
     }
@@ -316,7 +322,7 @@ impl DnssecValidator {
     /// * `cache` - DNS cache for validated DNSKEY/DS record lookup
     ///
     /// # Returns
-    /// Configured DnssecValidator ready for validation operations
+    /// Configured `DnssecValidator` ready for validation operations
     pub fn new(trust_anchors: Arc<RwLock<TrustAnchorStore>>, cache: Arc<RwLock<DnsCache>>) -> Self {
         Self { verifier: SignatureVerifier::new(), trust_anchors, cache }
     }
@@ -338,7 +344,7 @@ impl DnssecValidator {
     /// * `query_name` - Original query name for validation context
     ///
     /// # Returns
-    /// ValidationResult with status (Secure/Insecure/Bogus/Indeterminate),
+    /// `ValidationResult` with status (Secure/Insecure/Bogus/Indeterminate),
     /// error details, failing record name, trust chain path, and EDE code
     ///
     /// # Errors
@@ -380,13 +386,10 @@ impl DnssecValidator {
             }
 
             // Extract RRset covered by this RRSIG
-            let covered_type = match Self::extract_rrsig_type_covered(rrsig) {
-                Some(t) => t,
-                None => {
-                    warn!("Failed to extract type covered from RRSIG");
-                    counter.increment_sig_fail().ok(); // Ignore limit check error here
-                    continue;
-                }
+            let Some(covered_type) = Self::extract_rrsig_type_covered(rrsig) else {
+                warn!("Failed to extract type covered from RRSIG");
+                counter.increment_sig_fail().ok(); // Ignore limit check error here
+                continue;
             };
 
             // Get all RRs of the covered type
@@ -417,7 +420,7 @@ impl DnssecValidator {
                 }
                 Err(e) => {
                     error!("Error during RRSIG validation: {}", e);
-                    return ValidationResult::indeterminate(format!("Validation error: {}", e));
+                    return ValidationResult::indeterminate(format!("Validation error: {e}"));
                 }
             }
         }
@@ -433,22 +436,22 @@ impl DnssecValidator {
             Err(e) => {
                 error!("Trust chain validation failed: {}", e);
                 ValidationResult::bogus(
-                    format!("Trust chain validation failed: {}", e),
+                    format!("Trust chain validation failed: {e}"),
                     Some(query_name.clone()),
                 )
             }
         }
     }
 
-    /// Validates an RRset against its RRSIG signature.
+    /// Validates an `RRset` against its RRSIG signature.
     ///
-    /// Implements RFC 4034 Section 6 canonical RRset ordering and signature
+    /// Implements RFC 4034 Section 6 canonical `RRset` ordering and signature
     /// verification. Replaces C `validate_rrset()` manual RDATA canonicalization
     /// and hash computation with safe Rust operations.
     ///
     /// # Arguments
     /// * `rrset` - Resource records to validate
-    /// * `rrsig` - RRSIG signature covering the RRset
+    /// * `rrsig` - RRSIG signature covering the `RRset`
     /// * `counter` - Validation counter for resource limit tracking
     ///
     /// # Returns
@@ -467,12 +470,11 @@ impl DnssecValidator {
         counter.increment_crypto()?;
 
         // Extract RRSIG RDATA
-        let rrsig_data = match rrsig.rdata() {
-            RData::Rrsig { .. } => rrsig.rdata(),
-            _ => {
-                warn!("Record is not RRSIG type");
-                return Ok(false);
-            }
+        let rrsig_data = if let RData::Rrsig { .. } = rrsig.rdata() {
+            rrsig.rdata()
+        } else {
+            warn!("Record is not RRSIG type");
+            return Ok(false);
         };
 
         // Validate RRSIG timing (inception/expiration)
@@ -483,15 +485,13 @@ impl DnssecValidator {
         }
 
         // Extract RRSIG fields needed for verification
-        let (algorithm, _signature, key_tag, _signer) = match rrsig_data {
-            RData::Rrsig { algorithm, signature, key_tag, signer, .. } => {
+        let (algorithm, _signature, key_tag, _signer) =
+            if let RData::Rrsig { algorithm, signature, key_tag, signer, .. } = rrsig_data {
                 (*algorithm, signature.as_ref(), *key_tag, signer)
-            }
-            _ => {
+            } else {
                 error!("Invalid RRSIG data");
                 return Ok(false);
-            }
-        };
+            };
 
         // TODO: Implement full DNSSEC validation per RFC 4034 Section 6:
         // 1. Find corresponding DNSKEY using key_tag and signer
@@ -512,11 +512,11 @@ impl DnssecValidator {
     ///
     /// Implements RFC 4034 DNSKEY validation via digest comparison:
     /// 1. Extract public key from DNSKEY
-    /// 2. Compute digest with hash algorithm from DS digest_type
+    /// 2. Compute digest with hash algorithm from DS `digest_type`
     /// 3. Compare computed digest with DS digest field
     ///
     /// Replaces C `dnssec_validate_by_ds()` manual digest computation with
-    /// ring::digest safe hash operations and algorithm dispatch.
+    /// `ring::digest` safe hash operations and algorithm dispatch.
     ///
     /// # Arguments
     /// * `dnskey` - DNSKEY record to validate
@@ -552,7 +552,7 @@ impl DnssecValidator {
             };
 
             // Compute DNSKEY digest and compare with DS
-            if self.compute_dnskey_digest(dnskey, ds_data.0).await? == ds_data.1[..] {
+            if Self::compute_dnskey_digest(dnskey, ds_data.0)? == ds_data.1[..] {
                 debug!("DNSKEY validated against DS record");
                 return Ok(true);
             }
@@ -571,11 +571,7 @@ impl DnssecValidator {
     }
 
     /// Helper: Computes DNSKEY digest for DS validation.
-    async fn compute_dnskey_digest(
-        &self,
-        dnskey: &ResourceRecord,
-        digest_type: u8,
-    ) -> Result<Vec<u8>> {
+    fn compute_dnskey_digest(dnskey: &ResourceRecord, digest_type: u8) -> Result<Vec<u8>> {
         // Determine hash algorithm: 1=SHA1, 2=SHA256, 4=SHA384
         let algorithm = match digest_type {
             1 => &digest::SHA1_FOR_LEGACY_USE_ONLY,
@@ -680,7 +676,7 @@ impl DnssecValidator {
     /// 1. Hash query name with SHA1 + salt + iterations
     /// 2. Find NSEC3 record covering hashed name
     /// 3. Verify type not in bitmap
-    /// 4. Enforce iteration limit (DNSSEC_LIMIT_NSEC3_ITERS) for DoS prevention
+    /// 4. Enforce iteration limit (`DNSSEC_LIMIT_NSEC3_ITERS`) for `DoS` prevention
     ///
     /// Replaces C `prove_non_existence_nsec3()` base32hex decoding and
     /// hash computation with safe Rust using data-encoding and ring crates.
@@ -721,8 +717,8 @@ impl DnssecValidator {
         if iterations as usize > DNSSEC_LIMIT_NSEC3_ITERS {
             warn!("NSEC3 iterations {} exceeds limit {}", iterations, DNSSEC_LIMIT_NSEC3_ITERS);
             return Err(DnssecError::TooManyIterations {
-                iterations: iterations as u32,
-                max_iterations: DNSSEC_LIMIT_NSEC3_ITERS as u32,
+                iterations: u32::from(iterations),
+                max_iterations: u32::try_from(DNSSEC_LIMIT_NSEC3_ITERS).unwrap_or(u32::MAX),
             }
             .into());
         }
@@ -780,7 +776,7 @@ impl DnssecValidator {
     /// 3. Validate DNSKEY against parent DS records
     /// 4. Repeat until reaching trust anchor
     ///
-    /// Replaces C trust chain traversal (walking DNS tree via find_key()
+    /// Replaces C trust chain traversal (walking DNS tree via `find_key()`
     /// cache lookups) with async cache access and iterative zone walking.
     ///
     /// # Arguments
@@ -887,7 +883,7 @@ impl DnssecValidator {
     /// serial number arithmetic for timestamp wraparound handling.
     ///
     /// Replaces C timestamp validation (comparing RRSIG inception/expiration
-    /// with serial number arithmetic) with Rust SystemTime and Duration
+    /// with serial number arithmetic) with Rust `SystemTime` and Duration
     /// for overflow-safe comparisons.
     ///
     /// # Arguments
@@ -905,13 +901,14 @@ impl DnssecValidator {
         };
 
         // Get current time
-        let now = SystemTime::now()
+        let now_secs = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .map_err(|e| DnssecError::Indeterminate {
                 name: "time_validation".to_string(),
-                reason: format!("Time error: {}", e),
+                reason: format!("Time error: {e}"),
             })?
-            .as_secs() as u32;
+            .as_secs();
+        let now = u32::try_from(now_secs).unwrap_or(u32::MAX);
 
         // Check inception <= now < expiration with serial number arithmetic
         let inception_valid = Self::serial_compare(now, inception) >= 0;
@@ -932,6 +929,7 @@ impl DnssecValidator {
     }
 
     /// Helper: Computes NSEC3 hash per RFC 5155.
+    #[allow(clippy::unused_self)]
     fn compute_nsec3_hash(
         &self,
         name: &DomainName,
@@ -970,19 +968,18 @@ impl DnssecValidator {
 
         Ok(BASE32HEX_NOPAD
             .decode(hash_label.as_bytes())
-            .map_err(|e| DnssecError::BadPacket { reason: format!("Invalid base32hex: {}", e) })?)
+            .map_err(|e| DnssecError::BadPacket { reason: format!("Invalid base32hex: {e}") })?)
     }
 
     /// Helper: Checks if type present in NSEC/NSEC3 type bitmap.
-    fn type_present_in_bitmap(qtype: u16, _bitmap: &[u8]) -> bool {
+    fn type_present_in_bitmap(_qtype: u16, _bitmap: &[u8]) -> bool {
         // Type bitmap format: window blocks with type bit positions
         // This is simplified - real implementation needs proper bitmap parsing
 
         // For now, simple check if any bit set (placeholder logic)
         // Real implementation would parse bitmap per RFC 4034 Section 4.1.2
-
-        let _window = (qtype / 256) as u8;
-        let _bit_pos = (qtype % 256) as u8;
+        // Would compute: window = (qtype / 256) as u8; bit_pos = (qtype % 256) as u8;
+        // Then check bitmap structure for presence of qtype
 
         // Placeholder: assume type not present (denial successful)
         // Real implementation would check actual bitmap structure
@@ -994,7 +991,7 @@ impl DnssecValidator {
         let diff = s1.wrapping_sub(s2);
         if diff == 0 {
             0
-        } else if diff < 0x80000000 {
+        } else if diff < 0x8000_0000 {
             1
         } else {
             -1

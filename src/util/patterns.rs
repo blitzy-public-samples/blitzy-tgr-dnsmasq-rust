@@ -131,6 +131,7 @@ const MAX_WILDCARDS_PER_LABEL: usize = 2;
 /// # Thread Safety
 ///
 /// Thread-safe (read-only operations on input parameters).
+#[must_use]
 pub fn is_string_matching_glob_pattern(value: &str, pattern: &str) -> bool {
     let value_bytes = value.as_bytes();
     let pattern_bytes = pattern.as_bytes();
@@ -162,21 +163,20 @@ pub fn is_string_matching_glob_pattern(value: &str, pattern: &str) -> bool {
                     next_value_index = 0;
                 }
                 continue;
-            } else {
-                // Ordinary character
-                if value_index < num_value_bytes {
-                    let mut value_character = value_bytes[value_index];
+            }
+            // Ordinary character
+            if value_index < num_value_bytes {
+                let mut value_character = value_bytes[value_index];
 
-                    // Convert lowercase ASCII to uppercase for case-insensitive comparison
-                    if value_character.is_ascii_lowercase() {
-                        value_character -= b'a' - b'A';
-                    }
+                // Convert lowercase ASCII to uppercase for case-insensitive comparison
+                if value_character.is_ascii_lowercase() {
+                    value_character -= b'a' - b'A';
+                }
 
-                    if value_character == pattern_character {
-                        pattern_index += 1;
-                        value_index += 1;
-                        continue;
-                    }
+                if value_character == pattern_character {
+                    pattern_index += 1;
+                    value_index += 1;
+                    continue;
                 }
             }
         }
@@ -277,12 +277,7 @@ pub fn is_valid_dns_name(value: &str) -> bool {
             label_start = Some(index);
         }
 
-        if byte != b'.' {
-            // Within label
-            if !byte.is_ascii_digit() {
-                is_label_numeric = false;
-            }
-        } else {
+        if byte == b'.' {
             // End of label (at dot)
             if index > 0 && bytes[index - 1] == b'-' {
                 debug!("Invalid DNS name: Label ends with hyphen");
@@ -300,6 +295,11 @@ pub fn is_valid_dns_name(value: &str) -> bool {
             num_labels += 1;
             label_start = None;
             is_label_numeric = true;
+        } else {
+            // Within label
+            if !byte.is_ascii_digit() {
+                is_label_numeric = false;
+            }
         }
     }
 
@@ -449,19 +449,7 @@ pub fn is_valid_dns_name_pattern(value: &str) -> bool {
             label_start = Some(index);
         }
 
-        if byte != b'.' {
-            // Within label
-            if !byte.is_ascii_digit() {
-                is_label_numeric = false;
-            }
-            if byte == b'*' {
-                if num_wildcards >= MAX_WILDCARDS_PER_LABEL {
-                    debug!("Invalid DNS name pattern: Wildcard character used more than twice per label");
-                    return false;
-                }
-                num_wildcards += 1;
-            }
-        } else {
+        if byte == b'.' {
             // End of label (at dot)
             if index > 0 && bytes[index - 1] == b'-' {
                 debug!("Invalid DNS name pattern: Label ends with hyphen");
@@ -486,6 +474,18 @@ pub fn is_valid_dns_name_pattern(value: &str) -> bool {
             label_start = None;
             is_label_numeric = true;
             num_wildcards = 0;
+        } else {
+            // Within label
+            if !byte.is_ascii_digit() {
+                is_label_numeric = false;
+            }
+            if byte == b'*' {
+                if num_wildcards >= MAX_WILDCARDS_PER_LABEL {
+                    debug!("Invalid DNS name pattern: Wildcard character used more than twice per label");
+                    return false;
+                }
+                num_wildcards += 1;
+            }
         }
     }
 
@@ -612,6 +612,7 @@ pub fn is_valid_dns_name_pattern(value: &str) -> bool {
 /// # Thread Safety
 ///
 /// Thread-safe for read-only operations on input strings; no shared state.
+#[must_use]
 pub fn is_dns_name_matching_pattern(name: &str, pattern: &str) -> bool {
     debug_assert!(is_valid_dns_name(name), "Name must be valid DNS hostname");
     debug_assert!(is_valid_dns_name_pattern(pattern), "Pattern must be valid DNS hostname pattern");

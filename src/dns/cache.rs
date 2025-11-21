@@ -17,7 +17,7 @@
 //! DNS cache implementation with hash table and LRU eviction.
 //!
 //! This module provides memory-safe DNS caching with O(1) lookups, replacing the C
-//! implementation's manual hash table from cache.c with Rust's HashMap and LRU eviction.
+//! implementation's manual hash table from cache.c with Rust's `HashMap` and LRU eviction.
 //!
 //! # Architecture
 //!
@@ -28,11 +28,11 @@
 //!
 //! # Key Features
 //!
-//! - **O(1) lookups**: HashMap provides constant-time access by domain name + type
+//! - **O(1) lookups**: `HashMap` provides constant-time access by domain name + type
 //! - **LRU eviction**: Least-recently-used entries removed when cache reaches capacity
 //! - **TTL expiration**: Automatic removal of expired entries via background task
 //! - **Multi-source integration**: Unified namespace across DNS, hosts, and DHCP
-//! - **Concurrent access**: RwLock enables multiple concurrent readers with exclusive writer
+//! - **Concurrent access**: `RwLock` enables multiple concurrent readers with exclusive writer
 //!
 //! # C Implementation Mapping
 //!
@@ -85,8 +85,8 @@
 //! - **Eliminates manual memory management**: No malloc/free, automatic Drop
 //! - **Prevents use-after-free**: Borrow checker tracks all references
 //! - **No dangling pointers**: LRU removal safely drops entries
-//! - **Type-safe unions**: RData enum replaces C discriminated union
-//! - **Bounds-checked access**: HashMap prevents buffer overflows
+//! - **Type-safe unions**: `RData` enum replaces C discriminated union
+//! - **Bounds-checked access**: `HashMap` prevents buffer overflows
 //!
 //! # Examples
 //!
@@ -131,7 +131,7 @@ use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::{debug, info, instrument, trace, warn};
 
-/// Cache key combining domain name and record type for HashMap lookups.
+/// Cache key combining domain name and record type for `HashMap` lookups.
 ///
 /// Provides efficient hashing and equality comparison for cache entries.
 /// Case-insensitive domain name matching per DNS specification (RFC 1035).
@@ -154,6 +154,7 @@ pub struct CacheKey {
 
 impl CacheKey {
     /// Creates a new cache key from domain name and record type.
+    #[must_use]
     pub fn new(domain: DomainName, record_type: RecordType) -> Self {
         Self { domain, record_type }
     }
@@ -179,7 +180,7 @@ impl CacheKey {
 ///
 /// # Fields
 ///
-/// - `domain_name`: Domain this record refers to (from ResourceRecord)
+/// - `domain_name`: Domain this record refers to (from `ResourceRecord`)
 /// - `record`: Complete DNS resource record with type-specific data
 /// - `expiry`: Absolute time when this entry expires (for TTL enforcement)
 /// - `flags`: Source and type metadata (hosts file, DHCP, forward, reverse)
@@ -229,7 +230,7 @@ impl CacheEntry {
     /// * `record_type` - DNS record type
     /// * `ip_addr` - IP address (for A/AAAA records only)
     /// * `ttl` - Time to live in seconds
-    /// * `flags` - Cache source flags (F_FORWARD, F_HOSTS, F_DHCP, etc.)
+    /// * `flags` - Cache source flags (`F_FORWARD`, `F_HOSTS`, `F_DHCP`, etc.)
     ///
     /// # Examples
     ///
@@ -242,6 +243,7 @@ impl CacheEntry {
     ///     CacheFlags::FORWARD | CacheFlags::IPV4,
     /// );
     /// ```
+    #[must_use]
     pub fn new(
         domain_name: DomainName,
         record_type: RecordType,
@@ -250,7 +252,7 @@ impl CacheEntry {
         flags: CacheFlags,
     ) -> Self {
         let now = Timestamp::now();
-        let expiry = now + std::time::Duration::from_secs(ttl as u64);
+        let expiry = now + std::time::Duration::from_secs(u64::from(ttl));
 
         // Create minimal ResourceRecord for the cache entry
         let rdata = match (record_type, ip_addr) {
@@ -288,7 +290,13 @@ impl CacheEntry {
     pub fn ttl(&self) -> u32 {
         let now = Timestamp::now();
         let remaining = self.expiry.duration_since(&now);
-        remaining.unwrap_or(Duration::ZERO).as_secs() as u32
+        // Clamp to u32::MAX since DNS TTLs are 32-bit values
+        remaining
+            .unwrap_or(Duration::ZERO)
+            .as_secs()
+            .min(u64::from(u32::MAX))
+            .try_into()
+            .expect("clamped to u32::MAX")
     }
 
     /// Returns the absolute expiry time.
@@ -354,11 +362,11 @@ pub struct CacheStats {
 /// DNS cache with hash table and LRU eviction.
 ///
 /// Memory-safe replacement for C cache.c implementation providing:
-/// - O(1) lookups via HashMap with CacheKey hashing
+/// - O(1) lookups via `HashMap` with `CacheKey` hashing
 /// - LRU eviction when cache reaches capacity
 /// - Automatic TTL expiration via background task
 /// - Multi-source integration (DNS, hosts file, DHCP)
-/// - Concurrent access via RwLock
+/// - Concurrent access via `RwLock`
 ///
 /// # C Implementation Mapping
 ///
@@ -383,7 +391,7 @@ pub struct CacheStats {
 ///
 /// # Thread Safety
 ///
-/// Wrapped in Arc<RwLock<DnsCache>> for concurrent access:
+/// Wrapped in Arc<`RwLock`<DnsCache>> for concurrent access:
 /// - Multiple async tasks can read simultaneously (DNS forwarder queries)
 /// - Exclusive write access for insertions and evictions
 /// - No data races or memory unsafety
@@ -421,13 +429,14 @@ impl DnsCache {
     ///
     /// # Arguments
     ///
-    /// * `config` - DNS configuration containing cache_size parameter
+    /// * `config` - DNS configuration containing `cache_size` parameter
     ///
     /// # Examples
     ///
     /// ```rust,ignore
     /// let cache = DnsCache::new(&config);
     /// ```
+    #[must_use]
     pub fn new(config: &DnsConfig) -> Self {
         let capacity =
             if config.cache_size == 0 { crate::constants::CACHESIZ } else { config.cache_size };
@@ -461,7 +470,7 @@ impl DnsCache {
 
     /// Finds a cache entry by domain name and record type.
     ///
-    /// Implements forward lookup (name → address) matching C cache_find_by_name().
+    /// Implements forward lookup (name → address) matching C `cache_find_by_name()`.
     /// Increments cache hit/miss statistics.
     ///
     /// # Arguments
@@ -537,7 +546,7 @@ impl DnsCache {
         self.stats.lookups += 1;
 
         // Scan entries for matching IP address
-        for (key, entry) in self.entries.iter() {
+        for (key, entry) in &self.entries {
             if let Some(entry_addr) = entry.ip_addr() {
                 if entry_addr == *addr {
                     // Check if expired
@@ -614,7 +623,7 @@ impl DnsCache {
     /// Evicts the least-recently-used entry from the cache.
     ///
     /// Replaces C implementation's manual LRU list traversal with
-    /// LruCache's automatic tracking.
+    /// `LruCache`'s automatic tracking.
     ///
     /// # Returns
     ///
@@ -644,7 +653,7 @@ impl DnsCache {
     /// Removes a single expired entry if found.
     ///
     /// Scans cache for first expired entry and removes it.
-    /// For bulk expiration cleanup, use prune_expired().
+    /// For bulk expiration cleanup, use `prune_expired()`.
     ///
     /// # Returns
     ///
@@ -677,7 +686,7 @@ impl DnsCache {
     /// Removes all expired entries from the cache.
     ///
     /// Called periodically by background task to clean up expired entries.
-    /// Replaces C implementation's cache_scan() function.
+    /// Replaces C implementation's `cache_scan()` function.
     ///
     /// # Returns
     ///
@@ -722,9 +731,9 @@ impl DnsCache {
     /// Refreshes cache from /etc/hosts file.
     ///
     /// Loads host entries from system hosts file and adds them to cache
-    /// with F_HOSTS flag. Entries from hosts file never expire.
+    /// with `F_HOSTS` flag. Entries from hosts file never expire.
     ///
-    /// Replaces C implementation's read_hosts() function.
+    /// Replaces C implementation's `read_hosts()` function.
     ///
     /// # Arguments
     ///
@@ -776,22 +785,16 @@ impl DnsCache {
             let hostnames = &parts[1..];
 
             // Parse IP address
-            let addr = match addr_str.parse::<IpAddr>() {
-                Ok(a) => a,
-                Err(_) => {
-                    debug!(line, "Invalid IP address in hosts file");
-                    continue;
-                }
+            let Ok(addr) = addr_str.parse::<IpAddr>() else {
+                debug!(line, "Invalid IP address in hosts file");
+                continue;
             };
 
             // Add entry for each hostname
             for hostname in hostnames {
-                let domain = match DomainName::new(hostname) {
-                    Ok(d) => d,
-                    Err(_) => {
-                        debug!(hostname, "Invalid hostname in hosts file");
-                        continue;
-                    }
+                let Ok(domain) = DomainName::new(hostname) else {
+                    debug!(hostname, "Invalid hostname in hosts file");
+                    continue;
                 };
 
                 let record_type = match addr {
@@ -816,7 +819,7 @@ impl DnsCache {
     /// Adds a DHCP lease hostname to the cache.
     ///
     /// Called by DHCP server when allocating/renewing leases.
-    /// Entry is marked with F_DHCP flag and has TTL matching lease duration.
+    /// Entry is marked with `F_DHCP` flag and has TTL matching lease duration.
     ///
     /// # Arguments
     ///
@@ -908,23 +911,26 @@ impl DnsCache {
     }
 
     /// Returns the current number of entries in the cache.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
     /// Checks if the cache is empty.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
     /// Returns the maximum cache capacity.
+    #[must_use]
     pub fn capacity(&self) -> usize {
         self.capacity
     }
 
     /// Returns cache statistics for monitoring.
     ///
-    /// Used by SIGUSR2 signal handler and D-Bus GetMetrics method.
+    /// Used by SIGUSR2 signal handler and D-Bus `GetMetrics` method.
     ///
     /// # Examples
     ///
@@ -933,6 +939,7 @@ impl DnsCache {
     /// println!("Hit rate: {:.2}%",
     ///     (stats.hits as f64 / stats.lookups as f64) * 100.0);
     /// ```
+    #[must_use]
     pub fn get_stats(&self) -> CacheStats {
         self.stats.clone()
     }

@@ -41,7 +41,7 @@
 //! # Memory Safety
 //!
 //! The C implementation uses manual memory management with linked lists for zones
-//! and auth_zone_list pointers. This Rust implementation uses:
+//! and `auth_zone_list` pointers. This Rust implementation uses:
 //! - `Vec<AuthoritativeZone>` for owned zone configuration
 //! - Iterator-based zone matching replacing pointer traversal
 //! - Type-safe subnet filtering with ipnetwork crate
@@ -192,14 +192,17 @@ pub struct SoaParams {
 impl Default for SoaParams {
     fn default() -> Self {
         Self {
-            serial: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as u32,
-            refresh: 1200,   // 20 minutes
-            retry: 180,      // 3 minutes
-            expire: 1209600, // 14 days
-            minimum: 600,    // 10 minutes
+            serial: u32::try_from(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            )
+            .unwrap_or(u32::MAX),
+            refresh: 1200,     // 20 minutes
+            retry: 180,        // 3 minutes
+            expire: 1_209_600, // 14 days
+            minimum: 600,      // 10 minutes
         }
     }
 }
@@ -332,6 +335,7 @@ impl AuthoritativeZone {
     /// # Returns
     ///
     /// `true` if the name belongs to this zone, `false` otherwise.
+    #[must_use]
     pub fn contains_name(&self, name: &DomainName) -> bool {
         self.is_match(name)
     }
@@ -370,7 +374,7 @@ impl AuthoritativeZone {
 /// The service maintains:
 /// - **zones**: List of configured authoritative zones (from auth-zone directives)
 /// - **cache**: Shared DNS cache containing DHCP leases and hosts file entries
-/// - **interface_addrs**: Map of interface names to IP addresses for auto-serving
+/// - **`interface_addrs`**: Map of interface names to IP addresses for auto-serving
 ///
 /// # Zone Selection Algorithm
 ///
@@ -479,12 +483,9 @@ impl AuthService {
         client_addr: IpAddr,
     ) -> Result<Option<DnsMessage>> {
         // Extract the first question from the query
-        let question = match query.questions.first() {
-            Some(q) => q,
-            None => {
-                debug!("Query has no questions, skipping authoritative answer");
-                return Ok(None);
-            }
+        let Some(question) = query.questions.first() else {
+            debug!("Query has no questions, skipping authoritative answer");
+            return Ok(None);
         };
 
         let query_name = &question.qname;
@@ -497,12 +498,9 @@ impl AuthService {
         );
 
         // Find the most specific matching zone
-        let zone = match self.find_zone(query_name) {
-            Some(z) => z,
-            None => {
-                trace!("No matching authoritative zone found");
-                return Ok(None);
-            }
+        let Some(zone) = self.find_zone(query_name) else {
+            trace!("No matching authoritative zone found");
+            return Ok(None);
         };
 
         info!(
@@ -668,7 +666,7 @@ impl AuthService {
         let rname_str = format!("hostmaster.{}", zone.domain.as_str());
         let rname = rname_str
             .parse::<DomainName>()
-            .map_err(|e| DnsError::InvalidName { name: rname_str, reason: format!("{:?}", e) })?;
+            .map_err(|e| DnsError::InvalidName { name: rname_str, reason: format!("{e:?}") })?;
 
         let soa_rdata = RData::Soa {
             mname,
@@ -780,14 +778,14 @@ impl AuthService {
         // Create a simple stream that yields one message with all records
         // In a full implementation, this would chunk records across multiple messages
         let response_id = query.id();
-        let response = self.create_axfr_message(response_id, records)?;
+        let response = Self::create_axfr_message(response_id, records);
 
         // Return a stream (simplified - real implementation would chunk properly)
         Ok(tokio_stream::iter(vec![Ok(response)]))
     }
 
     /// Creates an AXFR response message with records.
-    fn create_axfr_message(&self, id: u16, records: Vec<ResourceRecord>) -> Result<DnsMessage> {
+    fn create_axfr_message(id: u16, records: Vec<ResourceRecord>) -> DnsMessage {
         let mut response = DnsMessage::new(id);
         response.set_response();
         response.set_authoritative(true);
@@ -798,10 +796,11 @@ impl AuthService {
             response.add_answer(record);
         }
 
-        Ok(response)
+        response
     }
 
     /// Generates an AXFR response (simplified implementation).
+    #[allow(clippy::unused_async)]
     async fn generate_axfr_response(
         &self,
         query: &DnsMessage,
@@ -983,6 +982,7 @@ impl AuthService {
     /// # Returns
     ///
     /// Vector of resource records belonging to the zone.
+    #[allow(clippy::unused_async)]
     pub async fn get_zone_records_from_cache(
         &self,
         _cache: &DnsCache,
@@ -1014,6 +1014,7 @@ impl AuthService {
     /// # Returns
     ///
     /// Slice of all authoritative zones configured in this service.
+    #[must_use]
     pub fn get_zones(&self) -> &[AuthoritativeZone] {
         &self.zones
     }
@@ -1041,12 +1042,9 @@ impl AuthService {
     /// ```
     pub async fn get_zone_records(&self, zone_domain: &DomainName) -> Vec<ResourceRecord> {
         // Find the zone
-        let zone = match self.zones.iter().find(|z| &z.domain == zone_domain) {
-            Some(z) => z,
-            None => {
-                warn!(zone = %zone_domain, "Zone not found");
-                return Vec::new();
-            }
+        let Some(zone) = self.zones.iter().find(|z| &z.domain == zone_domain) else {
+            warn!(zone = %zone_domain, "Zone not found");
+            return Vec::new();
         };
 
         let mut records = Vec::new();

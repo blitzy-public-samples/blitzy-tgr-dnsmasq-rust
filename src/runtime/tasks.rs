@@ -92,7 +92,7 @@
 //!
 //! # Shutdown Coordination
 //!
-//! The TaskManager provides graceful shutdown using tokio::sync::broadcast:
+//! The `TaskManager` provides graceful shutdown using `tokio::sync::broadcast`:
 //!
 //! ```rust,ignore
 //! // Main shutdown flow
@@ -191,14 +191,7 @@ use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tracing::{debug, error, info, instrument, warn};
 
-
-
-
-
-
 use crate::error::Result;
-
-
 
 /// Backoff strategy for task restart on failure.
 ///
@@ -214,13 +207,13 @@ use crate::error::Result;
 pub enum BackoffStrategy {
     /// No backoff - restart immediately on failure.
     None,
-    
+
     /// Fixed backoff - wait the same duration between each retry.
     Fixed {
         /// Duration to wait between retries.
         delay: Duration,
     },
-    
+
     /// Exponential backoff - double the wait time on each retry up to a maximum.
     Exponential {
         /// Initial delay for first retry.
@@ -247,7 +240,13 @@ impl BackoffStrategy {
             BackoffStrategy::None => Duration::from_secs(0),
             BackoffStrategy::Fixed { delay } => *delay,
             BackoffStrategy::Exponential { initial, max, multiplier } => {
-                let delay_secs = initial.as_secs_f64() * multiplier.powi(attempt as i32);
+                // Cap attempt at 30 before casting to i32 for powi.
+                // In practice, retry logic never exceeds 10-20 attempts before giving up.
+                // Capping at 30 ensures the cast is always safe while being generous enough
+                // for any reasonable retry scenario.
+                #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                let exponent = attempt.min(30) as i32;
+                let delay_secs = initial.as_secs_f64() * multiplier.powi(exponent);
                 let capped_secs = delay_secs.min(max.as_secs_f64());
                 Duration::from_secs_f64(capped_secs)
             }
@@ -258,7 +257,7 @@ impl BackoffStrategy {
 /// Handle for signaling and checking shutdown state.
 ///
 /// This type replaces C's global `int run` flag and signal-based termination with
-/// structured shutdown coordination using tokio::sync::broadcast.
+/// structured shutdown coordination using `tokio::sync::broadcast`.
 ///
 /// # C Equivalent
 ///
@@ -297,9 +296,7 @@ pub struct ShutdownHandle {
 impl ShutdownHandle {
     /// Create a new shutdown handle from a broadcast receiver.
     fn new(rx: broadcast::Receiver<()>) -> Self {
-        Self {
-            rx: Arc::new(RwLock::new(rx)),
-        }
+        Self { rx: Arc::new(RwLock::new(rx)) }
     }
 
     /// Wait for shutdown signal.
@@ -332,6 +329,7 @@ impl ShutdownHandle {
     /// # Returns
     ///
     /// `true` if shutdown has been signaled, `false` otherwise.
+    #[must_use]
     pub fn is_shutdown(&self) -> bool {
         // Try to receive without blocking - requires mutable access
         let rx = self.rx.try_write();
@@ -344,7 +342,8 @@ impl ShutdownHandle {
 
     /// Signal shutdown to this handle.
     ///
-    /// This is primarily used internally by TaskManager.
+    /// This is primarily used internally by `TaskManager`.
+    #[allow(clippy::unused_async)] // Maintains uniform async API with wait() method
     pub async fn shutdown(&self) {
         // Shutdown is signaled by the broadcast sender being dropped
         // or explicitly sending a message
@@ -413,7 +412,7 @@ struct TaskMetadata {
 ///
 /// # Shutdown Coordination
 ///
-/// The TaskManager coordinates graceful shutdown across all spawned tasks:
+/// The `TaskManager` coordinates graceful shutdown across all spawned tasks:
 ///
 /// 1. `shutdown()` - Signals all tasks to stop
 /// 2. Tasks check `ShutdownHandle::wait()` in their select loops
@@ -438,7 +437,7 @@ pub struct TaskManager {
 }
 
 impl TaskManager {
-    /// Create a new TaskManager instance.
+    /// Create a new `TaskManager` instance.
     ///
     /// Initializes the shutdown coordination broadcast channel and task tracking structures.
     ///
@@ -447,6 +446,7 @@ impl TaskManager {
     /// ```rust,ignore
     /// let task_manager = TaskManager::new();
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         let (shutdown_tx, _) = broadcast::channel(16);
         let (completion_tx, completion_rx) = mpsc::unbounded_channel();
@@ -524,7 +524,7 @@ impl TaskManager {
 
         let handle = tokio::spawn(async move {
             info!(task = %name, interval = ?interval_duration, "Spawning periodic task");
-            
+
             let mut attempt = 0;
             loop {
                 let shutdown_clone = shutdown_handle.clone();
@@ -534,18 +534,18 @@ impl TaskManager {
                     Ok(()) => {
                         // Task completed successfully
                         debug!(task = %name, "Periodic task iteration completed");
-                        attempt = 0;  // Reset retry counter on success
+                        attempt = 0; // Reset retry counter on success
                     }
                     Err(e) => {
                         // Task failed, apply backoff and retry
                         error!(task = %name, error = %e, attempt, "Periodic task failed");
-                        
+
                         let delay = backoff.next_delay(attempt);
                         if delay > Duration::from_secs(0) {
                             warn!(task = %name, delay = ?delay, "Backing off before retry");
                             tokio::select! {
-                                _ = sleep(delay) => {}
-                                _ = shutdown_handle.wait() => {
+                                () = sleep(delay) => {}
+                                () = shutdown_handle.wait() => {
                                     info!(task = %name, "Shutdown signal received during backoff");
                                     break;
                                 }
@@ -563,10 +563,10 @@ impl TaskManager {
 
                 // Wait for next interval
                 tokio::select! {
-                    _ = sleep(interval_duration) => {
+                    () = sleep(interval_duration) => {
                         // Continue to next iteration
                     }
-                    _ = shutdown_handle.wait() => {
+                    () = shutdown_handle.wait() => {
                         info!(task = %name, "Shutdown signal received, exiting");
                         break;
                     }
@@ -617,12 +617,8 @@ impl TaskManager {
     /// );
     /// ```
     #[instrument(skip(self, task_fn), fields(task_name = %name))]
-    pub fn spawn_background_task<F, Fut>(
-        &self,
-        name: String,
-        backoff: BackoffStrategy,
-        task_fn: F,
-    ) where
+    pub fn spawn_background_task<F, Fut>(&self, name: String, backoff: BackoffStrategy, task_fn: F)
+    where
         F: Fn(ShutdownHandle) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<()>> + Send + 'static,
     {
@@ -640,7 +636,7 @@ impl TaskManager {
 
         let handle = tokio::spawn(async move {
             info!(task = %name, "Spawning background task");
-            
+
             let mut attempt = 0;
             loop {
                 let shutdown_clone = shutdown_handle.clone();
@@ -655,7 +651,7 @@ impl TaskManager {
                     Err(e) => {
                         // Task failed, check if we should restart
                         error!(task = %name, error = %e, attempt, "Background task failed");
-                        
+
                         // Check for shutdown before restarting
                         if shutdown_handle.is_shutdown() {
                             warn!(task = %name, "Not restarting task due to shutdown");
@@ -666,8 +662,8 @@ impl TaskManager {
                         if delay > Duration::from_secs(0) {
                             warn!(task = %name, delay = ?delay, "Backing off before restart");
                             tokio::select! {
-                                _ = sleep(delay) => {}
-                                _ = shutdown_handle.wait() => {
+                                () = sleep(delay) => {}
+                                () = shutdown_handle.wait() => {
                                     info!(task = %name, "Shutdown signal received during backoff");
                                     break;
                                 }
@@ -720,10 +716,10 @@ impl TaskManager {
     #[instrument(skip(self))]
     pub async fn shutdown(&self) {
         info!("Broadcasting shutdown signal to all tasks");
-        
+
         // Send shutdown signal to all tasks
         let _ = self.shutdown_tx.send(());
-        
+
         // Give tasks a moment to start processing shutdown
         sleep(Duration::from_millis(100)).await;
     }
@@ -744,22 +740,22 @@ impl TaskManager {
     #[instrument(skip(self))]
     pub async fn wait_for_completion(&self) {
         info!("Waiting for all tasks to complete");
-        
+
         let tasks = self.tasks.read().await;
         let task_count = tasks.len();
-        drop(tasks);  // Release lock before waiting
+        drop(tasks); // Release lock before waiting
 
         // Wait for completion notifications
         let mut completed = 0;
         let mut rx = self.completion_rx.write().await;
-        
+
         while completed < task_count {
             tokio::select! {
                 Some(task_name) = rx.recv() => {
                     completed += 1;
                     debug!(task = %task_name, completed, total = task_count, "Task completed");
                 }
-                _ = sleep(Duration::from_secs(30)) => {
+                () = sleep(Duration::from_secs(30)) => {
                     warn!(completed, total = task_count, "Still waiting for tasks to complete");
                 }
             }
@@ -801,7 +797,7 @@ mod tests {
 
         // Let it run for a bit
         sleep(Duration::from_millis(250)).await;
-        
+
         // Should have executed multiple times
         let count = counter.load(Ordering::SeqCst);
         assert!(count >= 2, "Task should execute multiple times, got {}", count);
@@ -872,9 +868,7 @@ mod tests {
 
     #[test]
     fn test_backoff_strategy_fixed() {
-        let strategy = BackoffStrategy::Fixed {
-            delay: Duration::from_secs(5),
-        };
+        let strategy = BackoffStrategy::Fixed { delay: Duration::from_secs(5) };
         assert_eq!(strategy.next_delay(0), Duration::from_secs(5));
         assert_eq!(strategy.next_delay(10), Duration::from_secs(5));
     }
@@ -886,7 +880,7 @@ mod tests {
             max: Duration::from_secs(60),
             multiplier: 2.0,
         };
-        
+
         assert_eq!(strategy.next_delay(0), Duration::from_secs(1));
         assert_eq!(strategy.next_delay(1), Duration::from_secs(2));
         assert_eq!(strategy.next_delay(2), Duration::from_secs(4));

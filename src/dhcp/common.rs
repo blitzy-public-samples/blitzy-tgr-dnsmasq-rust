@@ -13,16 +13,16 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Shared DHCP utilities module for DHCPv4 and DHCPv6 implementations.
+//! Shared DHCP utilities module for `DHCPv4` and `DHCPv6` implementations.
 //!
-//! This module provides common functionality used by both DHCPv4 and DHCPv6 servers,
+//! This module provides common functionality used by both `DHCPv4` and `DHCPv6` servers,
 //! replacing the C `dhcp-common.c` implementation with memory-safe Rust equivalents.
 //! It centralizes shared logic to avoid code duplication between IPv4 and IPv6 implementations.
 //!
 //! # Key Responsibilities
 //!
 //! - **Packet Reception**: Async DHCP packet reception with automatic buffer management
-//! - **Option Tables**: Static lookup tables for DHCPv4 and DHCPv6 option metadata
+//! - **Option Tables**: Static lookup tables for `DHCPv4` and `DHCPv6` option metadata
 //! - **MAC Address Parsing**: Parse MAC addresses in multiple formats (colon, hyphen, dot)
 //! - **Transaction IDs**: Generate secure random transaction IDs (xid)
 //! - **Network ID Matching**: Match network tags with wildcard support for client classification
@@ -83,12 +83,12 @@
 //! All functions use Rust's ownership system to eliminate:
 //! - Buffer overflows (Vec bounds checking, nom parsers)
 //! - Use-after-free (ownership prevents dangling references)
-//! - Memory leaks (automatic Drop for Vec, BytesMut)
+//! - Memory leaks (automatic Drop for Vec, `BytesMut`)
 //! - Null pointer dereferences (Option types)
 //!
 //! # Performance
 //!
-//! - Option table lookups: O(1) with static HashMap (vs. O(n) C linear search)
+//! - Option table lookups: O(1) with static `HashMap` (vs. O(n) C linear search)
 //! - Buffer allocation: Amortized O(1) with Vec capacity doubling
 //! - Async I/O: Zero-copy packet reception with tokio
 //! - Tag matching: Iterator-based with short-circuit evaluation
@@ -118,7 +118,7 @@ use tracing::debug;
 ///
 /// From C `#define DHCP_BUFF_SZ 256` in dhcp-protocol.h. Defines maximum size
 /// for DHCP option data buffers. Note: This is for option values, not full packets.
-/// Full packets can be up to DHCP_PACKET_MAX (16384 bytes).
+/// Full packets can be up to `DHCP_PACKET_MAX` (16384 bytes).
 ///
 /// **C Source**: dhcp-protocol.h line 114
 /// **Usage**: Option value buffering, string option storage
@@ -256,7 +256,7 @@ const DHOPT_ADDR6: i32 = 8192;
 /// # Fields
 ///
 /// - `code`: DHCP option code (e.g., 1 = subnet mask, 3 = router, 6 = DNS)
-/// - `format`: Format flags (OT_ADDR_LIST, OT_NAME, OT_INTERNAL, etc.)
+/// - `format`: Format flags (`OT_ADDR_LIST`, `OT_NAME`, `OT_INTERNAL`, etc.)
 /// - `size`: Fixed size in bytes (0 = variable length)
 ///
 /// # Example
@@ -270,10 +270,10 @@ const DHOPT_ADDR6: i32 = 8192;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OptionMetadata {
-    /// DHCP option code (1-255 for DHCPv4, 1-65535 for DHCPv6).
+    /// DHCP option code (1-255 for `DHCPv4`, 1-65535 for `DHCPv6`).
     pub code: u16,
 
-    /// Format flags (OT_ADDR_LIST, OT_NAME, OT_INTERNAL, OT_CSTRING, OT_DEC, OT_TIME).
+    /// Format flags (`OT_ADDR_LIST`, `OT_NAME`, `OT_INTERNAL`, `OT_CSTRING`, `OT_DEC`, `OT_TIME`).
     pub format: u16,
 
     /// Fixed size in bytes, or 0 for variable-length options.
@@ -305,11 +305,11 @@ pub struct OptionMetadata {
 ///
 /// # Fields
 ///
-/// - `opt`: Option code (DHCPv4: 1-255, DHCPv6: 1-65535)
+/// - `opt`: Option code (`DHCPv4`: 1-255, `DHCPv6`: 1-65535)
 /// - `len`: Option value length in bytes
-/// - `flags`: DHOPT_* flags (DHOPT_HEX, DHOPT_STRING, DHOPT_ADDR, etc.)
+/// - `flags`: DHOPT_* flags (`DHOPT_HEX`, `DHOPT_STRING`, `DHOPT_ADDR`, etc.)
 /// - `val`: Option value data
-/// - `wildcard_mask`: Bitmask for wildcard matching in match_bytes
+/// - `wildcard_mask`: Bitmask for wildcard matching in `match_bytes`
 ///
 /// # Usage
 ///
@@ -323,14 +323,14 @@ pub struct DhcpOpt {
     /// Option value length.
     pub len: usize,
 
-    /// Option flags (DHOPT_HEX, DHOPT_STRING, DHOPT_ADDR, etc.).
+    /// Option flags (`DHOPT_HEX`, `DHOPT_STRING`, `DHOPT_ADDR`, etc.).
     pub flags: i32,
 
     /// Option value data.
     pub val: Vec<u8>,
 
     /// Wildcard mask for pattern matching (bit 1 = wildcard, bit 0 = exact match).
-    /// Only valid when DHOPT_MATCH flag is set.
+    /// Only valid when `DHOPT_MATCH` flag is set.
     pub wildcard_mask: Option<u32>,
 }
 
@@ -346,9 +346,9 @@ pub type NetworkId = String;
 // DHCP OPTION TABLES
 // ============================================================================
 
-/// DHCPv4 option table.
+/// `DHCPv4` option table.
 ///
-/// Static metadata for all DHCPv4 options. Replaces C `opttab[]` array from
+/// Static metadata for all `DHCPv4` options. Replaces C `opttab[]` array from
 /// dhcp-common.c lines 228-635. Provides O(1) lookup by option code.
 ///
 /// **C Source**: dhcp-common.c opttab[] static array
@@ -639,9 +639,9 @@ pub static DHCPV4_OPTION_TABLE: LazyLock<HashMap<u8, OptionMetadata>> = LazyLock
     map
 });
 
-/// DHCPv6 option table.
+/// `DHCPv6` option table.
 ///
-/// Static metadata for all DHCPv6 options. Replaces C `opttab6[]` array from
+/// Static metadata for all `DHCPv6` options. Replaces C `opttab6[]` array from
 /// dhcp-common.c lines 638-1555. Provides O(1) lookup by option code.
 ///
 /// **C Source**: dhcp-common.c opttab6[] static array
@@ -770,7 +770,7 @@ pub static DHCPV6_OPTION_TABLE: LazyLock<HashMap<u16, OptionMetadata>> = LazyLoc
 
 /// Generate a cryptographically secure transaction ID (xid) for DHCP messages.
 ///
-/// Replaces C global random() call with Rust's secure random number generator.
+/// Replaces C global `random()` call with Rust's secure random number generator.
 /// Used to correlate DHCP requests and responses.
 ///
 /// # Returns
@@ -788,7 +788,8 @@ pub static DHCPV6_OPTION_TABLE: LazyLock<HashMap<u16, OptionMetadata>> = LazyLoc
 ///
 /// Uses `crate::util::random::rand32()` which provides cryptographically secure randomness
 /// via platform CSPRNG (e.g., getrandom(2) on Linux, arc4random(3) on BSD).
-/// Far superior to C's random() which is predictable and unsuitable for security.
+/// Far superior to C's `random()` which is predictable and unsuitable for security.
+#[must_use]
 pub fn generate_xid() -> u32 {
     rand32()
 }
@@ -843,7 +844,7 @@ pub fn parse_mac_address(s: &str) -> Result<MacAddress, DhcpError> {
         return Ok(mac);
     }
 
-    Err(DhcpError::ParseFailed { reason: format!("Invalid MAC address format: '{}'", s) })
+    Err(DhcpError::ParseFailed { reason: format!("Invalid MAC address format: '{s}'") })
 }
 
 /// Parse colon-separated MAC address (aa:bb:cc:dd:ee:ff).
@@ -951,6 +952,7 @@ fn parse_mac_continuous(input: &str) -> IResult<&str, MacAddress> {
 ///     // Apply admin-specific options
 /// }
 /// ```
+#[must_use]
 pub fn match_netid(tag: &str, tags: &[NetworkId]) -> bool {
     tags.iter().any(|t| t == tag)
 }
@@ -984,6 +986,7 @@ pub fn match_netid(tag: &str, tags: &[NetworkId]) -> bool {
 /// assert!(match_netid_wild("!guest", &client_tags));   // true
 /// assert!(!match_netid_wild("!admin", &client_tags));  // false
 /// ```
+#[must_use]
 pub fn match_netid_wild(pattern: &str, tags: &[NetworkId]) -> bool {
     // Handle negation
     if let Some(pattern_inner) = pattern.strip_prefix('!') {
@@ -1019,7 +1022,7 @@ pub fn match_netid_wild(pattern: &str, tags: &[NetworkId]) -> bool {
 ///
 /// - Remove leading/trailing whitespace
 /// - Remove invalid DNS characters (non-alphanumeric except hyphen)
-/// - Truncate to max_len
+/// - Truncate to `max_len`
 /// - Return empty string if resulting hostname is invalid
 ///
 /// # Example
@@ -1028,6 +1031,7 @@ pub fn match_netid_wild(pattern: &str, tags: &[NetworkId]) -> bool {
 /// let hostname = strip_hostname(b"my-laptop!", 63);
 /// assert_eq!(hostname, "my-laptop");
 /// ```
+#[must_use]
 pub fn strip_hostname(hostname: &[u8], max_len: usize) -> String {
     let mut result = String::new();
 
@@ -1056,7 +1060,7 @@ pub fn strip_hostname(hostname: &[u8], max_len: usize) -> String {
 /// # Arguments
 ///
 /// * `tags` - List of network ID tags to log
-/// * `context` - Context string (e.g., "DHCPv4", "DHCPv6", interface name)
+/// * `context` - Context string (e.g., "`DHCPv4`", "`DHCPv6`", interface name)
 ///
 /// # Example
 ///
@@ -1102,6 +1106,7 @@ pub fn log_tags(tags: &[NetworkId], context: &str) {
 /// // Matches: [0xAA, 0xFF, 0xFF, 0xDD]
 /// // First and last bytes must match exactly, middle two can be anything
 /// ```
+#[must_use]
 pub fn match_bytes(opt: &DhcpOpt, data: &[u8]) -> bool {
     if opt.len != data.len() {
         return false;
@@ -1133,8 +1138,8 @@ pub fn match_bytes(opt: &DhcpOpt, data: &[u8]) -> bool {
 /// Receive DHCP packet from UDP socket with dynamic buffer management.
 ///
 /// Async function to receive DHCP packet from UDP socket. Automatically resizes
-/// buffer if packet is larger than initial capacity. Replaces C recv_dhcp_packet()
-/// function that used recvmsg() with MSG_PEEK and manual buffer expansion.
+/// buffer if packet is larger than initial capacity. Replaces C `recv_dhcp_packet()`
+/// function that used `recvmsg()` with `MSG_PEEK` and manual buffer expansion.
 ///
 /// # Arguments
 ///
@@ -1149,7 +1154,7 @@ pub fn match_bytes(opt: &DhcpOpt, data: &[u8]) -> bool {
 /// # Buffer Management
 ///
 /// If initial buffer is too small, function automatically resizes up to
-/// DHCP_PACKET_MAX (16384 bytes). Prevents memory exhaustion from malformed packets
+/// `DHCP_PACKET_MAX` (16384 bytes). Prevents memory exhaustion from malformed packets
 /// claiming huge sizes.
 ///
 /// # Example
@@ -1165,7 +1170,7 @@ pub fn match_bytes(opt: &DhcpOpt, data: &[u8]) -> bool {
 /// # Memory Safety
 ///
 /// Uses Rust Vec which automatically manages memory. C version used manual
-/// realloc() which could fail or leak memory. Rust version is safe and cannot
+/// `realloc()` which could fail or leak memory. Rust version is safe and cannot
 /// overflow buffer.
 pub async fn recv_dhcp_packet(
     socket: &UdpSocket,
@@ -1201,12 +1206,12 @@ pub async fn recv_dhcp_packet(
                         Ok((len, src_addr))
                     }
                     Err(e) => Err(DhcpError::ParseFailed {
-                        reason: format!("Failed to receive DHCP packet: {}", e),
+                        reason: format!("Failed to receive DHCP packet: {e}"),
                     }),
                 }
             } else {
                 Err(DhcpError::ParseFailed {
-                    reason: format!("Failed to receive DHCP packet: {}", e),
+                    reason: format!("Failed to receive DHCP packet: {e}"),
                 })
             }
         }

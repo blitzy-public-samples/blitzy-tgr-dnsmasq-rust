@@ -375,7 +375,7 @@ impl UpstreamServer {
     ///
     /// # Returns
     ///
-    /// A new UpstreamServer instance with zero statistics.
+    /// A new `UpstreamServer` instance with zero statistics.
     ///
     /// # Example
     ///
@@ -394,6 +394,7 @@ impl UpstreamServer {
     ///     ServerFlags::DOMAIN_SPECIFIC | ServerFlags::IPV4_ADDR,
     /// );
     /// ```
+    #[must_use]
     pub fn new(addr: SocketAddr, domain: Option<DomainName>, flags: ServerFlags) -> Self {
         Self {
             addr,
@@ -418,7 +419,7 @@ impl UpstreamServer {
     ///
     /// 1. If LOOP flag set → unavailable (forwarding loop detected)
     /// 2. If no recent failure → available
-    /// 3. If last_failed + TIMEOUT < now → available (cooldown expired)
+    /// 3. If `last_failed` + TIMEOUT < now → available (cooldown expired)
     /// 4. Otherwise → unavailable (still in failure cooldown)
     ///
     /// # Returns
@@ -468,7 +469,7 @@ impl UpstreamServer {
     /// # Logic
     ///
     /// - If `self.domain` is None → matches all domains (general-purpose server)
-    /// - If `self.domain` is Some(pattern) → matches if query_name matches pattern
+    /// - If `self.domain` is Some(pattern) → matches if `query_name` matches pattern
     ///
     /// # Arguments
     ///
@@ -495,6 +496,7 @@ impl UpstreamServer {
     /// );
     /// assert!(corp.matches_domain(&query));
     /// ```
+    #[must_use]
     pub fn matches_domain(&self, query_name: &DomainName) -> bool {
         match &self.domain {
             None => true, // General-purpose server matches all domains
@@ -504,14 +506,14 @@ impl UpstreamServer {
                 let query_str = query_name.as_str();
                 let pattern_str = pattern.as_str();
 
-                query_str == pattern_str || query_str.ends_with(&format!(".{}", pattern_str))
+                query_str == pattern_str || query_str.ends_with(&format!(".{pattern_str}"))
             }
         }
     }
 
     /// Records a successful query to this server.
     ///
-    /// Updates statistics counters and sets last_used timestamp. This is called
+    /// Updates statistics counters and sets `last_used` timestamp. This is called
     /// when a query receives a valid response from the upstream server.
     ///
     /// # Example
@@ -538,7 +540,7 @@ impl UpstreamServer {
 
     /// Records a failed query to this server.
     ///
-    /// Updates failure statistics and sets last_failed timestamp. This is called
+    /// Updates failure statistics and sets `last_failed` timestamp. This is called
     /// when a query times out, receives SERVFAIL, or encounters a connection error.
     ///
     /// # Example
@@ -549,6 +551,7 @@ impl UpstreamServer {
     /// assert!(server.last_failed.is_some());
     /// ```
     #[instrument(skip(self), fields(addr = %self.addr))]
+    #[allow(clippy::cast_precision_loss)] // u64 to f64 for logging; precision loss acceptable for query counts
     pub fn record_failure(&mut self) {
         self.queries += 1;
         self.failed_queries += 1;
@@ -595,6 +598,8 @@ impl UpstreamServer {
     /// server.record_failure();
     /// assert_eq!(server.failure_rate(), 50.0); // 1 failed out of 2 total
     /// ```
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)] // u64 to f64 for failure rate calculation; precision loss acceptable
     pub fn failure_rate(&self) -> f64 {
         if self.queries == 0 {
             0.0
@@ -651,7 +656,7 @@ impl UpstreamServer {
 /// - **Vec ownership**: Automatic memory management replaces manual malloc/free
 /// - **Bounds checking**: No buffer overruns from array index errors
 /// - **No null pointers**: Vec entries always valid, no NULL checks needed
-/// - **Thread safety**: RwLock enables safe concurrent access
+/// - **Thread safety**: `RwLock` enables safe concurrent access
 ///
 /// # Server Selection Strategy
 ///
@@ -700,7 +705,7 @@ impl UpstreamPool {
     ///
     /// # Returns
     ///
-    /// A new empty UpstreamPool instance.
+    /// A new empty `UpstreamPool` instance.
     ///
     /// # Example
     ///
@@ -708,6 +713,7 @@ impl UpstreamPool {
     /// let pool = UpstreamPool::new();
     /// assert_eq!(pool.server_count(), 0);
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self { servers: Vec::new(), current_index: 0, matcher: DomainMatcher::new() }
     }
@@ -723,7 +729,7 @@ impl UpstreamPool {
     ///
     /// # Returns
     ///
-    /// A new empty UpstreamPool with reserved capacity.
+    /// A new empty `UpstreamPool` with reserved capacity.
     ///
     /// # Example
     ///
@@ -731,6 +737,7 @@ impl UpstreamPool {
     /// let pool = UpstreamPool::with_capacity(10);
     /// // Efficiently add up to 10 servers without reallocation
     /// ```
+    #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             servers: Vec::with_capacity(capacity),
@@ -741,7 +748,7 @@ impl UpstreamPool {
 
     /// Creates an upstream pool from DNS configuration.
     ///
-    /// Parses the DnsConfig and creates UpstreamServer entries for each configured
+    /// Parses the `DnsConfig` and creates `UpstreamServer` entries for each configured
     /// upstream server, including domain-specific routing configuration.
     ///
     /// # Arguments
@@ -750,7 +757,7 @@ impl UpstreamPool {
     ///
     /// # Returns
     ///
-    /// A populated UpstreamPool, or an error if server configuration is invalid.
+    /// A populated `UpstreamPool`, or an error if server configuration is invalid.
     ///
     /// # Example
     ///
@@ -792,7 +799,7 @@ impl UpstreamPool {
             // If domain-specific, add to matcher
             if let Some(ref domain) = server.domain {
                 let protocol_domain = ProtocolDomainName::new(domain.as_str()).map_err(|e| {
-                    crate::error::DnsmasqError::Other(format!("Invalid domain: {}", e))
+                    crate::error::DnsmasqError::Other(format!("Invalid domain: {e}"))
                 })?;
                 pool.matcher.add_pattern(protocol_domain, vec![server_details.clone()])?;
             }
@@ -812,13 +819,13 @@ impl UpstreamPool {
     ///
     /// # Algorithm
     ///
-    /// 1. Check for domain-specific server configuration using DomainMatcher
+    /// 1. Check for domain-specific server configuration using `DomainMatcher`
     /// 2. If domain match found, use only matching servers
     /// 3. Otherwise, use general-purpose servers
     /// 4. Filter out unavailable servers (in failure cooldown or with LOOP flag)
-    /// 5. If DNSSEC required, filter for DO_DNSSEC capability
+    /// 5. If DNSSEC required, filter for `DO_DNSSEC` capability
     /// 6. Select next server in round-robin order
-    /// 7. Update current_index for load balancing
+    /// 7. Update `current_index` for load balancing
     ///
     /// # Arguments
     ///
@@ -921,7 +928,7 @@ impl UpstreamPool {
 
     /// Marks a server as failed after a query timeout or error.
     ///
-    /// Records the failure, updates statistics, and sets the last_failed timestamp
+    /// Records the failure, updates statistics, and sets the `last_failed` timestamp
     /// to temporarily disable the server (cooldown period = TIMEOUT seconds).
     ///
     /// # Arguments
@@ -1006,8 +1013,9 @@ impl UpstreamPool {
     ///     println!("Google DNS is available");
     /// }
     /// ```
+    #[must_use]
     pub fn is_available(&self, addr: SocketAddr) -> bool {
-        self.servers.iter().find(|s| s.addr == addr).map(|s| s.is_available()).unwrap_or(false)
+        self.servers.iter().find(|s| s.addr == addr).is_some_and(UpstreamServer::is_available)
     }
 
     /// Performs health checks on all servers and returns status reports.
@@ -1017,7 +1025,7 @@ impl UpstreamPool {
     ///
     /// # Returns
     ///
-    /// Vector of HealthStatus reports, one per server.
+    /// Vector of `HealthStatus` reports, one per server.
     ///
     /// # Example
     ///
@@ -1060,7 +1068,7 @@ impl UpstreamPool {
     ///
     /// # Returns
     ///
-    /// Vector of ServerStats entries with query counts and timing information.
+    /// Vector of `ServerStats` entries with query counts and timing information.
     ///
     /// # Example
     ///
@@ -1071,6 +1079,7 @@ impl UpstreamPool {
     ///         stat.addr, stat.total_queries, stat.failure_rate);
     /// }
     /// ```
+    #[must_use]
     pub fn get_server_stats(&self) -> Vec<ServerStats> {
         self.servers
             .iter()
@@ -1100,6 +1109,7 @@ impl UpstreamPool {
     /// ```rust,ignore
     /// println!("Pool has {} servers configured", pool.server_count());
     /// ```
+    #[must_use]
     pub fn server_count(&self) -> usize {
         self.servers.len()
     }
@@ -1111,7 +1121,7 @@ impl UpstreamPool {
     ///
     /// # Arguments
     ///
-    /// * `server` - UpstreamServer to add to the pool
+    /// * `server` - `UpstreamServer` to add to the pool
     ///
     /// # Example
     ///

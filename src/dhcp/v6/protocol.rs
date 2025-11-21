@@ -192,10 +192,8 @@ use crate::config::types::DhcpContext;
 use crate::config::Config;
 use crate::dhcp::lease::{Lease, LeaseManager};
 use crate::dhcp::v6::constants::{
-    MSG_ADVERTISE, MSG_REPLY,
-    OPTION_CLIENT_ID, OPTION_IA_NA,
-    OPTION_IAADDR, OPTION_RAPID_COMMIT, OPTION_SERVER_ID, OPTION_STATUS_CODE,
-    STATUS_NOADDRS, STATUS_NOBINDING, STATUS_NOPREFIXAVAIL,
+    MSG_ADVERTISE, MSG_REPLY, OPTION_CLIENT_ID, OPTION_IAADDR, OPTION_IA_NA, OPTION_RAPID_COMMIT,
+    OPTION_SERVER_ID, OPTION_STATUS_CODE, STATUS_NOADDRS, STATUS_NOBINDING, STATUS_NOPREFIXAVAIL,
     STATUS_NOTONLINK, STATUS_SUCCESS, STATUS_UNSPEC, STATUS_USEMULTICAST,
 };
 use crate::dhcp::v6::message::DhcpV6Message;
@@ -573,7 +571,6 @@ impl DhcpV6StateMachine {
         // Build IA_NA option manually
         // IA_NA format: IAID (4) + T1 (4) + T2 (4) + IA options
         #[allow(clippy::cast_possible_truncation)]
-
         let lease_secs = self.config.dhcp.lease_time.as_secs() as u32;
         let mut ia_na_data = Vec::new();
 
@@ -1433,10 +1430,7 @@ impl DhcpV6StateMachine {
     }
 
     /// Validates that address is within configured pool range.
-    fn validate_address_in_pool(
-        address: &IpAddr,
-        context: &DhcpContext,
-    ) -> Result<(), DhcpError> {
+    fn validate_address_in_pool(address: &IpAddr, context: &DhcpContext) -> Result<(), DhcpError> {
         if !Self::is_address_in_pool(address, context) {
             return Err(DhcpError::V6ProtocolError {
                 reason: format!("Address {address} not in pool"),
@@ -1545,7 +1539,6 @@ fn encode_dns_name(domain: &str, output: &mut Vec<u8>) -> Result<(), DhcpError> 
 
         // Write length byte followed by label bytes
         #[allow(clippy::cast_possible_truncation)]
-
         output.push(label.len() as u8);
         output.extend_from_slice(label.as_bytes());
     }

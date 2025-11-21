@@ -54,7 +54,7 @@
 //!   implementation guidance and clarifications for ambiguities in original DNSSEC specifications.
 //!
 //! - **RFC 8624**: Algorithm Implementation Requirements for DNSSEC - Specifies mandatory and
-//!   recommended cryptographic algorithms for DNSSEC deployment (RSA/SHA-256, ECDSA, EdDSA).
+//!   recommended cryptographic algorithms for DNSSEC deployment (RSA/SHA-256, ECDSA, `EdDSA`).
 //!
 //! # Memory Safety Improvements
 //!
@@ -123,7 +123,7 @@
 //! ## [`crypto`]
 //!
 //! Cryptographic signature verification providing algorithm-specific signature validation
-//! for RSA, ECDSA, EdDSA, and GOST algorithms. Abstracts cryptographic operations behind
+//! for RSA, ECDSA, `EdDSA`, and GOST algorithms. Abstracts cryptographic operations behind
 //! clean interfaces isolating algorithm complexity.
 //!
 //! **Replaces**: C `crypto.c` (1300+ lines) with memory-safe cryptography using `ring` crate.
@@ -294,7 +294,7 @@
 //!
 //! DNSSEC validation adds computational overhead to DNS query processing:
 //!
-//! - **Cryptographic Operations**: RSA signature verification ~1-5ms, ECDSA ~0.5-2ms, EdDSA ~0.1-0.5ms
+//! - **Cryptographic Operations**: RSA signature verification ~1-5ms, ECDSA ~0.5-2ms, `EdDSA` ~0.1-0.5ms
 //! - **Trust Chain Traversal**: 2-5 additional queries per validation for DNSKEY/DS lookup
 //! - **Memory Usage**: ~1-4 KB per validation for cryptographic contexts and temporary buffers
 //!
@@ -303,7 +303,7 @@
 //! - **Caching**: Validated DNSKEY records cached to avoid redundant cryptographic operations
 //! - **Negative Caching**: NSEC/NSEC3 records cached to validate subsequent NXDOMAIN responses
 //! - **Trust Anchor Lookup**: Pre-loaded trust anchors avoid disk I/O during validation
-//! - **Resource Limits**: Configurable limits prevent DoS attacks from excessive validation work
+//! - **Resource Limits**: Configurable limits prevent `DoS` attacks from excessive validation work
 //!
 //! # Security Considerations
 //!
@@ -317,12 +317,12 @@
 //!
 //! ## Resource Exhaustion Attacks
 //!
-//! DNSSEC validation is computationally expensive and vulnerable to DoS attacks:
+//! DNSSEC validation is computationally expensive and vulnerable to `DoS` attacks:
 //!
 //! - Validation work counter limits total queries per validation chain
 //! - Cryptographic operation counter prevents excessive signature verification attempts
 //! - Signature failure counter limits wasted work on invalid signatures
-//! - NSEC3 iteration limit prevents hash computation DoS attacks
+//! - NSEC3 iteration limit prevents hash computation `DoS` attacks
 //!
 //! ## Clock Synchronization
 //!
@@ -338,7 +338,7 @@
 //!
 //! - Zones may dual-sign with old and new algorithms during key rollovers
 //! - Validator must support both deprecated (for compatibility) and modern algorithms
-//! - Prefer stronger algorithms (EdDSA > ECDSA > RSA/SHA-256) when multiple signatures present
+//! - Prefer stronger algorithms (`EdDSA` > ECDSA > RSA/SHA-256) when multiple signatures present
 //!
 //! # Examples
 //!

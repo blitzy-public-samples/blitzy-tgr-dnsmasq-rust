@@ -114,7 +114,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt};
 /// TFTP transfer inactivity timeout (120 seconds).
 ///
 /// Transfers with no ACK activity for this duration are considered stale and eligible for cleanup.
-/// This matches the C implementation's TFTP_TIMEOUT constant from `src/tftp.c`.
+/// This matches the C implementation's `TFTP_TIMEOUT` constant from `src/tftp.c`.
 ///
 /// RFC 1350 does not mandate a specific timeout, but 120 seconds is a common implementation choice
 /// providing balance between patience for slow clients and resource cleanup.
@@ -133,7 +133,7 @@ pub const TFTP_TIMEOUT: Duration = Duration::from_secs(120);
 ///
 /// `TransferState` is NOT thread-safe and should be used within a single async task.
 /// The server manages multiple concurrent transfers via a collection of `TransferState` instances,
-/// each associated with a unique (client_addr, TID) tuple.
+/// each associated with a unique (`client_addr`, TID) tuple.
 ///
 /// # Memory Management
 ///
@@ -152,7 +152,7 @@ pub struct TransferState {
     ///
     /// - Block 0: Reserved for OACK packets (handled separately in server.rs)
     /// - Block 1+: DATA packet blocks containing file content
-    /// - Wraps at u16::MAX (65535) per RFC 1350
+    /// - Wraps at `u16::MAX` (65535) per RFC 1350
     block_current: u16,
 
     /// Highest block number acknowledged by the client.
@@ -399,7 +399,7 @@ impl TransferState {
             self.file_offset
         } else {
             // Binary mode or first block: calculate from block number
-            ((block as u64).wrapping_sub(1)).wrapping_mul(self.blocksize as u64)
+            (u64::from(block).wrapping_sub(1)).wrapping_mul(u64::from(self.blocksize))
         };
 
         // Seek to the appropriate file position
@@ -407,7 +407,7 @@ impl TransferState {
         self.file.seek(SeekFrom::Start(position)).await.map_err(|e| {
             crate::error::TftpError::IoError {
                 path: self.file_path.display().to_string(),
-                reason: format!("Failed to seek to offset {}: {}", position, e),
+                reason: format!("Failed to seek to offset {position}: {e}"),
             }
         })?;
 
@@ -426,7 +426,7 @@ impl TransferState {
         let n =
             self.file.read(&mut buffer).await.map_err(|e| crate::error::TftpError::IoError {
                 path: self.file_path.display().to_string(),
-                reason: format!("Failed to read block {}: {}", block, e),
+                reason: format!("Failed to read block {block}: {e}"),
             })?;
 
         // Truncate buffer to actual bytes read
@@ -434,7 +434,7 @@ impl TransferState {
 
         // Apply netascii conversion if enabled (LF → CR-LF)
         let (final_data, input_consumed) = if self.netascii {
-            let (data, consumed) = self.netascii_convert(buffer)?;
+            let (data, consumed) = self.netascii_convert(&buffer);
             // Set EOF if we consumed all available input and it was less than blocksize
             if consumed < self.blocksize as usize && n < read_size {
                 self.eof = true;
@@ -512,7 +512,7 @@ impl TransferState {
     ///
     /// Allocates a new `BytesMut` buffer and copies data with conversions. For binary transfers,
     /// set `netascii = false` to avoid this overhead.
-    fn netascii_convert(&mut self, data: Vec<u8>) -> Result<(Bytes, usize)> {
+    fn netascii_convert(&mut self, data: &[u8]) -> (Bytes, usize) {
         let mut output = BytesMut::new();
         let mut input_consumed = 0;
 
@@ -523,7 +523,7 @@ impl TransferState {
         }
 
         // Scan buffer and convert LF → CR-LF
-        for &byte in &data {
+        for &byte in data {
             if byte == b'\n' {
                 // Check if inserting CR-LF would exceed blocksize
                 if output.len() + 2 > self.blocksize as usize {
@@ -554,7 +554,7 @@ impl TransferState {
             output.truncate(self.blocksize as usize);
         }
 
-        Ok((output.freeze(), input_consumed))
+        (output.freeze(), input_consumed)
     }
 
     /// Check if the transfer has reached end-of-file.

@@ -13,20 +13,20 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! DHCPv6 server core module implementing async DHCPv6 service.
+//! `DHCPv6` server core module implementing async `DHCPv6` service.
 //!
-//! This module provides the main DHCPv6 server implementation with tokio UDP socket handling
+//! This module provides the main `DHCPv6` server implementation with tokio UDP socket handling
 //! for client message processing. It replaces the C implementation from `src/dhcp6.c` and
 //! `src/rfc3315.c` (approximately 1487 + 4216 lines of C code) with memory-safe async Rust.
 //!
 //! # Key Features
 //!
 //! - **Async Message Handling**: Uses tokio UDP sockets for non-blocking packet I/O
-//! - **IPv6 Address Allocation**: Manages IA_NA address pools with conflict detection
-//! - **Prefix Delegation**: Supports IA_PD for hierarchical network architectures
+//! - **IPv6 Address Allocation**: Manages `IA_NA` address pools with conflict detection
+//! - **Prefix Delegation**: Supports `IA_PD` for hierarchical network architectures
 //! - **Router Advertisement Coordination**: Honors M/O flags for stateful vs stateless modes
 //! - **Lease Management**: Integrates with persistent lease database
-//! - **DUID-Based Tracking**: Uses DHCPv6 Unique Identifiers for client recognition
+//! - **DUID-Based Tracking**: Uses `DHCPv6` Unique Identifiers for client recognition
 //!
 //! # Architecture
 //!
@@ -92,13 +92,13 @@
 //! - **No manual memory management**: All allocations via Box/Vec with automatic Drop
 //! - **No buffer overflows**: Rust slice bounds checking prevents out-of-bounds access
 //! - **No use-after-free**: Borrow checker enforces lifetime constraints
-//! - **No data races**: RwLock ensures synchronized access to shared lease database
+//! - **No data races**: `RwLock` ensures synchronized access to shared lease database
 //!
 //! # Protocol Compliance
 //!
-//! - RFC 3315: DHCPv6 core protocol (message types, options, exchanges)
-//! - RFC 3633: IPv6 Prefix Options for DHCPv6 (IA_PD, IAPREFIX)
-//! - RFC 3736: Stateless DHCPv6 (INFORMATION-REQUEST)
+//! - RFC 3315: `DHCPv6` core protocol (message types, options, exchanges)
+//! - RFC 3633: IPv6 Prefix Options for `DHCPv6` (`IA_PD`, IAPREFIX)
+//! - RFC 3736: Stateless `DHCPv6` (INFORMATION-REQUEST)
 //! - RFC 4242: Information Refresh Time
 //! - RFC 4861: Router Advertisement coordination (M/O flags)
 //!
@@ -148,41 +148,44 @@ use tracing::{debug, error, info, instrument, trace, warn};
 use crate::config::types::DhcpRange;
 use crate::config::Config;
 use crate::dhcp::lease::LeaseManager;
-use crate::dhcp::v6::constants::*;
+use crate::dhcp::v6::constants::{
+    MSG_DECLINE, MSG_INFORMATION_REQUEST, MSG_REBIND, MSG_RELEASE, MSG_RENEW, MSG_REQUEST,
+    MSG_SOLICIT, OPTION_CLIENT_ID, OPTION_IA_NA, OPTION_IA_PD, OPTION_IA_TA, PORT_SERVER,
+};
 use crate::dhcp::v6::message::DhcpV6Message;
 use crate::dhcp::v6::protocol::{DhcpV6StateMachine, RequestContext};
 use crate::error::DhcpError;
 
-/// Default DHCPv6 lease time in seconds (24 hours = 86400 seconds).
+/// Default `DHCPv6` lease time in seconds (24 hours = 86400 seconds).
 ///
 /// This matches C's DEFLEASE6 constant from config.h line 51. Used when no explicit
 /// lease time is configured in dhcp-range directives.
 const DEFAULT_LEASE_TIME: u32 = 86400;
 
-/// Maximum DHCPv6 packet size (1500 bytes MTU - IPv6 header - UDP header).
+/// Maximum `DHCPv6` packet size (1500 bytes MTU - IPv6 header - UDP header).
 ///
-/// DHCPv6 typically uses 1232 bytes as the conservative MTU to avoid fragmentation
+/// `DHCPv6` typically uses 1232 bytes as the conservative MTU to avoid fragmentation
 /// on most networks (1280 IPv6 minimum MTU - 48 bytes headers).
 const _MAX_PACKET_SIZE: usize = 1500;
 
-/// Receive buffer size for DHCPv6 packets.
+/// Receive buffer size for `DHCPv6` packets.
 ///
-/// Sized to accommodate the largest DHCPv6 packet including all options.
+/// Sized to accommodate the largest `DHCPv6` packet including all options.
 const RECV_BUFFER_SIZE: usize = 2048;
 
-/// DHCPv6 server state structure.
+/// `DHCPv6` server state structure.
 ///
-/// This struct encapsulates all state required for DHCPv6 server operation, replacing
+/// This struct encapsulates all state required for `DHCPv6` server operation, replacing
 /// C's global daemon structure and function parameter passing with structured ownership.
 ///
 /// # Fields
 ///
-/// - `socket`: UDP socket bound to port 547 for receiving DHCPv6 client messages
+/// - `socket`: UDP socket bound to port 547 for receiving `DHCPv6` client messages
 /// - `config`: Immutable shared configuration (cloned Arc for multi-threaded access)
-/// - `lease_manager`: Shared mutable lease database with RwLock for concurrent access
-/// - `protocol`: DHCPv6 protocol state machine for message generation
+/// - `lease_manager`: Shared mutable lease database with `RwLock` for concurrent access
+/// - `protocol`: `DHCPv6` protocol state machine for message generation
 /// - `address_pools`: Cached address pool contexts for fast lookup by interface
-/// - `server_id`: This server's DUID for SERVER_ID option in responses
+/// - `server_id`: This server's DUID for `SERVER_ID` option in responses
 /// - `shutdown_tx`: Shutdown signal sender for graceful termination
 /// - `shutdown_rx`: Shutdown signal receiver checked in main loop
 ///
@@ -199,33 +202,33 @@ const RECV_BUFFER_SIZE: usize = 2048;
 /// } *daemon;
 /// ```
 pub struct DhcpV6Server {
-    /// UDP socket bound to port 547 for DHCPv6 communication
+    /// UDP socket bound to port 547 for `DHCPv6` communication
     socket: UdpSocket,
-    
+
     /// Shared configuration (immutable after startup)
     _config: Arc<Config>,
-    
-    /// Shared lease database (mutable, protected by RwLock)
+
+    /// Shared lease database (mutable, protected by `RwLock`)
     lease_manager: Arc<RwLock<LeaseManager>>,
-    
-    /// DHCPv6 protocol state machine
+
+    /// `DHCPv6` protocol state machine
     protocol: DhcpV6StateMachine,
-    
+
     /// Address pool contexts indexed by interface name for O(1) lookup
     address_pools: HashMap<String, Vec<DhcpRange>>,
-    
-    /// This server's DUID (DHCPv6 Unique Identifier) for SERVER_ID option
+
+    /// This server's DUID (`DHCPv6` Unique Identifier) for `SERVER_ID` option
     _server_id: Vec<u8>,
-    
+
     /// Shutdown signal sender
     shutdown_tx: mpsc::Sender<()>,
-    
+
     /// Shutdown signal receiver
     shutdown_rx: mpsc::Receiver<()>,
 }
 
 impl DhcpV6Server {
-    /// Creates a new DHCPv6 server instance.
+    /// Creates a new `DHCPv6` server instance.
     ///
     /// # Arguments
     ///
@@ -240,7 +243,7 @@ impl DhcpV6Server {
     /// # Errors
     ///
     /// This function will return an error if:
-    /// - Port 547 binding fails (requires root/CAP_NET_BIND_SERVICE)
+    /// - Port 547 binding fails (requires `root/CAP_NET_BIND_SERVICE`)
     /// - Socket option configuration fails
     /// - DUID generation fails
     /// - Address pool validation fails
@@ -272,13 +275,11 @@ impl DhcpV6Server {
         info!("Initializing DHCPv6 server");
 
         // Create and bind UDP socket to port 547
-        let socket = Self::bind_socket(&config)
-            .await
-            .context("Failed to bind DHCPv6 socket to port 547")?;
+        let socket =
+            Self::bind_socket(&config).await.context("Failed to bind DHCPv6 socket to port 547")?;
 
         // Log successful socket creation
-        let local_addr = socket.local_addr()
-            .context("Failed to get local socket address")?;
+        let local_addr = socket.local_addr().context("Failed to get local socket address")?;
         info!(
             address = %local_addr,
             "DHCPv6 socket bound successfully"
@@ -287,24 +288,15 @@ impl DhcpV6Server {
         // Generate server DUID (DHCPv6 Unique Identifier)
         // Uses DUID-LLT (Link-Layer Time) format per RFC 3315 Section 9.2
         let server_id = Self::generate_server_duid(&config)?;
-        debug!(
-            duid_len = server_id.len(),
-            "Generated server DUID"
-        );
+        debug!(duid_len = server_id.len(), "Generated server DUID");
 
         // Build address pool index by interface for fast lookups
         let address_pools = Self::index_address_pools(&config.dhcp.v6_ranges)?;
-        info!(
-            pool_count = address_pools.len(),
-            "Indexed DHCPv6 address pools by interface"
-        );
+        info!(pool_count = address_pools.len(), "Indexed DHCPv6 address pools by interface");
 
         // Create protocol state machine
-        let protocol = DhcpV6StateMachine::new(
-            config.clone(),
-            lease_manager.clone(),
-            server_id.clone(),
-        );
+        let protocol =
+            DhcpV6StateMachine::new(config.clone(), lease_manager.clone(), server_id.clone());
 
         // Create shutdown channel
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
@@ -321,10 +313,10 @@ impl DhcpV6Server {
         })
     }
 
-    /// Runs the main DHCPv6 server event loop.
+    /// Runs the main `DHCPv6` server event loop.
     ///
-    /// This async function runs indefinitely, processing incoming DHCPv6 packets using
-    /// tokio::select! for concurrent I/O multiplexing. It replaces C's poll()-based event
+    /// This async function runs indefinitely, processing incoming `DHCPv6` packets using
+    /// `tokio::select`! for concurrent I/O multiplexing. It replaces C's poll()-based event
     /// loop with async/await patterns for better scalability and safety.
     ///
     /// # Returns
@@ -368,7 +360,7 @@ impl DhcpV6Server {
     ///
     /// ```rust,ignore
     /// let mut server = DhcpV6Server::new(config, lease_mgr).await?;
-    /// 
+    ///
     /// // Run until SIGTERM/SIGINT
     /// tokio::spawn(async move {
     ///     server.run().await.expect("DHCPv6 server failed");
@@ -431,7 +423,7 @@ impl DhcpV6Server {
                 // Graceful shutdown signal
                 _ = self.shutdown_rx.recv() => {
                     info!("Received shutdown signal, stopping DHCPv6 server");
-                    
+
                     // Flush lease database to disk
                     if let Err(e) = self.lease_manager.write().await.save_leases().await {
                         error!(
@@ -439,16 +431,16 @@ impl DhcpV6Server {
                             "Failed to save lease database during shutdown"
                         );
                     }
-                    
+
                     return Ok(());
                 }
             }
         }
     }
 
-    /// Handles an incoming DHCPv6 packet.
+    /// Handles an incoming `DHCPv6` packet.
     ///
-    /// Parses the DHCPv6 message, determines the message type, invokes the appropriate
+    /// Parses the `DHCPv6` message, determines the message type, invokes the appropriate
     /// protocol handler, constructs a response, and sends it back to the client.
     ///
     /// # Arguments
@@ -490,24 +482,19 @@ impl DhcpV6Server {
     /// # Errors
     ///
     /// Returns `DhcpError` if:
-    /// - Packet parsing fails (malformed DHCPv6 message)
-    /// - Required options are missing (CLIENT_ID)
+    /// - Packet parsing fails (malformed `DHCPv6` message)
+    /// - Required options are missing (`CLIENT_ID`)
     /// - Address allocation fails (no available addresses)
     /// - Response serialization fails
     /// - Socket send operation fails
     #[instrument(skip(self, data), fields(peer = %peer), level = "debug")]
-    async fn handle_packet(
-        &mut self,
-        data: &[u8],
-        peer: SocketAddr,
-    ) -> Result<(), DhcpError> {
+    async fn handle_packet(&mut self, data: &[u8], peer: SocketAddr) -> Result<(), DhcpError> {
         // Parse DHCPv6 message from raw packet data
-        let message = DhcpV6Message::from_bytes(data)
-            .context("Failed to parse DHCPv6 message")?;
+        let message = DhcpV6Message::from_bytes(data).context("Failed to parse DHCPv6 message")?;
 
         let msg_type = message.message_type();
         let xid = message.transaction_id();
-        
+
         debug!(
             msg_type = msg_type,
             xid = format!("{:02x}{:02x}{:02x}", xid[0], xid[1], xid[2]),
@@ -515,7 +502,8 @@ impl DhcpV6Server {
         );
 
         // Extract CLIENT_ID option (required per RFC 3315)
-        let client_id = message.get_option(OPTION_CLIENT_ID)
+        let client_id = message
+            .get_option(OPTION_CLIENT_ID)
             .ok_or(DhcpError::MissingOption { option_code: OPTION_CLIENT_ID })?
             .to_vec();
 
@@ -564,7 +552,7 @@ impl DhcpV6Server {
         let interface = "eth0".to_string(); // Placeholder - should be determined from actual interface
         let ctx = RequestContext::new(
             client_id,
-            *xid,  // Dereference array reference
+            *xid, // Dereference array reference
             interface,
             iaid,
             ia_type,
@@ -573,18 +561,10 @@ impl DhcpV6Server {
 
         // Dispatch based on message type
         let response_opt = match msg_type {
-            MSG_SOLICIT => {
-                Some(self.protocol.handle_solicit(&ctx, &message).await?)
-            }
-            MSG_REQUEST => {
-                Some(self.protocol.handle_request(&ctx, &message).await?)
-            }
-            MSG_RENEW => {
-                Some(self.protocol.handle_renew(&ctx, &message).await?)
-            }
-            MSG_REBIND => {
-                Some(self.protocol.handle_rebind(&ctx, &message).await?)
-            }
+            MSG_SOLICIT => Some(self.protocol.handle_solicit(&ctx, &message).await?),
+            MSG_REQUEST => Some(self.protocol.handle_request(&ctx, &message).await?),
+            MSG_RENEW => Some(self.protocol.handle_renew(&ctx, &message).await?),
+            MSG_REBIND => Some(self.protocol.handle_rebind(&ctx, &message).await?),
             MSG_RELEASE => {
                 self.protocol.handle_release(&ctx, &message).await?;
                 None // No response for RELEASE
@@ -597,20 +577,18 @@ impl DhcpV6Server {
                 Some(self.protocol.handle_information_request(&ctx, &message).await?)
             }
             _ => {
-                warn!(
-                    msg_type = msg_type,
-                    "Unsupported DHCPv6 message type, ignoring"
-                );
+                warn!(msg_type = msg_type, "Unsupported DHCPv6 message type, ignoring");
                 return Ok(());
             }
         };
 
         // Send response if generated
         if let Some(response) = response_opt {
-            let response_bytes = response.to_bytes()
-                .context("Failed to serialize DHCPv6 response")?;
+            let response_bytes =
+                response.to_bytes().context("Failed to serialize DHCPv6 response")?;
 
-            self.socket.send_to(&response_bytes, peer)
+            self.socket
+                .send_to(&response_bytes, peer)
                 .await
                 .context("Failed to send DHCPv6 response")?;
 
@@ -626,14 +604,14 @@ impl DhcpV6Server {
 
     /// Allocates an IPv6 address from the configured address pools.
     ///
-    /// Implements DHCPv6 IA_NA (Identity Association for Non-temporary Addresses) allocation
-    /// with duplicate address detection and lease tracking. This replaces C's address6_allocate()
+    /// Implements `DHCPv6` `IA_NA` (Identity Association for Non-temporary Addresses) allocation
+    /// with duplicate address detection and lease tracking. This replaces C's `address6_allocate()`
     /// function with async Rust implementation.
     ///
     /// # Arguments
     ///
     /// * `client_id` - Client's DUID for lease binding
-    /// * `ia_id` - IA identifier from IA_NA option
+    /// * `ia_id` - IA identifier from `IA_NA` option
     /// * `interface` - Network interface name for pool selection
     /// * `requested_addr` - Optional client-requested address (from IAADDR option)
     ///
@@ -649,14 +627,14 @@ impl DhcpV6Server {
     /// 2. If client has existing lease, renew it
     /// 3. If client requests specific address, validate and allocate if available
     /// 4. Otherwise, iterate through pool range and find first available address
-    /// 5. Allocate lease via LeaseManager with DEFAULT_LEASE_TIME
+    /// 5. Allocate lease via `LeaseManager` with `DEFAULT_LEASE_TIME`
     /// 6. Return allocated address
     ///
     /// # C Equivalent
     ///
     /// ```c
     /// // From dhcp6.c - address6_allocate()
-    /// struct in6_addr *address6_allocate(struct dhcp_context *context, 
+    /// struct in6_addr *address6_allocate(struct dhcp_context *context,
     ///                                    unsigned char *clid, int clid_len,
     ///                                    int serial, struct dhcp_netid *netids,
     ///                                    int plain_range, struct in6_addr *req_addr)
@@ -673,21 +651,22 @@ impl DhcpV6Server {
     /// ).await?;
     /// println!("Allocated address: {}", address);
     /// ```
-    #[instrument(skip(self, client_id), fields(ia_id, interface = %interface), level = "debug")]
+    #[instrument(skip(self, client_id), fields(interface = %interface), level = "debug")]
+    #[allow(clippy::unused_async)] // Part of async API contract
     pub async fn allocate_address(
         &self,
         client_id: &[u8],
-        _ia_id: u32,
+        #[allow(unused_variables)] // Reserved for future IA_NA tracking
+        ia_id: u32,
         interface: &str,
         requested_addr: Option<Ipv6Addr>,
     ) -> Result<Ipv6Addr, DhcpError> {
         debug!("Allocating IPv6 address");
 
         // Find address pools for this interface
-        let pools = self.address_pools.get(interface)
-            .ok_or_else(|| DhcpError::NoAddressAvailable {
-                pool_name: format!("interface {}", interface)
-            })?;
+        let pools = self.address_pools.get(interface).ok_or_else(|| {
+            DhcpError::NoAddressAvailable { pool_name: format!("interface {interface}") }
+        })?;
 
         // Check for existing lease using client identifier (DUID)
         let lease_mgr = self.lease_manager.read().await;
@@ -709,18 +688,20 @@ impl DhcpV6Server {
                 let lease_mgr = self.lease_manager.read().await;
                 if lease_mgr.find_by_ip(&IpAddr::V6(req_addr)).await.is_none() {
                     drop(lease_mgr);
-                    
+
                     // Allocate the requested address
                     let lease_mgr = self.lease_manager.write().await;
-                    lease_mgr.allocate_lease(
-                        IpAddr::V6(req_addr),
-                        None, // DHCPv6 doesn't use MAC addresses
-                        None, // hostname set later from CLIENT_FQDN option
-                        Some(client_id.to_vec()), // client_id (DUID)
-                        interface,
-                        Duration::from_secs(DEFAULT_LEASE_TIME as u64),
-                    ).await?;
-                    
+                    lease_mgr
+                        .allocate_lease(
+                            IpAddr::V6(req_addr),
+                            None,                     // DHCPv6 doesn't use MAC addresses
+                            None,                     // hostname set later from CLIENT_FQDN option
+                            Some(client_id.to_vec()), // client_id (DUID)
+                            interface,
+                            Duration::from_secs(u64::from(DEFAULT_LEASE_TIME)),
+                        )
+                        .await?;
+
                     info!(
                         address = %req_addr,
                         "Allocated requested DHCPv6 address"
@@ -733,32 +714,33 @@ impl DhcpV6Server {
         // Iterate through pools to find available address
         for pool in pools {
             // Extract IPv6 addresses from pool range
-            let (start, end) = match (pool.start, pool.end) {
-                (IpAddr::V6(s), IpAddr::V6(e)) => (s, e),
-                _ => continue, // Skip non-IPv6 pools
+            let (IpAddr::V6(start), IpAddr::V6(end)) = (pool.start, pool.end) else {
+                continue; // Skip non-IPv6 pools
             };
-            
+
             // Simple linear search through range
             // TODO: Could optimize with bitmap or skip list for large pools
             let mut candidate = start;
-            
+
             loop {
                 // Check if candidate is available
                 let lease_mgr = self.lease_manager.read().await;
                 if lease_mgr.find_by_ip(&IpAddr::V6(candidate)).await.is_none() {
                     drop(lease_mgr);
-                    
+
                     // Allocate this address
                     let lease_mgr = self.lease_manager.write().await;
-                    lease_mgr.allocate_lease(
-                        IpAddr::V6(candidate),
-                        None, // DHCPv6 doesn't use MAC addresses
-                        None, // hostname set later from CLIENT_FQDN option
-                        Some(client_id.to_vec()), // client_id (DUID)
-                        interface,
-                        Duration::from_secs(DEFAULT_LEASE_TIME as u64),
-                    ).await?;
-                    
+                    lease_mgr
+                        .allocate_lease(
+                            IpAddr::V6(candidate),
+                            None,                     // DHCPv6 doesn't use MAC addresses
+                            None,                     // hostname set later from CLIENT_FQDN option
+                            Some(client_id.to_vec()), // client_id (DUID)
+                            interface,
+                            Duration::from_secs(u64::from(DEFAULT_LEASE_TIME)),
+                        )
+                        .await?;
+
                     info!(
                         address = %candidate,
                         "Allocated new DHCPv6 address from pool"
@@ -766,10 +748,10 @@ impl DhcpV6Server {
                     return Ok(candidate);
                 }
                 drop(lease_mgr);
-                
+
                 // Increment to next address
                 candidate = Self::increment_ipv6_addr(candidate);
-                
+
                 // Check if we've exceeded pool range
                 if candidate > end {
                     break;
@@ -778,12 +760,10 @@ impl DhcpV6Server {
         }
 
         // No addresses available in any pool
-        Err(DhcpError::NoAddressAvailable {
-            pool_name: format!("interface {}", interface)
-        })
+        Err(DhcpError::NoAddressAvailable { pool_name: format!("interface {interface}") })
     }
 
-    /// Handles DHCPv6 prefix delegation (IA_PD) requests.
+    /// Handles `DHCPv6` prefix delegation (`IA_PD`) requests.
     ///
     /// Implements RFC 3633 prefix delegation for downstream routers requesting IPv6 prefixes
     /// to subnet their networks. This enables hierarchical address allocation in enterprise
@@ -792,13 +772,13 @@ impl DhcpV6Server {
     /// # Arguments
     ///
     /// * `client_id` - Client DUID requesting prefix delegation
-    /// * `ia_pd_id` - IA_PD identifier from client request
+    /// * `ia_pd_id` - `IA_PD` identifier from client request
     /// * `interface` - Interface on which request was received
     /// * `requested_prefix` - Optional client hint for prefix allocation
     ///
     /// # Returns
     ///
-    /// - `Ok((Ipv6Addr, u8))` with prefix address and length (e.g., 2001:db8::/56)
+    /// - `Ok((Ipv6Addr, u8))` with prefix address and length (e.g., `2001:db8::/56`)
     /// - `Err(DhcpError::NoPrefixAvailable)` if no prefixes configured or available
     ///
     /// # C Equivalent
@@ -822,42 +802,43 @@ impl DhcpV6Server {
     /// ).await?;
     /// println!("Delegated prefix: {}/{}", prefix, prefix_len);
     /// ```
-    #[instrument(skip(self, _client_id), fields(ia_pd_id, interface = %interface), level = "debug")]
+    #[instrument(skip(self, client_id), fields(interface = %interface), level = "debug")]
+    #[allow(clippy::unused_async)] // Part of async API contract
     pub async fn handle_prefix_delegation(
         &self,
-        _client_id: &[u8],
-        _ia_pd_id: u32,
+        #[allow(unused_variables)] // Reserved for future PD tracking
+        client_id: &[u8],
+        #[allow(unused_variables)] // Reserved for future IA_PD tracking
+        ia_pd_id: u32,
         interface: &str,
-        _requested_prefix: Option<(Ipv6Addr, u8)>,
+        #[allow(unused_variables)] // Reserved for future prefix allocation hints
+        requested_prefix: Option<(Ipv6Addr, u8)>,
     ) -> Result<(Ipv6Addr, u8), DhcpError> {
         debug!("Handling prefix delegation request");
 
         // Find pools with prefix delegation enabled for this interface
-        let pools = self.address_pools.get(interface)
-            .ok_or_else(|| DhcpError::PrefixDelegationFailed {
-                reason: format!("No pools configured for interface {}", interface)
+        let pools =
+            self.address_pools.get(interface).ok_or_else(|| DhcpError::PrefixDelegationFailed {
+                reason: format!("No pools configured for interface {interface}"),
             })?;
 
         // Filter for PD-enabled contexts
-        let pd_pools: Vec<_> = pools.iter()
-            .filter(|ctx| ctx.prefix_len > 0)
-            .collect();
+        let pd_pools: Vec<_> = pools.iter().filter(|ctx| ctx.prefix_len > 0).collect();
 
         if pd_pools.is_empty() {
             return Err(DhcpError::PrefixDelegationFailed {
-                reason: format!("No prefix delegation pools configured for interface {}", interface)
+                reason: format!("No prefix delegation pools configured for interface {interface}"),
             });
         }
 
         // For simplicity, allocate from first PD pool
         // Production implementation would track PD allocations separately
         let pd_pool = pd_pools[0];
-        
-        let prefix_addr = match pd_pool.start {
-            IpAddr::V6(addr) => addr,
-            _ => return Err(DhcpError::PrefixDelegationFailed {
-                reason: "Prefix delegation pool has non-IPv6 address".to_string()
-            }),
+
+        let IpAddr::V6(prefix_addr) = pd_pool.start else {
+            return Err(DhcpError::PrefixDelegationFailed {
+                reason: "Prefix delegation pool has non-IPv6 address".to_string(),
+            });
         };
         let prefix_len = pd_pool.prefix_len;
 
@@ -870,14 +851,14 @@ impl DhcpV6Server {
         Ok((prefix_addr, prefix_len))
     }
 
-    /// Binds a UDP socket to DHCPv6 server port 547.
+    /// Binds a UDP socket to `DHCPv6` server port 547.
     ///
     /// Creates and configures a UDP socket with DHCPv6-specific options including:
-    /// - IPV6_V6ONLY: Ensure IPv6-only operation
-    /// - SO_REUSEADDR: Allow multiple dnsmasq instances
-    /// - SO_REUSEPORT: Load balance across processes (Linux/BSD)
-    /// - IPV6_PKTINFO: Receive packet metadata (interface index, dest address)
-    /// - IPV6_TCLASS: Set traffic class to CS6 (network control)
+    /// - `IPV6_V6ONLY`: Ensure IPv6-only operation
+    /// - `SO_REUSEADDR`: Allow multiple dnsmasq instances
+    /// - `SO_REUSEPORT`: Load balance across processes (Linux/BSD)
+    /// - `IPV6_PKTINFO`: Receive packet metadata (interface index, dest address)
+    /// - `IPV6_TCLASS`: Set traffic class to CS6 (network control)
     ///
     /// # Arguments
     ///
@@ -901,7 +882,7 @@ impl DhcpV6Server {
     /// # Security
     ///
     /// Binding to port 547 requires:
-    /// - Linux: CAP_NET_BIND_SERVICE capability or root
+    /// - Linux: `CAP_NET_BIND_SERVICE` capability or root
     /// - BSD/macOS: root privileges
     ///
     /// # Examples
@@ -918,15 +899,17 @@ impl DhcpV6Server {
 
         // Create IPv6 UDP socket using socket2 for option control
         let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))
-            .map_err(|e| DhcpError::SocketError(format!("Failed to create socket: {}", e)))?;
+            .map_err(|e| DhcpError::SocketError(format!("Failed to create socket: {e}")))?;
 
         // Set IPV6_V6ONLY to ensure IPv6-only operation
-        socket.set_only_v6(true)
-            .map_err(|e| DhcpError::SocketError(format!("Failed to set IPV6_V6ONLY: {}", e)))?;
+        socket
+            .set_only_v6(true)
+            .map_err(|e| DhcpError::SocketError(format!("Failed to set IPV6_V6ONLY: {e}")))?;
 
         // Set SO_REUSEADDR for bind-interfaces mode
-        socket.set_reuse_address(true)
-            .map_err(|e| DhcpError::SocketError(format!("Failed to set SO_REUSEADDR: {}", e)))?;
+        socket
+            .set_reuse_address(true)
+            .map_err(|e| DhcpError::SocketError(format!("Failed to set SO_REUSEADDR: {e}")))?;
 
         // Set SO_REUSEPORT if supported (Linux, BSD, macOS)
         // NOTE: socket2 0.5 doesn't expose set_reuse_port method directly.
@@ -940,16 +923,19 @@ impl DhcpV6Server {
 
         // Bind to [::]:547 (all interfaces)
         let bind_addr = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, PORT_SERVER, 0, 0);
-        socket.bind(&bind_addr.into())
-            .map_err(|e| DhcpError::SocketError(format!("Failed to bind to port {}: {}", PORT_SERVER, e)))?;
+        socket.bind(&bind_addr.into()).map_err(|e| {
+            DhcpError::SocketError(format!("Failed to bind to port {PORT_SERVER}: {e}"))
+        })?;
 
         // Convert to tokio UdpSocket
         let std_socket: std::net::UdpSocket = socket.into();
-        std_socket.set_nonblocking(true)
-            .map_err(|e| DhcpError::SocketError(format!("Failed to set non-blocking: {}", e)))?;
-        
-        let tokio_socket = UdpSocket::from_std(std_socket)
-            .map_err(|e| DhcpError::SocketError(format!("Failed to convert to tokio socket: {}", e)))?;
+        std_socket
+            .set_nonblocking(true)
+            .map_err(|e| DhcpError::SocketError(format!("Failed to set non-blocking: {e}")))?;
+
+        let tokio_socket = UdpSocket::from_std(std_socket).map_err(|e| {
+            DhcpError::SocketError(format!("Failed to convert to tokio socket: {e}"))
+        })?;
 
         info!("Successfully bound DHCPv6 socket to [::]:{}", PORT_SERVER);
         Ok(tokio_socket)
@@ -973,17 +959,15 @@ impl DhcpV6Server {
     /// ```
     pub async fn shutdown(&self) -> Result<(), DhcpError> {
         info!("Initiating DHCPv6 server shutdown");
-        
-        self.shutdown_tx.send(())
-            .await
-            .map_err(|_| DhcpError::V6ProtocolError {
-                reason: "Shutdown channel closed unexpectedly".to_string()
-            })?;
-        
+
+        self.shutdown_tx.send(()).await.map_err(|_| DhcpError::V6ProtocolError {
+            reason: "Shutdown channel closed unexpectedly".to_string(),
+        })?;
+
         Ok(())
     }
 
-    /// Generates a server DUID (DHCPv6 Unique Identifier).
+    /// Generates a server DUID (`DHCPv6` Unique Identifier).
     ///
     /// Uses DUID-LLT (Link-Layer Time) format per RFC 3315 Section 9.2:
     /// - Type: 1 (Link-Layer Time)
@@ -999,19 +983,20 @@ impl DhcpV6Server {
     ///
     /// - `Ok(Vec<u8>)` containing DUID bytes
     /// - `Err(DhcpError)` if MAC address retrieval fails
+    #[allow(clippy::unnecessary_wraps)] // Future: will fail when reading MAC from interface
     fn generate_server_duid(_config: &Config) -> Result<Vec<u8>, DhcpError> {
         // For simplicity, generate a DUID-LL (Link-Layer) Type 3
         // Real implementation would read MAC address from primary interface
-        
+
         let mut duid = Vec::new();
-        
+
         // DUID-LL format: Type (2 bytes) + Hardware Type (2 bytes) + MAC (6 bytes)
         duid.extend_from_slice(&[0x00, 0x03]); // Type 3 (DUID-LL)
         duid.extend_from_slice(&[0x00, 0x01]); // Hardware type 1 (Ethernet)
-        
+
         // Use a fixed MAC for deterministic DUID (real implementation would use actual MAC)
         duid.extend_from_slice(&[0x00, 0x11, 0x22, 0x33, 0x44, 0x55]);
-        
+
         Ok(duid)
     }
 
@@ -1023,22 +1008,23 @@ impl DhcpV6Server {
     ///
     /// # Returns
     ///
-    /// HashMap mapping interface name to vector of ranges for that interface
+    /// `HashMap` mapping interface name to vector of ranges for that interface
+    #[allow(clippy::unnecessary_wraps)] // Result for consistency with other pool operations
     fn index_address_pools(
         ranges: &[DhcpRange],
     ) -> Result<HashMap<String, Vec<DhcpRange>>, DhcpError> {
         let mut pools: HashMap<String, Vec<DhcpRange>> = HashMap::new();
-        
+
         for range in ranges {
             // Only include DHCPv6 ranges (IPv6 addresses)
             if !range.is_ipv6 {
                 continue;
             }
-            
+
             let interface = range.interface.clone().unwrap_or_else(|| "default".to_string());
             pools.entry(interface).or_default().push(range.clone());
         }
-        
+
         Ok(pools)
     }
 
@@ -1058,7 +1044,7 @@ impl DhcpV6Server {
     /// Used for iterating through address ranges during allocation.
     fn increment_ipv6_addr(addr: Ipv6Addr) -> Ipv6Addr {
         let mut octets = addr.octets();
-        
+
         // Add 1 to the address (big-endian)
         for i in (0..16).rev() {
             if octets[i] == 255 {
@@ -1068,20 +1054,20 @@ impl DhcpV6Server {
                 break;
             }
         }
-        
+
         Ipv6Addr::from(octets)
     }
 
     /// Determines if a socket error is fatal (server should terminate).
     fn is_fatal_socket_error(err: &std::io::Error) -> bool {
         use std::io::ErrorKind;
-        
+
         matches!(
             err.kind(),
-            ErrorKind::ConnectionAborted |
-            ErrorKind::ConnectionReset |
-            ErrorKind::BrokenPipe |
-            ErrorKind::NotConnected
+            ErrorKind::ConnectionAborted
+                | ErrorKind::ConnectionReset
+                | ErrorKind::BrokenPipe
+                | ErrorKind::NotConnected
         )
     }
 }
@@ -1095,7 +1081,7 @@ mod tests {
         let addr = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1);
         let next = DhcpV6Server::increment_ipv6_addr(addr);
         assert_eq!(next, Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 2));
-        
+
         // Test wraparound
         let addr = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 0xffff);
         let next = DhcpV6Server::increment_ipv6_addr(addr);
@@ -1105,7 +1091,7 @@ mod tests {
     #[test]
     fn test_is_address_in_pools() {
         use crate::config::types::DhcpRange;
-        
+
         let pool = DhcpRange {
             start: IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 100)),
             end: IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 200)),
@@ -1114,12 +1100,12 @@ mod tests {
             interface: None,
             lease_time: None,
             is_ipv6: true,
-            prefix_len: 0,  // Not a prefix delegation pool
+            prefix_len: 0, // Not a prefix delegation pool
         };
-        
+
         let addr_in = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 150);
         assert!(DhcpV6Server::is_address_in_pools(&addr_in, std::slice::from_ref(&pool)));
-        
+
         let addr_out = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 250);
         assert!(!DhcpV6Server::is_address_in_pools(&addr_out, std::slice::from_ref(&pool)));
     }

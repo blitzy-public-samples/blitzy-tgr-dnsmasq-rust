@@ -97,11 +97,11 @@
 //!
 //! # Key Improvements Over C
 //!
-//! - **Automatic Memory Management**: Drop trait ensures nft_ctx_free() is always called
-//! - **No Buffer Overflows**: String uses Vec<u8> with automatic growth, no snprintf() sizing issues
-//! - **Type-Safe Addresses**: IpAddr enum eliminates F_IPV4/F_IPV6 flag discrimination
-//! - **Safe Error Handling**: CStr validates UTF-8, no null pointer dereferences
-//! - **Async Integration**: spawn_blocking prevents event loop blocking during syscalls
+//! - **Automatic Memory Management**: Drop trait ensures `nft_ctx_free()` is always called
+//! - **No Buffer Overflows**: String uses Vec<u8> with automatic growth, no `snprintf()` sizing issues
+//! - **Type-Safe Addresses**: `IpAddr` enum eliminates `F_IPV4/F_IPV6` flag discrimination
+//! - **Safe Error Handling**: `CStr` validates UTF-8, no null pointer dereferences
+//! - **Async Integration**: `spawn_blocking` prevents event loop blocking during syscalls
 //! - **Structured Logging**: tracing crate with context-rich events
 //!
 //! # Configuration Format
@@ -165,18 +165,18 @@
 //! # Performance Characteristics
 //!
 //! - **Context initialization**: ~100μs (one-time cost at daemon startup)
-//! - **Command execution**: 100μs-1ms per nft_run_cmd_from_buffer() call
-//! - **Async overhead**: spawn_blocking task scheduling ~10-50μs
+//! - **Command execution**: 100μs-1ms per `nft_run_cmd_from_buffer()` call
+//! - **Async overhead**: `spawn_blocking` task scheduling ~10-50μs
 //! - **Total per-address latency**: Typically <2ms, acceptable for DNS resolution path
 //!
 //! # Thread Safety
 //!
-//! The nft_ctx is not thread-safe according to libnftables documentation. However, our
+//! The `nft_ctx` is not thread-safe according to libnftables documentation. However, our
 //! implementation is safe because:
 //!
-//! 1. All FFI calls are wrapped in spawn_blocking, ensuring serial execution
-//! 2. NftablesBackend is Send + Sync, but each operation clones the context pointer
-//! 3. The underlying nft_ctx_run_cmd_from_buffer is reentrant within a single thread
+//! 1. All FFI calls are wrapped in `spawn_blocking`, ensuring serial execution
+//! 2. `NftablesBackend` is Send + Sync, but each operation clones the context pointer
+//! 3. The underlying `nft_ctx_run_cmd_from_buffer` is reentrant within a single thread
 //!
 //! # Conditional Compilation
 //!
@@ -214,7 +214,7 @@
 //! # References
 //!
 //! - libnftables documentation: `man 3 libnftables`
-//! - nftables wiki: https://wiki.nftables.org/
+//! - nftables wiki: <https://wiki.nftables.org>/
 //! - Original C implementation: src/nftset.c
 //! - Kernel documentation: Documentation/networking/nftables.txt
 
@@ -236,7 +236,7 @@ struct nft_ctx {
     _private: [u8; 0],
 }
 
-/// NFT_CTX_DEFAULT flag for nft_ctx_new() - use default context configuration
+/// `NFT_CTX_DEFAULT` flag for `nft_ctx_new()` - use default context configuration
 const NFT_CTX_DEFAULT: u32 = 0;
 
 extern "C" {
@@ -245,22 +245,22 @@ extern "C" {
     /// # Safety
     ///
     /// This function allocates memory managed by libnftables. The returned pointer must be
-    /// freed with nft_ctx_free() to avoid memory leaks. Returns NULL on allocation failure.
+    /// freed with `nft_ctx_free()` to avoid memory leaks. Returns NULL on allocation failure.
     ///
     /// # Arguments
     ///
-    /// * `flags` - Context creation flags (typically NFT_CTX_DEFAULT = 0)
+    /// * `flags` - Context creation flags (typically `NFT_CTX_DEFAULT` = 0)
     ///
     /// # Returns
     ///
-    /// Pointer to nft_ctx on success, NULL on failure (memory allocation error)
+    /// Pointer to `nft_ctx` on success, NULL on failure (memory allocation error)
     fn nft_ctx_new(flags: u32) -> *mut nft_ctx;
 
     /// Free nftables library context.
     ///
     /// # Safety
     ///
-    /// The context pointer must be valid (previously returned by nft_ctx_new and not yet freed).
+    /// The context pointer must be valid (previously returned by `nft_ctx_new` and not yet freed).
     /// After this call, the pointer is invalid and must not be dereferenced.
     ///
     /// # Arguments
@@ -292,7 +292,7 @@ extern "C" {
     /// # Safety
     ///
     /// - `ctx` must be a valid nftables context pointer
-    /// - The returned string pointer is valid until the next nft_run_cmd_from_buffer() call
+    /// - The returned string pointer is valid until the next `nft_run_cmd_from_buffer()` call
     /// - The returned pointer may be NULL if no error has occurred
     /// - The string is owned by the context and must not be freed by the caller
     ///
@@ -310,7 +310,7 @@ extern "C" {
     /// # Safety
     ///
     /// `ctx` must be a valid nftables context pointer. After this call, errors are captured
-    /// in an internal buffer accessible via nft_ctx_get_error_buffer() instead of being
+    /// in an internal buffer accessible via `nft_ctx_get_error_buffer()` instead of being
     /// printed to stderr.
     ///
     /// # Arguments
@@ -319,19 +319,19 @@ extern "C" {
     fn nft_ctx_buffer_error(ctx: *mut nft_ctx);
 }
 
-/// Thread-safe wrapper for nft_ctx pointer.
+/// Thread-safe wrapper for `nft_ctx` pointer.
 ///
 /// This wrapper explicitly implements `Send` to allow the context pointer to be moved
 /// across thread boundaries. This is safe because:
 ///
-/// 1. **Exclusive Access**: Each spawn_blocking task has exclusive access to the context
+/// 1. **Exclusive Access**: Each `spawn_blocking` task has exclusive access to the context
 ///    during its execution. We never have concurrent access to the same context from
 ///    multiple threads.
 ///
-/// 2. **Serialized Operations**: All operations go through spawn_blocking, which executes
+/// 2. **Serialized Operations**: All operations go through `spawn_blocking`, which executes
 ///    them sequentially on the blocking thread pool. There's no actual concurrent access.
 ///
-/// 3. **Single Ownership**: The parent NftablesBackend owns the context, and we only
+/// 3. **Single Ownership**: The parent `NftablesBackend` owns the context, and we only
 ///    copy the pointer value (not the context itself) into blocking tasks.
 ///
 /// # Safety Justification
@@ -339,24 +339,24 @@ extern "C" {
 /// While `NonNull<T>` does not implement `Send` by default (because raw pointers are not
 /// inherently thread-safe), our usage pattern ensures thread safety:
 ///
-/// - The nft_ctx pointer is only accessed in spawn_blocking tasks (blocking thread pool)
+/// - The `nft_ctx` pointer is only accessed in `spawn_blocking` tasks (blocking thread pool)
 /// - Each task creates a temporary wrapper, uses it, and forgets it (preventing Drop)
 /// - The actual context is never moved or copied, only the pointer value
 /// - libnftables internal state is handled by the library itself
 ///
 /// This pattern is equivalent to `Arc<Mutex<nft_ctx>>` but without the runtime overhead,
-/// since spawn_blocking already provides serialization.
+/// since `spawn_blocking` already provides serialization.
 #[derive(Clone, Copy)]
 struct SendNftCtx(NonNull<nft_ctx>);
 
 impl SendNftCtx {
-    /// Get the raw pointer to the nft_ctx.
+    /// Get the raw pointer to the `nft_ctx`.
     ///
     /// # Safety
     ///
     /// The caller must ensure:
     /// - The returned pointer is only used while the context is still valid
-    /// - No concurrent access from multiple threads (use spawn_blocking for serialization)
+    /// - No concurrent access from multiple threads (use `spawn_blocking` for serialization)
     fn as_ptr(&self) -> *mut nft_ctx {
         self.0.as_ptr()
     }
@@ -381,27 +381,27 @@ unsafe impl Send for SendNftCtx {}
 /// lifetime management. This Rust implementation uses:
 ///
 /// - `NonNull<nft_ctx>` to ensure the pointer is never null after construction
-/// - Drop trait to guarantee nft_ctx_free() is called when the backend is dropped
+/// - Drop trait to guarantee `nft_ctx_free()` is called when the backend is dropped
 /// - Private field to prevent external construction (only via `initialize()`)
 ///
 /// # Thread Safety
 ///
 /// The struct is `Send + Sync` because:
-/// - All mutations are through spawn_blocking (thread-safe by construction)
-/// - The nft_ctx pointer is only accessed in blocking tasks (serialized execution)
+/// - All mutations are through `spawn_blocking` (thread-safe by construction)
+/// - The `nft_ctx` pointer is only accessed in blocking tasks (serialized execution)
 /// - libnftables internal state is protected by the library
 ///
 /// However, libnftables documentation states the context is not thread-safe, so we ensure
-/// only one operation executes at a time via spawn_blocking's sequential execution model.
+/// only one operation executes at a time via `spawn_blocking`'s sequential execution model.
 pub struct NftablesBackend {
     /// Owned nftables context pointer (guaranteed non-null after construction).
     ///
     /// This field is private to enforce construction only through `initialize()`, ensuring
     /// the context is properly configured (error buffering enabled) before use.
     ///
-    /// Wrapped in SendNftCtx to allow moving across thread boundaries in spawn_blocking.
+    /// Wrapped in `SendNftCtx` to allow moving across thread boundaries in `spawn_blocking`.
     ///
-    /// Lifetime: Created in initialize(), freed in Drop::drop()
+    /// Lifetime: Created in `initialize()`, freed in `Drop::drop()`
     ctx: SendNftCtx,
 }
 
@@ -409,14 +409,14 @@ impl NftablesBackend {
     /// Initialize nftables backend with new context.
     ///
     /// Creates a new libnftables context, configures it for error buffering, and returns
-    /// a NftablesBackend instance. This function must be called once during daemon
+    /// a `NftablesBackend` instance. This function must be called once during daemon
     /// initialization before any firewall operations.
     ///
     /// # Errors
     ///
     /// Returns [`FirewallError::DeviceNotFound`] if:
     /// - libnftables library is not available (not installed)
-    /// - nft_ctx_new() fails due to memory allocation failure
+    /// - `nft_ctx_new()` fails due to memory allocation failure
     /// - nftables kernel module is not loaded
     ///
     /// # Example
@@ -485,7 +485,7 @@ impl NftablesBackend {
     ///
     /// # Returns
     ///
-    /// - `Some(filtered_spec)` - Address passes filter, use filtered_spec (with prefix removed)
+    /// - `Some(filtered_spec)` - Address passes filter, use `filtered_spec` (with prefix removed)
     /// - `None` - Address filtered out by family prefix
     ///
     /// # Example
@@ -568,12 +568,12 @@ impl NftablesBackend {
     fn build_nft_command(operation: &str, set_spec: &str, ip: IpAddr) -> String {
         // Use standard library Display implementation for IP address formatting
         // This handles both IPv4 (dotted decimal) and IPv6 (colon-hex) automatically
-        format!("{} element {} {{ {} }}", operation, set_spec, ip)
+        format!("{operation} element {set_spec} {{ {ip} }}")
     }
 
     /// Execute nftables command and handle errors.
     ///
-    /// This is an internal helper that wraps the unsafe FFI call to nft_run_cmd_from_buffer()
+    /// This is an internal helper that wraps the unsafe FFI call to `nft_run_cmd_from_buffer()`
     /// with proper error handling and logging.
     ///
     /// # Arguments
@@ -590,7 +590,7 @@ impl NftablesBackend {
     ///
     /// This function contains unsafe FFI calls to libnftables, but is safe to call because:
     /// - self.ctx is guaranteed to be a valid non-null pointer
-    /// - command_cstr is a valid null-terminated C string
+    /// - `command_cstr` is a valid null-terminated C string
     /// - All pointer lifetimes are correctly managed
     #[instrument(skip(self, command), fields(command = %command, set_spec = %set_spec))]
     fn execute_command(&self, command: &str, set_spec: &str) -> Result<()> {
@@ -599,7 +599,7 @@ impl NftablesBackend {
         // Convert Rust string to C string (null-terminated)
         let command_cstr = CString::new(command).map_err(|e| {
             error!(error = %e, "Failed to create C string from command (contains null byte)");
-            FirewallError::ProtocolError(format!("Invalid command string: {}", e))
+            FirewallError::ProtocolError(format!("Invalid command string: {e}"))
         })?;
 
         // SAFETY:
@@ -621,10 +621,10 @@ impl NftablesBackend {
                 let error_cstr = unsafe { CStr::from_ptr(error_ptr) };
 
                 // Convert to Rust string, handling invalid UTF-8 gracefully
-                let error_str = error_cstr.to_string_lossy();
+                let error_text = error_cstr.to_string_lossy();
 
                 // Take only the first line (original C code did this)
-                error_str.lines().next().unwrap_or("").to_string()
+                error_text.lines().next().unwrap_or("").to_string()
             };
 
             error!(
@@ -634,7 +634,7 @@ impl NftablesBackend {
                 "nftables command failed"
             );
 
-            return Err(FirewallError::ProtocolError(format!("nftset {} {}", set_spec, error_msg)));
+            return Err(FirewallError::ProtocolError(format!("nftset {set_spec} {error_msg}")));
         }
 
         debug!("nftables command executed successfully");
@@ -643,7 +643,7 @@ impl NftablesBackend {
 
     /// Add or remove IP address from nftables set (internal implementation).
     ///
-    /// This is the core implementation shared by add_to_set and remove_from_set.
+    /// This is the core implementation shared by `add_to_set` and `remove_from_set`.
     /// It handles address family filtering, command construction, and execution.
     ///
     /// # Arguments
@@ -674,8 +674,7 @@ impl NftablesBackend {
                 "Address filtered by family prefix"
             );
             FirewallError::AddressNotSupported(format!(
-                "Address {} does not match family filter in set specification {}",
-                ip, set_spec
+                "Address {ip} does not match family filter in set specification {set_spec}"
             ))
         })?;
 
@@ -700,7 +699,7 @@ impl Drop for NftablesBackend {
     /// # C Comparison
     ///
     /// The C implementation relied on process termination to clean up the global ctx pointer,
-    /// or required manual nft_ctx_free() calls that could be forgotten. The Rust Drop trait
+    /// or required manual `nft_ctx_free()` calls that could be forgotten. The Rust Drop trait
     /// guarantees cleanup.
     fn drop(&mut self) {
         debug!("Freeing nftables context");
@@ -728,7 +727,7 @@ unsafe impl Sync for NftablesBackend {}
 impl FirewallBackend for NftablesBackend {
     /// Add resolved IP address to nftables set.
     ///
-    /// This async method wraps the synchronous libnftables FFI call in spawn_blocking
+    /// This async method wraps the synchronous libnftables FFI call in `spawn_blocking`
     /// to prevent blocking the tokio event loop during kernel netlink communication.
     ///
     /// # Arguments
@@ -786,14 +785,14 @@ impl FirewallBackend for NftablesBackend {
         .await
         .map_err(|e| {
             error!(error = %e, "Blocking task panicked");
-            FirewallError::ProtocolError(format!("Task panic: {}", e))
+            FirewallError::ProtocolError(format!("Task panic: {e}"))
         })?
     }
 
     /// Remove IP address from nftables set.
     ///
     /// This async method removes an address from a nftables set when DNS cache entries
-    /// expire or change. It wraps the synchronous libnftables FFI call in spawn_blocking.
+    /// expire or change. It wraps the synchronous libnftables FFI call in `spawn_blocking`.
     ///
     /// # Arguments
     ///
@@ -841,7 +840,7 @@ impl FirewallBackend for NftablesBackend {
         .await
         .map_err(|e| {
             error!(error = %e, "Blocking task panicked");
-            FirewallError::ProtocolError(format!("Task panic: {}", e))
+            FirewallError::ProtocolError(format!("Task panic: {e}"))
         })?
     }
 }

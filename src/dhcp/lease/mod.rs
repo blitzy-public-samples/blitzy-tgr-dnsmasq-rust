@@ -1,6 +1,6 @@
 //! DHCP lease management module.
 //!
-//! This module provides lease database management for both DHCPv4 and DHCPv6, replacing
+//! This module provides lease database management for both `DHCPv4` and `DHCPv6`, replacing
 //! the C implementation in `src/lease.c` with memory-safe Rust equivalents. It manages
 //! lease allocation, renewal, release, expiration, and persistence, while coordinating
 //! DNS registration and helper script execution.
@@ -15,7 +15,7 @@
 //!
 //! # Core Types
 //!
-//! - [`Lease`]: Represents a single DHCPv4 or DHCPv6 lease with all metadata
+//! - [`Lease`]: Represents a single `DHCPv4` or `DHCPv6` lease with all metadata
 //! - [`LeaseRepository`]: Abstract storage backend trait for lease persistence
 //! - [`LeaseManager`]: High-level coordinator for lease operations
 //! - [`LeaseFlags`]: Type-safe bitflags for lease state (STATIC, DECLINED, etc.)
@@ -118,7 +118,7 @@ impl Default for LeaseFlags {
 /// DHCP lease lifecycle action for script execution.
 ///
 /// Enum representing lease state change events that trigger helper script
-/// execution. Corresponds to C lease_change_command invocation points.
+/// execution. Corresponds to C `lease_change_command` invocation points.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LeaseAction {
     /// New lease allocated (add)
@@ -133,6 +133,7 @@ pub enum LeaseAction {
 
 impl LeaseAction {
     /// Returns the string representation for script environment variable.
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             LeaseAction::Add => "add",
@@ -143,29 +144,29 @@ impl LeaseAction {
     }
 }
 
-/// DHCP lease record for DHCPv4 and DHCPv6.
+/// DHCP lease record for `DHCPv4` and `DHCPv6`.
 ///
 /// Represents a single lease entry with all metadata. Replaces C's `struct dhcp_lease`
 /// (dnsmasq.h ~line 856) with Rust struct using ownership for all string fields.
-/// Supports both DHCPv4 and DHCPv6 with unified representation.
+/// Supports both `DHCPv4` and `DHCPv6` with unified representation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lease {
     /// IP address (IPv4 or IPv6)
     pub ip: IpAddr,
 
-    /// Hardware (MAC) address for DHCPv4, optional for DHCPv6
+    /// Hardware (MAC) address for `DHCPv4`, optional for `DHCPv6`
     pub mac: Option<MacAddress>,
 
     /// Client-supplied hostname, sanitized for DNS compliance
     pub hostname: Option<String>,
 
-    /// Client identifier (option 61 in DHCPv4, DUID in DHCPv6)
+    /// Client identifier (option 61 in `DHCPv4`, DUID in `DHCPv6`)
     pub client_id: Option<Vec<u8>>,
 
-    /// Lease expiration time (absolute SystemTime)
+    /// Lease expiration time (absolute `SystemTime`)
     pub expires: SystemTime,
 
-    /// DHCPv6 Identity Association Identifier (IAID)
+    /// `DHCPv6` Identity Association Identifier (IAID)
     pub iaid: Option<u32>,
 
     /// Lease state flags
@@ -177,13 +178,13 @@ pub struct Lease {
     /// Fully qualified domain name (if domain configured)
     pub fqdn: Option<String>,
 
-    /// Vendor class identifier (option 60 in DHCPv4)
+    /// Vendor class identifier (option 60 in `DHCPv4`)
     pub vendorclass: Option<Vec<u8>>,
 
-    /// Relay agent information (option 82 in DHCPv4)
+    /// Relay agent information (option 82 in `DHCPv4`)
     pub agent_id: Option<Vec<u8>>,
 
-    /// DHCPv6 SLAAC-generated addresses for this client
+    /// `DHCPv6` SLAAC-generated addresses for this client
     pub slaac_addresses: Option<Vec<Ipv6Addr>>,
 }
 
@@ -193,7 +194,7 @@ impl Lease {
     /// # Arguments
     ///
     /// * `ip` - IP address being leased
-    /// * `mac` - Hardware address (optional for DHCPv6)
+    /// * `mac` - Hardware address (optional for `DHCPv6`)
     /// * `hostname` - Client-supplied hostname (will be sanitized)
     /// * `client_id` - Client identifier bytes
     /// * `interface` - Network interface name
@@ -257,6 +258,7 @@ impl Lease {
     ///     manager.release_lease(&lease.ip).await?;
     /// }
     /// ```
+    #[must_use]
     pub fn is_expired(&self) -> bool {
         SystemTime::now() > self.expires
     }
@@ -266,6 +268,7 @@ impl Lease {
     /// # Returns
     ///
     /// Some(Duration) if not expired, None if expired
+    #[must_use]
     pub fn remaining_duration(&self) -> Option<Duration> {
         self.expires.duration_since(SystemTime::now()).ok()
     }
@@ -277,7 +280,7 @@ impl Lease {
     /// * `domain` - Domain suffix to append to hostname
     pub fn set_fqdn(&mut self, domain: &str) {
         if let Some(ref hostname) = self.hostname {
-            self.fqdn = Some(format!("{}.{}", hostname, domain));
+            self.fqdn = Some(format!("{hostname}.{domain}"));
         }
     }
 }
@@ -289,7 +292,7 @@ impl Default for Lease {
     /// `..Default::default()` syntax. For production use, prefer `Lease::new()`.
     fn default() -> Self {
         Self {
-            ip: IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)),
+            ip: IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
             mac: None,
             hostname: None,
             client_id: None,
@@ -373,7 +376,7 @@ pub trait LeaseRepository: Send + Sync {
 
 /// In-memory lease storage implementation.
 ///
-/// Default LeaseRepository implementation using HashMap for O(1) IP lookups.
+/// Default `LeaseRepository` implementation using `HashMap` for O(1) IP lookups.
 /// Replaces C's linked list traversal with efficient hash-based access.
 pub struct MemoryLeaseRepository {
     /// Primary storage indexed by IP address
@@ -384,11 +387,13 @@ pub struct MemoryLeaseRepository {
 
 impl MemoryLeaseRepository {
     /// Creates a new empty in-memory lease repository.
+    #[must_use]
     pub fn new() -> Self {
         Self { leases: HashMap::new(), mac_index: HashMap::new() }
     }
 
     /// Creates a repository with pre-allocated capacity.
+    #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             leases: HashMap::with_capacity(capacity),
@@ -450,7 +455,7 @@ impl LeaseRepository for MemoryLeaseRepository {
         let mut expired_ips = Vec::new();
 
         // Collect expired lease IPs
-        for (ip, lease) in self.leases.iter() {
+        for (ip, lease) in &self.leases {
             if lease.expires <= now && !lease.flags.contains(LeaseFlags::STATIC) {
                 expired_ips.push(*ip);
             }
@@ -476,8 +481,8 @@ impl LeaseRepository for MemoryLeaseRepository {
 /// High-level lease lifecycle coordinator.
 ///
 /// Manages lease operations with integrated DNS registration and script notification.
-/// Replaces C's global lease manipulation functions (lease4_allocate, lease_prune, etc.)
-/// with structured coordination via LeaseRepository, DnsCache, and script execution.
+/// Replaces C's global lease manipulation functions (`lease4_allocate`, `lease_prune`, etc.)
+/// with structured coordination via `LeaseRepository`, `DnsCache`, and script execution.
 pub struct LeaseManager {
     /// Lease storage backend
     repository: Arc<RwLock<Box<dyn LeaseRepository>>>,
@@ -521,12 +526,12 @@ impl LeaseManager {
     /// Allocates a new lease or updates an existing one.
     ///
     /// Coordinates lease storage, DNS registration, and script execution.
-    /// Replaces C lease4_allocate() and lease6_allocate() with unified implementation.
+    /// Replaces C `lease4_allocate()` and `lease6_allocate()` with unified implementation.
     ///
     /// # Arguments
     ///
     /// * `ip` - IP address to lease
-    /// * `mac` - Hardware address (optional for DHCPv6)
+    /// * `mac` - Hardware address (optional for `DHCPv6`)
     /// * `hostname` - Client-supplied hostname
     /// * `client_id` - Client identifier
     /// * `interface` - Network interface name
@@ -538,7 +543,7 @@ impl LeaseManager {
     ///
     /// # Errors
     ///
-    /// Returns DhcpError if lease limit reached or storage fails
+    /// Returns `DhcpError` if lease limit reached or storage fails
     pub async fn allocate_lease(
         &self,
         ip: IpAddr,
@@ -609,7 +614,7 @@ impl LeaseManager {
     /// Releases a lease by IP address.
     ///
     /// Removes lease from storage, unregisters from DNS, and executes script.
-    /// Replaces C lease_update_file() delete path.
+    /// Replaces C `lease_update_file()` delete path.
     ///
     /// # Arguments
     ///
@@ -621,7 +626,7 @@ impl LeaseManager {
     ///
     /// # Errors
     ///
-    /// Returns DhcpError::LeaseNotFound if lease doesn't exist
+    /// Returns `DhcpError::LeaseNotFound` if lease doesn't exist
     pub async fn release_lease(&self, ip: &IpAddr) -> Result<Lease, DhcpError> {
         // Remove from repository
         let lease = {
@@ -665,7 +670,7 @@ impl LeaseManager {
     ///
     /// # Errors
     ///
-    /// Returns DhcpError::LeaseNotFound if lease doesn't exist
+    /// Returns `DhcpError::LeaseNotFound` if lease doesn't exist
     pub async fn renew_lease(&self, ip: &IpAddr, duration: Duration) -> Result<Lease, DhcpError> {
         let mut lease = {
             let repo = self.repository.read().await;
@@ -689,7 +694,7 @@ impl LeaseManager {
     /// Removes all expired leases.
     ///
     /// Scans lease database and removes expired entries, unregistering from DNS
-    /// and executing scripts. Replaces C lease_prune().
+    /// and executing scripts. Replaces C `lease_prune()`.
     ///
     /// # Returns
     ///
@@ -751,7 +756,7 @@ impl LeaseManager {
 
     /// Finds a lease by client identifier.
     ///
-    /// Scans all leases for matching client_id. Less efficient than IP/MAC lookup
+    /// Scans all leases for matching `client_id`. Less efficient than IP/MAC lookup
     /// but necessary for DHCP protocol compliance.
     ///
     /// # Arguments
@@ -787,7 +792,7 @@ impl LeaseManager {
     /// Loads leases from persistent storage at daemon startup.
     ///
     /// Reads lease file, validates entries, and populates repository.
-    /// Replaces C lease_init() and read_leases().
+    /// Replaces C `lease_init()` and `read_leases()`.
     ///
     /// # Returns
     ///
@@ -795,7 +800,7 @@ impl LeaseManager {
     ///
     /// # Errors
     ///
-    /// Returns DhcpError if lease file cannot be read or parsed
+    /// Returns `DhcpError` if lease file cannot be read or parsed
     pub async fn load_leases(&self) -> Result<usize, DhcpError> {
         if let Some(ref lease_file) = self.config.dhcp.lease_file {
             let leases = read_leases(lease_file, SystemTime::now()).await?;
@@ -816,7 +821,7 @@ impl LeaseManager {
     /// Persists all leases to storage.
     ///
     /// Writes lease database to disk for recovery after daemon restart.
-    /// Replaces C lease_update_file().
+    /// Replaces C `lease_update_file()`.
     ///
     /// # Returns
     ///
@@ -824,7 +829,7 @@ impl LeaseManager {
     ///
     /// # Errors
     ///
-    /// Returns DhcpError if lease file cannot be written
+    /// Returns `DhcpError` if lease file cannot be written
     pub async fn save_leases(&self) -> Result<usize, DhcpError> {
         if let Some(ref lease_file) = self.config.dhcp.lease_file {
             let leases = self.get_all_leases().await;

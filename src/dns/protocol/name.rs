@@ -86,7 +86,7 @@ const MAX_LABEL_LEN: usize = MAXLABEL;
 /// Maximum total domain name length (255 bytes) per RFC 1035 Section 3.1.
 const MAX_NAME_LEN: usize = 255;
 
-/// DomainName represents a DNS domain name with RFC 1035 compliance.
+/// `DomainName` represents a DNS domain name with RFC 1035 compliance.
 ///
 /// Internally stores the domain name in presentation format (dotted notation) as a String
 /// for ease of use. Wire format serialization and parsing are provided through dedicated
@@ -100,7 +100,7 @@ const MAX_NAME_LEN: usize = 255;
 /// # Wire Format
 ///
 /// DNS wire format uses length-prefixed labels terminated by a null byte:
-/// - Each label: length_byte (1-63) + label_bytes
+/// - Each label: `length_byte` (1-63) + `label_bytes`
 /// - Terminator: 0x00
 /// - Example: "www.example.com" → 3www7example3com0
 ///
@@ -109,7 +109,7 @@ const MAX_NAME_LEN: usize = 255;
 /// # Case Sensitivity
 ///
 /// DNS names are case-insensitive per RFC 1035 Section 3.1. Comparison operations
-/// (PartialEq, Eq) perform case-insensitive matching using ASCII lowercase conversion.
+/// (`PartialEq`, Eq) perform case-insensitive matching using ASCII lowercase conversion.
 ///
 /// # IDNA Support
 ///
@@ -123,9 +123,9 @@ pub struct DomainName {
 }
 
 impl DomainName {
-    /// Creates a new DomainName from a string, applying validation.
+    /// Creates a new `DomainName` from a string, applying validation.
     ///
-    /// This is an alias for `FromStr::from_str()` that returns a DnsError
+    /// This is an alias for `FromStr::from_str()` that returns a `DnsError`
     /// instead of a string error message.
     ///
     /// # Arguments
@@ -134,7 +134,7 @@ impl DomainName {
     ///
     /// # Returns
     ///
-    /// A validated DomainName or a DnsError if validation fails.
+    /// A validated `DomainName` or a `DnsError` if validation fails.
     ///
     /// # Examples
     ///
@@ -158,7 +158,7 @@ impl DomainName {
     ///
     /// # Returns
     ///
-    /// A DomainName that may contain wildcards, or a DnsError if basic validation fails.
+    /// A `DomainName` that may contain wildcards, or a `DnsError` if basic validation fails.
     ///
     /// # Validation
     ///
@@ -216,7 +216,7 @@ impl DomainName {
             if label.len() > MAX_LABEL_LEN {
                 return Err(DnsError::InvalidName {
                     name: pattern.to_string(),
-                    reason: format!("Label '{}' exceeds maximum length {}", label, MAX_LABEL_LEN),
+                    reason: format!("Label '{label}' exceeds maximum length {MAX_LABEL_LEN}"),
                 });
             }
 
@@ -224,7 +224,7 @@ impl DomainName {
             if label.starts_with('-') || label.ends_with('-') {
                 return Err(DnsError::InvalidName {
                     name: pattern.to_string(),
-                    reason: format!("Label '{}' has leading or trailing hyphen", label),
+                    reason: format!("Label '{label}' has leading or trailing hyphen"),
                 });
             }
 
@@ -233,7 +233,7 @@ impl DomainName {
                 if !ch.is_ascii_alphanumeric() && ch != '-' {
                     return Err(DnsError::InvalidName {
                         name: pattern.to_string(),
-                        reason: format!("Label '{}' contains invalid character '{}'", label, ch),
+                        reason: format!("Label '{label}' contains invalid character '{ch}'"),
                     });
                 }
             }
@@ -252,6 +252,7 @@ impl DomainName {
     /// let name = DomainName::from_str("example.com")?;
     /// assert_eq!(name.as_str(), "example.com");
     /// ```
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.name
     }
@@ -259,7 +260,7 @@ impl DomainName {
     /// Returns an iterator over the individual labels of the domain name.
     ///
     /// Labels are returned from left to right (most specific to least specific).
-    /// For "www.example.com", yields ["www", "example", "com"].
+    /// For `www.example.com`, yields `["www", "example", "com"]`.
     ///
     /// # Examples
     ///
@@ -296,6 +297,7 @@ impl DomainName {
     /// let unrelated = DomainName::from_str("example.org")?;
     /// assert!(!subdomain.is_subdomain_of(&unrelated));
     /// ```
+    #[must_use]
     pub fn is_subdomain_of(&self, parent: &DomainName) -> bool {
         let self_labels: Vec<&str> = self.labels().collect();
         let parent_labels: Vec<&str> = parent.labels().collect();
@@ -320,6 +322,7 @@ impl DomainName {
     /// let name = DomainName::from_str("example.com")?;
     /// assert_eq!(name.len(), 11);
     /// ```
+    #[must_use]
     pub fn len(&self) -> usize {
         self.name.len()
     }
@@ -337,6 +340,7 @@ impl DomainName {
     /// let name = DomainName::from_str("example.com")?;
     /// assert!(!name.is_empty());
     /// ```
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.name.is_empty() || self.name == "."
     }
@@ -344,7 +348,7 @@ impl DomainName {
     /// Serializes the domain name to DNS wire format.
     ///
     /// Converts the presentation format name to wire format with length-prefixed labels.
-    /// Optionally uses compression pointers if a CompressionMap is provided and matching
+    /// Optionally uses compression pointers if a `CompressionMap` is provided and matching
     /// suffixes are found in the map.
     ///
     /// Wire format structure:
@@ -359,7 +363,7 @@ impl DomainName {
     ///
     /// # Returns
     ///
-    /// `Ok(())` on success, or a DnsError if serialization fails.
+    /// `Ok(())` on success, or a `DnsError` if serialization fails.
     ///
     /// # Examples
     ///
@@ -382,7 +386,9 @@ impl DomainName {
             if let Some(offset) = map.find_suffix(&wire_name) {
                 // Use compression pointer if offset fits in 14 bits
                 if offset < 0x3FFF {
-                    let pointer = ((COMPRESSION_POINTER as u16) << 8) | (offset as u16);
+                    #[allow(clippy::cast_possible_truncation)]
+                    // Checked: offset < 0x3FFF fits in u16
+                    let pointer = (u16::from(COMPRESSION_POINTER) << 8) | (offset as u16);
                     buffer.put_u16(pointer);
                     return Ok(());
                 }
@@ -407,8 +413,8 @@ impl DomainName {
     ///
     /// # Returns
     ///
-    /// A tuple of (DomainName, next_offset) where next_offset points past the name.
-    /// Returns a DnsError if parsing fails due to malformed data.
+    /// A tuple of (`DomainName`, `next_offset`) where `next_offset` points past the name.
+    /// Returns a `DnsError` if parsing fails due to malformed data.
     ///
     /// # Compression Pointer Handling
     ///
@@ -484,7 +490,7 @@ impl DomainName {
             if len > MAX_LABEL_LEN {
                 return Err(DnsError::InvalidName {
                     name: "parsed".to_string(),
-                    reason: format!("Label length {} exceeds maximum {}", len, MAX_LABEL_LEN),
+                    reason: format!("Label length {len} exceeds maximum {MAX_LABEL_LEN}"),
                 });
             }
 
@@ -513,10 +519,7 @@ impl DomainName {
             if total_len > MAX_NAME_LEN {
                 return Err(DnsError::InvalidName {
                     name: labels.join("."),
-                    reason: format!(
-                        "Total name length {} exceeds maximum {}",
-                        total_len, MAX_NAME_LEN
-                    ),
+                    reason: format!("Total name length {total_len} exceeds maximum {MAX_NAME_LEN}"),
                 });
             }
         }
@@ -545,7 +548,7 @@ impl DomainName {
     ///
     /// # Returns
     ///
-    /// `Ok(())` if valid, or a DnsError describing the validation failure.
+    /// `Ok(())` if valid, or a `DnsError` describing the validation failure.
     ///
     /// # Examples
     ///
@@ -570,8 +573,7 @@ impl DomainName {
             return Err(DnsError::InvalidName {
                 name: self.name.clone(),
                 reason: format!(
-                    "Total wire format length {} exceeds maximum {}",
-                    wire_len, MAX_NAME_LEN
+                    "Total wire format length {wire_len} exceeds maximum {MAX_NAME_LEN}"
                 ),
             });
         }
@@ -589,7 +591,7 @@ impl DomainName {
             if label.len() > MAX_LABEL_LEN {
                 return Err(DnsError::InvalidName {
                     name: self.name.clone(),
-                    reason: format!("Label '{}' exceeds maximum length {}", label, MAX_LABEL_LEN),
+                    reason: format!("Label '{label}' exceeds maximum length {MAX_LABEL_LEN}"),
                 });
             }
 
@@ -597,7 +599,7 @@ impl DomainName {
             if label.starts_with('-') || label.ends_with('-') {
                 return Err(DnsError::InvalidName {
                     name: self.name.clone(),
-                    reason: format!("Label '{}' has leading or trailing hyphen", label),
+                    reason: format!("Label '{label}' has leading or trailing hyphen"),
                 });
             }
 
@@ -607,7 +609,7 @@ impl DomainName {
                 if !ch.is_ascii_alphanumeric() && ch != '-' && ch != '_' {
                     return Err(DnsError::InvalidName {
                         name: self.name.clone(),
-                        reason: format!("Invalid character '{}' in label '{}'", ch, label),
+                        reason: format!("Invalid character '{ch}' in label '{label}'"),
                     });
                 }
             }
@@ -624,7 +626,7 @@ impl DomainName {
     ///
     /// # Returns
     ///
-    /// A Vec<u8> containing the wire format representation, or a DnsError.
+    /// A Vec<u8> containing the wire format representation, or a `DnsError`.
     fn to_wire_format(&self) -> Result<Vec<u8>, DnsError> {
         let mut result = Vec::new();
 
@@ -640,10 +642,12 @@ impl DomainName {
             if label_bytes.len() > MAX_LABEL_LEN {
                 return Err(DnsError::InvalidName {
                     name: self.name.clone(),
-                    reason: format!("Label '{}' exceeds maximum length", label),
+                    reason: format!("Label '{label}' exceeds maximum length"),
                 });
             }
 
+            #[allow(clippy::cast_possible_truncation)]
+            // Checked: len <= MAX_LABEL_LEN (63) fits in u8
             result.push(label_bytes.len() as u8);
             result.extend_from_slice(label_bytes);
         }
@@ -663,16 +667,16 @@ impl FromStr for DomainName {
         #[cfg(feature = "idn")]
         let s = {
             // Check if domain contains non-ASCII characters
-            if !s.is_ascii() {
+            if s.is_ascii() {
+                s.to_string()
+            } else {
                 // Convert to ASCII using IDNA Punycode encoding
                 match domain_to_ascii(s) {
                     Ok(ascii) => ascii,
                     Err(errors) => {
-                        return Err(format!("IDNA encoding failed: {:?}", errors));
+                        return Err(format!("IDNA encoding failed: {errors:?}"));
                     }
                 }
-            } else {
-                s.to_string()
             }
         };
 

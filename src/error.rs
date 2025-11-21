@@ -328,7 +328,7 @@ pub enum DnsError {
 
 /// DHCP lease allocation and management errors.
 ///
-/// Covers DHCPv4 and DHCPv6 server operations including lease allocation, renewal,
+/// Covers `DHCPv4` and `DHCPv6` server operations including lease allocation, renewal,
 /// release, and persistence. Maps C return codes from dhcp.c, dhcp6.c, rfc2131.c,
 /// rfc3315.c, and lease.c to structured error variants.
 ///
@@ -402,7 +402,7 @@ pub enum DhcpError {
         existing_mac: String,
     },
 
-    /// DHCPv6 prefix delegation failed.
+    /// `DHCPv6` prefix delegation failed.
     #[error("DHCPv6 prefix delegation failed: {reason}")]
     PrefixDelegationFailed {
         /// The reason why prefix delegation failed
@@ -437,14 +437,14 @@ pub enum DhcpError {
     /// DHCPv4-specific protocol error.
     #[error("DHCPv4 protocol error: {reason}")]
     V4ProtocolError {
-        /// The reason for the DHCPv4 protocol error
+        /// The reason for the `DHCPv4` protocol error
         reason: String,
     },
 
     /// DHCPv6-specific protocol error.
     #[error("DHCPv6 protocol error: {reason}")]
     V6ProtocolError {
-        /// The reason for the DHCPv6 protocol error
+        /// The reason for the `DHCPv6` protocol error
         reason: String,
     },
 
@@ -469,15 +469,13 @@ pub enum DhcpError {
 
 impl From<anyhow::Error> for DhcpError {
     fn from(err: anyhow::Error) -> Self {
-        DhcpError::V6ProtocolError {
-            reason: err.to_string(),
-        }
+        DhcpError::V6ProtocolError { reason: err.to_string() }
     }
 }
 
 /// DNSSEC validation errors with detailed failure diagnostics.
 ///
-/// Maps C DNSSEC_FAIL_* bitflags from dnssec.c to structured enum variants providing
+/// Maps C `DNSSEC_FAIL`_* bitflags from dnssec.c to structured enum variants providing
 /// type-safe information about validation failures. Each variant includes context
 /// about why validation failed, enabling proper error handling and logging.
 ///
@@ -506,7 +504,7 @@ impl From<anyhow::Error> for DhcpError {
 /// ```
 #[derive(Debug, Error)]
 pub enum DnssecError {
-    /// Signature not yet valid (DNSSEC_FAIL_NYV).
+    /// Signature not yet valid (`DNSSEC_FAIL_NYV`).
     ///
     /// The RRSIG record's inception time is in the future. This may indicate
     /// clock skew or a premature signature.
@@ -520,7 +518,7 @@ pub enum DnssecError {
         current_time: std::time::SystemTime,
     },
 
-    /// Signature expired (DNSSEC_FAIL_EXP).
+    /// Signature expired (`DNSSEC_FAIL_EXP`).
     ///
     /// The RRSIG record's expiration time has passed. The zone needs re-signing.
     #[error("DNSSEC signature expired at {expired_at:?} (current time: {current_time:?})")]
@@ -531,7 +529,7 @@ pub enum DnssecError {
         current_time: std::time::SystemTime,
     },
 
-    /// Indeterminate validation result (DNSSEC_FAIL_INDET).
+    /// Indeterminate validation result (`DNSSEC_FAIL_INDET`).
     ///
     /// Validation could not definitively prove the record is secure or insecure.
     /// This may require additional queries or indicate a validation path problem.
@@ -543,7 +541,7 @@ pub enum DnssecError {
         reason: String,
     },
 
-    /// No supported key algorithm (DNSSEC_FAIL_NOKEYSUP).
+    /// No supported key algorithm (`DNSSEC_FAIL_NOKEYSUP`).
     ///
     /// The DNSKEY uses an algorithm not supported by this implementation.
     #[error("No supported DNSSEC key algorithm: {algorithm_id}")]
@@ -552,7 +550,7 @@ pub enum DnssecError {
         algorithm_id: u8,
     },
 
-    /// No signatures present (DNSSEC_FAIL_NOSIG).
+    /// No signatures present (`DNSSEC_FAIL_NOSIG`).
     ///
     /// DNSSEC validation requested but no RRSIG records found for the record set.
     #[error("No DNSSEC signatures found for '{name}' type {record_type}")]
@@ -563,7 +561,7 @@ pub enum DnssecError {
         record_type: u16,
     },
 
-    /// No DNSSEC zone (DNSSEC_FAIL_NOZONE).
+    /// No DNSSEC zone (`DNSSEC_FAIL_NOZONE`).
     ///
     /// The zone is unsigned or no delegation signer (DS) records found.
     #[error("No DNSSEC zone found for '{name}'")]
@@ -572,7 +570,7 @@ pub enum DnssecError {
         name: String,
     },
 
-    /// Non-secure delegation (DNSSEC_FAIL_NONSEC).
+    /// Non-secure delegation (`DNSSEC_FAIL_NONSEC`).
     ///
     /// Proven insecure delegation via NSEC/NSEC3 records indicating no DS.
     #[error("Non-secure delegation to '{name}' (proven insecure)")]
@@ -581,7 +579,7 @@ pub enum DnssecError {
         name: String,
     },
 
-    /// No DS support (DNSSEC_FAIL_NODSSUP).
+    /// No DS support (`DNSSEC_FAIL_NODSSUP`).
     ///
     /// The DS record uses an unsupported digest algorithm.
     #[error("No supported DS digest algorithm: {digest_algorithm_id}")]
@@ -590,7 +588,7 @@ pub enum DnssecError {
         digest_algorithm_id: u8,
     },
 
-    /// No trusted keys available (DNSSEC_FAIL_NOKEY).
+    /// No trusted keys available (`DNSSEC_FAIL_NOKEY`).
     ///
     /// No trust anchor or trusted DNSKEY found to validate the chain.
     #[error("No trusted DNSSEC keys found for '{name}'")]
@@ -599,10 +597,10 @@ pub enum DnssecError {
         name: String,
     },
 
-    /// Too many NSEC3 iterations (DNSSEC_FAIL_NSEC3_ITERS).
+    /// Too many NSEC3 iterations (`DNSSEC_FAIL_NSEC3_ITERS`).
     ///
     /// NSEC3 iteration count exceeds the configured maximum, indicating a
-    /// potential DoS attack or misconfiguration.
+    /// potential `DoS` attack or misconfiguration.
     #[error("NSEC3 iteration count {iterations} exceeds maximum {max_iterations}")]
     TooManyIterations {
         /// The NSEC3 iteration count specified in the response
@@ -611,7 +609,7 @@ pub enum DnssecError {
         max_iterations: u32,
     },
 
-    /// Malformed DNSSEC packet (DNSSEC_FAIL_BADPACKET).
+    /// Malformed DNSSEC packet (`DNSSEC_FAIL_BADPACKET`).
     ///
     /// The DNSSEC-related records are malformed or cannot be parsed.
     #[error("Malformed DNSSEC record in response: {reason}")]
@@ -620,7 +618,7 @@ pub enum DnssecError {
         reason: String,
     },
 
-    /// Validation work limit exceeded (DNSSEC_FAIL_WORK).
+    /// Validation work limit exceeded (`DNSSEC_FAIL_WORK`).
     ///
     /// The validation process exceeded the maximum allowed work units,
     /// preventing algorithmic complexity attacks.
@@ -664,7 +662,7 @@ pub enum DnssecError {
 /// and platform-specific networking (netlink, BPF). Maps C return codes from
 /// network.c, netlink.c, bpf.c, and platform-specific network modules.
 ///
-/// # Automatic io::Error Conversion
+/// # Automatic `io::Error` Conversion
 ///
 /// ```rust,ignore
 /// use dnsmasq::error::NetworkError;
@@ -713,7 +711,7 @@ pub enum NetworkError {
     /// Linux netlink operation failed.
     #[error("Netlink operation failed: {operation} - {reason}")]
     NetlinkFailed {
-        /// The netlink operation that failed (e.g., "route_add", "addr_list")
+        /// The netlink operation that failed (e.g., "`route_add`", "`addr_list`")
         operation: String,
         /// The reason why the netlink operation failed
         reason: String,
@@ -722,7 +720,7 @@ pub enum NetworkError {
     /// BSD BPF (Berkeley Packet Filter) operation failed.
     #[error("BPF operation failed: {operation} - {reason}")]
     BpfFailed {
-        /// The BPF operation that failed (e.g., "filter_set", "device_open")
+        /// The BPF operation that failed (e.g., "`filter_set`", "`device_open`")
         operation: String,
         /// The reason why the BPF operation failed
         reason: String,
@@ -731,7 +729,7 @@ pub enum NetworkError {
     /// Routing table operation failed.
     #[error("Routing operation failed: {operation} - {reason}")]
     RoutingFailed {
-        /// The routing operation that failed (e.g., "route_get", "route_add")
+        /// The routing operation that failed (e.g., "`route_get`", "`route_add`")
         operation: String,
         /// The reason why the routing operation failed
         reason: String,
@@ -758,7 +756,7 @@ pub enum NetworkError {
     /// Socket option configuration failed.
     #[error("Failed to set socket option '{option}': {reason}")]
     SocketOptionFailed {
-        /// The socket option that failed to set (e.g., "SO_REUSEADDR", "SO_BINDTODEVICE")
+        /// The socket option that failed to set (e.g., "`SO_REUSEADDR`", "`SO_BINDTODEVICE`")
         option: String,
         /// The reason why the socket option could not be set
         reason: String,
@@ -1023,17 +1021,17 @@ pub enum TftpError {
 /// # Event Code Mapping
 ///
 /// These variants correspond to C EVENT_* codes:
-/// - EVENT_EXEC_ERR → `ScriptExecutionFailed`
-/// - EVENT_PIPE_ERR → `PipeCreationFailed`
-/// - EVENT_USER_ERR → `UserNotFound`
-/// - EVENT_CAP_ERR → `CapabilityError`
-/// - EVENT_LOG_ERR → `LoggingFailed`
-/// - EVENT_FORK_ERR → `ForkFailed`
-/// - EVENT_LUA_ERR → `LuaScriptError`
-/// - EVENT_TFTP_ERR → Mapped to `TftpError` variants
+/// - `EVENT_EXEC_ERR` → `ScriptExecutionFailed`
+/// - `EVENT_PIPE_ERR` → `PipeCreationFailed`
+/// - `EVENT_USER_ERR` → `UserNotFound`
+/// - `EVENT_CAP_ERR` → `CapabilityError`
+/// - `EVENT_LOG_ERR` → `LoggingFailed`
+/// - `EVENT_FORK_ERR` → `ForkFailed`
+/// - `EVENT_LUA_ERR` → `LuaScriptError`
+/// - `EVENT_TFTP_ERR` → Mapped to `TftpError` variants
 #[derive(Debug, Error)]
 pub enum PlatformError {
-    /// Helper script execution failed (EVENT_EXEC_ERR).
+    /// Helper script execution failed (`EVENT_EXEC_ERR`).
     #[error("Script execution failed for '{script}': {reason}")]
     ScriptExecutionFailed {
         /// The path to the helper script that failed
@@ -1042,7 +1040,7 @@ pub enum PlatformError {
         reason: String,
     },
 
-    /// Pipe creation failed for IPC (EVENT_PIPE_ERR).
+    /// Pipe creation failed for IPC (`EVENT_PIPE_ERR`).
     #[error("Pipe creation failed: {reason}")]
     PipeCreationFailed {
         /// The reason for the pipe creation failure
@@ -1053,7 +1051,7 @@ pub enum PlatformError {
     #[error("Pipe communication error: {0}")]
     PipeError(String),
 
-    /// User lookup or switching failed (EVENT_USER_ERR).
+    /// User lookup or switching failed (`EVENT_USER_ERR`).
     #[error("User '{user}' not found or cannot switch: {reason}")]
     UserNotFound {
         /// The username that could not be found or switched to
@@ -1062,7 +1060,7 @@ pub enum PlatformError {
         reason: String,
     },
 
-    /// Linux capability operation failed (EVENT_CAP_ERR).
+    /// Linux capability operation failed (`EVENT_CAP_ERR`).
     #[error("Capability operation failed: {operation} - {reason}")]
     CapabilityError {
         /// The capability operation that failed (e.g., "drop", "set")
@@ -1071,21 +1069,21 @@ pub enum PlatformError {
         reason: String,
     },
 
-    /// Logging system initialization failed (EVENT_LOG_ERR).
+    /// Logging system initialization failed (`EVENT_LOG_ERR`).
     #[error("Logging initialization failed: {reason}")]
     LoggingFailed {
         /// The reason for the logging initialization failure
         reason: String,
     },
 
-    /// Process fork failed (EVENT_FORK_ERR).
+    /// Process fork failed (`EVENT_FORK_ERR`).
     #[error("Fork failed: {reason}")]
     ForkFailed {
         /// The reason for the fork failure
         reason: String,
     },
 
-    /// Lua script execution error (EVENT_LUA_ERR).
+    /// Lua script execution error (`EVENT_LUA_ERR`).
     #[error("Lua script error in '{script}': {reason}")]
     LuaScriptError {
         /// The path to the Lua script that encountered an error
@@ -1103,12 +1101,12 @@ pub enum PlatformError {
         reason: String,
     },
 
-    /// UBus (OpenWrt) integration error.
+    /// `UBus` (`OpenWrt`) integration error.
     #[error("UBus error: {operation} - {reason}")]
     UbusError {
-        /// The UBus operation that failed
+        /// The `UBus` operation that failed
         operation: String,
-        /// The reason for the UBus error
+        /// The reason for the `UBus` error
         reason: String,
     },
 
@@ -1187,7 +1185,7 @@ pub enum PlatformError {
         reason: String,
     },
 
-    /// IPSet (firewall set) operation failed.
+    /// `IPSet` (firewall set) operation failed.
     #[error("IPSet operation failed for set '{set_name}': {reason}")]
     IpsetFailed {
         /// The name of the ipset that failed
@@ -1196,7 +1194,7 @@ pub enum PlatformError {
         reason: String,
     },
 
-    /// NFTables set operation failed.
+    /// `NFTables` set operation failed.
     #[error("NFTables operation failed for set '{set_name}': {reason}")]
     NftsetFailed {
         /// The name of the nftables set that failed

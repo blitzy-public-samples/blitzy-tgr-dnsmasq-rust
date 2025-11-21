@@ -168,12 +168,12 @@ use ffi::*;
 // Provide stub types when libubus is not available
 #[cfg(not(has_libubus))]
 mod stub {
-    /// Stub type for UbusContext when libubus is not available
+    /// Stub type for `UbusContext` when libubus is not available
     pub(super) struct UbusContext;
 }
 
 #[cfg(not(has_libubus))]
-use stub::*;
+use stub::UbusContext;
 
 /// Errors specific to ubus operations
 #[derive(Debug, Clone)]
@@ -197,15 +197,15 @@ pub enum UbusError {
 impl std::fmt::Display for UbusError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            UbusError::ConnectionFailed(msg) => write!(f, "ubus connection failed: {}", msg),
+            UbusError::ConnectionFailed(msg) => write!(f, "ubus connection failed: {msg}"),
             UbusError::ServiceRegistrationFailed(msg) => {
-                write!(f, "ubus service registration failed: {}", msg)
+                write!(f, "ubus service registration failed: {msg}")
             }
             UbusError::MethodInvocationFailed(msg) => {
-                write!(f, "ubus method invocation failed: {}", msg)
+                write!(f, "ubus method invocation failed: {msg}")
             }
             UbusError::SerializationFailed(msg) => {
-                write!(f, "ubus serialization failed: {}", msg)
+                write!(f, "ubus serialization failed: {msg}")
             }
             UbusError::NotConnected => write!(f, "ubus not connected"),
         }
@@ -288,7 +288,7 @@ pub enum UbusEvent {
     },
 }
 
-/// OpenWrt ubus daemon integration
+/// `OpenWrt` ubus daemon integration
 ///
 /// Manages connection to ubusd, method registration, and event broadcasting.
 /// Integrates with tokio event loop for async operation.
@@ -789,6 +789,7 @@ impl UbusDaemon {
     }
 
     /// Check if connected to ubusd (stub - always false)
+    #[must_use]
     pub fn is_connected(&self) -> bool {
         false
     }
@@ -841,13 +842,13 @@ impl UbusDaemon {
     }
 
     /// Create DHCP event from lease (available even without libubus)
+    #[must_use]
     pub fn dhcp_event_from_lease(lease: &Lease, event_type: &str) -> UbusEvent {
         let ip = lease.ip.to_string();
         let mac = lease
             .mac
             .as_ref()
-            .map(|m| m.to_string())
-            .unwrap_or_else(|| "00:00:00:00:00:00".to_string());
+            .map_or_else(|| "00:00:00:00:00:00".to_string(), std::string::ToString::to_string);
         let hostname = lease.hostname.clone().unwrap_or_default();
         let interface = lease.interface.clone();
 
@@ -855,7 +856,7 @@ impl UbusDaemon {
             "add" => UbusEvent::DhcpLeaseAdded { ip, mac, hostname, interface },
             "old" => UbusEvent::DhcpLeaseOld { ip, mac, hostname, interface },
             "del" => UbusEvent::DhcpLeaseDeleted { ip, mac, hostname, interface },
-            _ => panic!("Invalid DHCP event type: {}", event_type),
+            _ => panic!("Invalid DHCP event type: {event_type}"),
         }
     }
 

@@ -146,19 +146,19 @@ pub enum WatchType {
     /// Dynamic DHCP hosts directory containing per-host configuration files.
     ///
     /// Triggers cache flush and hosts file reload when files added/modified.
-    /// Maps to C `struct dyndir` with AH_DHCP_HST flag.
+    /// Maps to C `struct dyndir` with `AH_DHCP_HST` flag.
     DhcpHostsDir,
 
     /// DHCP options directory containing option configuration files.
     ///
     /// Triggers DHCP configuration reload when files added/modified.
-    /// Maps to C `struct dyndir` with AH_DHCP_OPT flag.
+    /// Maps to C `struct dyndir` with `AH_DHCP_OPT` flag.
     DhcpOptsDir,
 
     /// Additional hosts directory for DNS static host entries.
     ///
     /// Triggers DNS cache flush and hosts file reload.
-    /// Maps to C `struct dyndir` with AH_HOSTS flag.
+    /// Maps to C `struct dyndir` with `AH_HOSTS` flag.
     AddnHostsDir,
 }
 
@@ -200,7 +200,7 @@ pub struct InotifyWatcher {
     /// Keys are canonical paths (after symlink resolution) to avoid duplicate
     /// watches. Values determine which reload action to trigger on events.
     ///
-    /// Replaces C's parallel resolvc and dyndir linked lists with unified HashMap.
+    /// Replaces C's parallel resolvc and dyndir linked lists with unified `HashMap`.
     watched_paths: HashMap<PathBuf, WatchType>,
 }
 
@@ -260,7 +260,7 @@ impl InotifyWatcher {
         )
         .map_err(|e| PlatformError::InotifyError {
             path: "inotify".to_string(),
-            reason: format!("Failed to initialize inotify: {}", e),
+            reason: format!("Failed to initialize inotify: {e}"),
         })?;
 
         debug!("Inotify watcher initialized successfully");
@@ -270,9 +270,9 @@ impl InotifyWatcher {
 
     /// Watch a specific file for changes, following symlinks to actual target.
     ///
-    /// This method resolves symbolic links up to MAX_SYMLINK_DEPTH to find the
+    /// This method resolves symbolic links up to `MAX_SYMLINK_DEPTH` to find the
     /// actual file to watch, then watches its containing directory for
-    /// IN_CLOSE_WRITE and IN_MOVED_TO events. Watching the directory handles
+    /// `IN_CLOSE_WRITE` and `IN_MOVED_TO` events. Watching the directory handles
     /// atomic file updates via temp file + rename pattern used by many editors.
     ///
     /// # C Implementation Mapping
@@ -309,7 +309,7 @@ impl InotifyWatcher {
     /// # Errors
     ///
     /// Returns `PlatformError::InotifyError` if:
-    /// - Symlink depth exceeds MAX_SYMLINK_DEPTH (circular symlinks)
+    /// - Symlink depth exceeds `MAX_SYMLINK_DEPTH` (circular symlinks)
     /// - File's parent directory doesn't exist (required for watching)
     /// - `inotify_add_watch()` fails (e.g., out of inotify watches)
     ///
@@ -338,7 +338,7 @@ impl InotifyWatcher {
         self.watcher.watch(dir_path, RecursiveMode::NonRecursive).map_err(|e| {
             PlatformError::InotifyError {
                 path: dir_path.display().to_string(),
-                reason: format!("Failed to add inotify watch: {}", e),
+                reason: format!("Failed to add inotify watch: {e}"),
             }
         })?;
 
@@ -352,8 +352,8 @@ impl InotifyWatcher {
 
     /// Watch a directory for file additions and modifications.
     ///
-    /// Watches the specified directory (non-recursively) for IN_CLOSE_WRITE,
-    /// IN_MOVED_TO, and IN_DELETE events. Used for dynamic DHCP hosts directories
+    /// Watches the specified directory (non-recursively) for `IN_CLOSE_WRITE`,
+    /// `IN_MOVED_TO`, and `IN_DELETE` events. Used for dynamic DHCP hosts directories
     /// and DHCP options directories where configuration is split across multiple
     /// files.
     ///
@@ -426,7 +426,7 @@ impl InotifyWatcher {
         self.watcher.watch(path, RecursiveMode::NonRecursive).map_err(|e| {
             PlatformError::InotifyError {
                 path: path.display().to_string(),
-                reason: format!("Failed to add inotify watch: {}", e),
+                reason: format!("Failed to add inotify watch: {e}"),
             }
         })?;
 
@@ -438,7 +438,7 @@ impl InotifyWatcher {
         Ok(())
     }
 
-    /// Follow a symbolic link to its target, resolving up to MAX_SYMLINK_DEPTH.
+    /// Follow a symbolic link to its target, resolving up to `MAX_SYMLINK_DEPTH`.
     ///
     /// Recursively follows symlinks to find the actual file, handling both absolute
     /// and relative symlink targets. Relative targets are resolved relative to the
@@ -494,7 +494,7 @@ impl InotifyWatcher {
     /// # Errors
     ///
     /// Returns `PlatformError::InotifyError` if:
-    /// - Symlink depth exceeds MAX_SYMLINK_DEPTH
+    /// - Symlink depth exceeds `MAX_SYMLINK_DEPTH`
     /// - Symlink target doesn't exist
     /// - I/O error reading symlink
     ///
@@ -515,7 +515,7 @@ impl InotifyWatcher {
             if depth >= MAX_SYMLINK_DEPTH {
                 return Err(PlatformError::InotifyError {
                     path: path.display().to_string(),
-                    reason: format!("Too many symlinks (depth > {})", MAX_SYMLINK_DEPTH),
+                    reason: format!("Too many symlinks (depth > {MAX_SYMLINK_DEPTH})"),
                 });
             }
 
@@ -558,7 +558,7 @@ impl InotifyWatcher {
                 Err(e) => {
                     return Err(PlatformError::InotifyError {
                         path: current_path.display().to_string(),
-                        reason: format!("Failed to read symlink: {}", e),
+                        reason: format!("Failed to read symlink: {e}"),
                     });
                 }
             }
@@ -659,10 +659,7 @@ impl InotifyWatcher {
                 }
                 Err(e) => {
                     error!("Inotify watch error: {}", e);
-                    return Err(PlatformError::FileMonitoring(format!(
-                        "Inotify watch error: {}",
-                        e
-                    )));
+                    return Err(PlatformError::FileMonitoring(format!("Inotify watch error: {e}")));
                 }
             }
         }
@@ -674,14 +671,14 @@ impl InotifyWatcher {
     /// Handle a single inotify event, filtering and dispatching reload actions.
     ///
     /// Filters out editor temporary files and dispatches reload actions based
-    /// on the watch type associated with the path. Maps notify EventKind enums
+    /// on the watch type associated with the path. Maps notify `EventKind` enums
     /// to C inotify event masks.
     ///
     /// # Event Kind Mapping
     ///
-    /// - `EventKind::Modify(ModifyKind::Data)` → IN_CLOSE_WRITE
-    /// - `EventKind::Create` → IN_MOVED_TO
-    /// - `EventKind::Remove` → IN_DELETE
+    /// - `EventKind::Modify(ModifyKind::Data)` → `IN_CLOSE_WRITE`
+    /// - `EventKind::Create` → `IN_MOVED_TO`
+    /// - `EventKind::Remove` → `IN_DELETE`
     ///
     /// # Arguments
     ///
@@ -724,7 +721,7 @@ impl InotifyWatcher {
             if should_reload {
                 // Check if path or its parent directory is watched
                 let watched = self.watched_paths.contains_key(&path)
-                    || path.parent().map(|p| self.watched_paths.contains_key(p)).unwrap_or(false);
+                    || path.parent().is_some_and(|p| self.watched_paths.contains_key(p));
 
                 if watched {
                     info!("Configuration file modified: {}", path.display());

@@ -10,12 +10,12 @@
 //!
 //! The lease file uses a line-based text format with the following structure:
 //!
-//! ## DHCPv4 Leases
+//! ## `DHCPv4` Leases
 //! ```text
 //! <expiration_time> <mac_address> <ip_address> <hostname> <client_id>
 //! ```
 //!
-//! ## DHCPv6 Leases (preceded by "duid" line)
+//! ## `DHCPv6` Leases (preceded by "duid" line)
 //! ```text
 //! duid <server_duid_hex>
 //! <expiration_time> <ip_address> <hostname> <client_id>
@@ -36,7 +36,7 @@
 //! vendorclass 192.168.1.100 4d:53:46:54:20:35:2e:30
 //! ```
 //!
-//! Based on: src/lease.c (lease_init, lease_update_file, read_leases)
+//! Based on: src/lease.c (`lease_init`, `lease_update_file`, `read_leases`)
 
 use crate::dhcp::lease::{Lease, LeaseFlags};
 use crate::error::DhcpError;
@@ -51,7 +51,7 @@ use tracing::{debug, error, info, warn};
 /// Read DHCP leases from a persistent lease file
 ///
 /// Parses the lease file line-by-line, reconstructing Lease objects from the
-/// stored text format. The function handles both DHCPv4 and DHCPv6 leases,
+/// stored text format. The function handles both `DHCPv4` and `DHCPv6` leases,
 /// as well as additional lease metadata (agent-info, vendorclass).
 ///
 /// # Arguments
@@ -81,7 +81,7 @@ use tracing::{debug, error, info, warn};
 ///
 /// # C Implementation Reference
 ///
-/// Based on: src/lease.c:read_leases() (lines 168-430)
+/// Based on: `src/lease.c:read_leases()` (lines 168-430)
 ///
 /// The C implementation uses fscanf to parse fields and handles multiple lease
 /// formats. This Rust version provides equivalent functionality with safe parsing.
@@ -149,7 +149,7 @@ pub async fn read_leases(lease_file_path: &Path, now: SystemTime) -> Result<Vec<
 ///
 /// Handles different line types:
 /// - Standard DHCPv4/v6 lease entries
-/// - "duid" lines declaring server DUID for DHCPv6
+/// - "duid" lines declaring server DUID for `DHCPv6`
 /// - "agent-info" lines with relay agent information
 /// - "vendorclass" lines with vendor class identifiers
 fn parse_lease_line(
@@ -180,7 +180,7 @@ fn parse_lease_line(
                 return Err("agent-info line requires IP and agent ID".to_string());
             }
             let ip: IpAddr =
-                parts[1].parse().map_err(|e| format!("Invalid IP in agent-info: {}", e))?;
+                parts[1].parse().map_err(|e| format!("Invalid IP in agent-info: {e}"))?;
             let agent_id = parse_hex_string(parts[2])?;
 
             // Find matching lease and update agent_id
@@ -195,7 +195,7 @@ fn parse_lease_line(
                 return Err("vendorclass line requires IP and class ID".to_string());
             }
             let ip: IpAddr =
-                parts[1].parse().map_err(|e| format!("Invalid IP in vendorclass: {}", e))?;
+                parts[1].parse().map_err(|e| format!("Invalid IP in vendorclass: {e}"))?;
             let vendor_class = parse_hex_string(parts[2])?;
 
             // Find matching lease and update vendorclass
@@ -211,21 +211,21 @@ fn parse_lease_line(
                 return Err(format!("Lease line requires at least 4 fields, got {}", parts.len()));
             }
 
-            parse_standard_lease(parts, leases, current_duid, now)
+            parse_standard_lease(&parts, leases, current_duid.as_ref(), now)
         }
     }
 }
 
-/// Parse a standard DHCPv4 or DHCPv6 lease entry
+/// Parse a standard `DHCPv4` or `DHCPv6` lease entry
 fn parse_standard_lease(
-    parts: Vec<&str>,
+    parts: &[&str],
     leases: &mut Vec<Lease>,
-    _current_duid: &Option<Vec<u8>>,
+    _current_duid: Option<&Vec<u8>>,
     now: SystemTime,
 ) -> Result<(), String> {
     // Parse expiration time
     let expires_timestamp: u64 =
-        parts[0].parse().map_err(|e| format!("Invalid expiration time: {}", e))?;
+        parts[0].parse().map_err(|e| format!("Invalid expiration time: {e}"))?;
 
     let expires = UNIX_EPOCH + std::time::Duration::from_secs(expires_timestamp);
 
@@ -238,10 +238,10 @@ fn parse_standard_lease(
     // Try to parse as DHCPv4 format first: <expiry> <mac> <ip> <hostname> <client_id>
     if let Ok(ip) = parts[2].parse::<IpAddr>() {
         let mac_str = parts[1];
-        let mac = if mac_str != "*" {
-            Some(MacAddress::parse(mac_str).map_err(|e| format!("Invalid MAC address: {}", e))?)
-        } else {
+        let mac = if mac_str == "*" {
             None
+        } else {
+            Some(MacAddress::parse(mac_str).map_err(|e| format!("Invalid MAC address: {e}"))?)
         };
 
         let hostname =
@@ -260,12 +260,12 @@ fn parse_standard_lease(
             if let Some(stripped) = iaid_str.strip_prefix('T') {
                 // Temporary Address (TA)
                 let iaid_num: u32 =
-                    stripped.parse().map_err(|e| format!("Invalid IAID in TA lease: {}", e))?;
+                    stripped.parse().map_err(|e| format!("Invalid IAID in TA lease: {e}"))?;
                 (Some(iaid_num), LeaseFlags::TA)
             } else {
                 // Non-temporary Address (NA)
                 let iaid_num: u32 =
-                    iaid_str.parse().map_err(|e| format!("Invalid IAID in NA lease: {}", e))?;
+                    iaid_str.parse().map_err(|e| format!("Invalid IAID in NA lease: {e}"))?;
                 (Some(iaid_num), LeaseFlags::NA)
             }
         } else {
@@ -301,14 +301,14 @@ fn parse_hex_string(hex_str: &str) -> Result<Vec<u8>, String> {
     let cleaned = hex_str.replace(':', "");
 
     if !cleaned.len().is_multiple_of(2) {
-        return Err(format!("Hex string must have even number of characters: {}", hex_str));
+        return Err(format!("Hex string must have even number of characters: {hex_str}"));
     }
 
     let mut bytes = Vec::new();
     for i in (0..cleaned.len()).step_by(2) {
         let byte_str = &cleaned[i..i + 2];
         let byte = u8::from_str_radix(byte_str, 16)
-            .map_err(|e| format!("Invalid hex byte '{}': {}", byte_str, e))?;
+            .map_err(|e| format!("Invalid hex byte '{byte_str}': {e}"))?;
         bytes.push(byte);
     }
 
@@ -325,7 +325,7 @@ fn parse_hex_string(hex_str: &str) -> Result<Vec<u8>, String> {
 ///
 /// * `lease_file_path` - Path to the lease file (typically /var/lib/misc/dnsmasq.leases)
 /// * `leases` - Vector of leases to persist
-/// * `server_duid` - Optional DHCPv6 server DUID (written if DHCPv6 leases present)
+/// * `server_duid` - Optional `DHCPv6` server DUID (written if `DHCPv6` leases present)
 ///
 /// # Returns
 ///
@@ -350,7 +350,7 @@ fn parse_hex_string(hex_str: &str) -> Result<Vec<u8>, String> {
 ///
 /// # C Implementation Reference
 ///
-/// Based on: src/lease.c:lease_update_file() (lines 677-900)
+/// Based on: `src/lease.c:lease_update_file()` (lines 677-900)
 ///
 /// The C implementation writes the file in-place with careful error handling.
 /// This Rust version uses atomic file replacement for better reliability.
@@ -449,24 +449,24 @@ async fn write_lease_entry(file: &mut File, lease: &Lease) -> std::io::Result<()
     let line = if lease.ip.is_ipv4() {
         // DHCPv4 format: <expiry> <mac> <ip> <hostname> <client_id>
         // MacAddress already implements Display with the correct format
-        let mac_str = lease.mac.as_ref().map(|m| m.to_string()).unwrap_or_else(|| "*".to_string());
+        let mac_str =
+            lease.mac.as_ref().map_or_else(|| "*".to_string(), std::string::ToString::to_string);
 
         let hostname = lease.hostname.as_deref().unwrap_or("*");
 
-        let client_id_str = lease
-            .client_id
-            .as_ref()
-            .map(|c| c.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":"))
-            .unwrap_or_else(|| "*".to_string());
+        let client_id_str = lease.client_id.as_ref().map_or_else(
+            || "*".to_string(),
+            |c| c.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(":"),
+        );
 
         format!("{} {} {} {} {}\n", expires_secs, mac_str, lease.ip, hostname, client_id_str)
     } else {
         // DHCPv6 format: <expiry> [T]<iaid> <ip> <hostname> <client_id>
         let iaid_str = if let Some(iaid) = lease.iaid {
             if lease.flags.contains(LeaseFlags::TA) {
-                format!("T{}", iaid)
+                format!("T{iaid}")
             } else {
-                format!("{}", iaid)
+                format!("{iaid}")
             }
         } else {
             "0".to_string()
@@ -474,11 +474,10 @@ async fn write_lease_entry(file: &mut File, lease: &Lease) -> std::io::Result<()
 
         let hostname = lease.hostname.as_deref().unwrap_or("*");
 
-        let client_id_str = lease
-            .client_id
-            .as_ref()
-            .map(|c| c.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":"))
-            .unwrap_or_else(|| "*".to_string());
+        let client_id_str = lease.client_id.as_ref().map_or_else(
+            || "*".to_string(),
+            |c| c.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(":"),
+        );
 
         format!("{} {} {} {} {}\n", expires_secs, iaid_str, lease.ip, hostname, client_id_str)
     };
@@ -487,11 +486,11 @@ async fn write_lease_entry(file: &mut File, lease: &Lease) -> std::io::Result<()
     Ok(())
 }
 
-/// Write DHCPv6 DUID line
+/// Write `DHCPv6` DUID line
 async fn write_duid_line(file: &mut File, duid: &[u8]) -> Result<(), DhcpError> {
-    let duid_hex = duid.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
+    let duid_hex = duid.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(":");
 
-    let line = format!("duid {}\n", duid_hex);
+    let line = format!("duid {duid_hex}\n");
     file.write_all(line.as_bytes()).await.map_err(|e| {
         error!("Failed to write DUID line: {}", e);
         DhcpError::LeaseDatabaseFailed { operation: "write".to_string(), reason: e.to_string() }
@@ -506,9 +505,9 @@ async fn write_agent_info_line(
     ip: &IpAddr,
     agent_id: &[u8],
 ) -> Result<(), DhcpError> {
-    let agent_hex = agent_id.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
+    let agent_hex = agent_id.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(":");
 
-    let line = format!("agent-info {} {}\n", ip, agent_hex);
+    let line = format!("agent-info {ip} {agent_hex}\n");
     file.write_all(line.as_bytes()).await.map_err(|e| {
         error!("Failed to write agent-info line: {}", e);
         DhcpError::LeaseDatabaseFailed { operation: "write".to_string(), reason: e.to_string() }
@@ -523,10 +522,9 @@ async fn write_vendorclass_line(
     ip: &IpAddr,
     vendor_class: &[u8],
 ) -> Result<(), DhcpError> {
-    let vendor_hex =
-        vendor_class.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
+    let vendor_hex = vendor_class.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(":");
 
-    let line = format!("vendorclass {} {}\n", ip, vendor_hex);
+    let line = format!("vendorclass {ip} {vendor_hex}\n");
     file.write_all(line.as_bytes()).await.map_err(|e| {
         error!("Failed to write vendorclass line: {}", e);
         DhcpError::LeaseDatabaseFailed { operation: "write".to_string(), reason: e.to_string() }

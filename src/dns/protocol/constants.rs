@@ -309,7 +309,7 @@ pub const T_NAPTR: u16 = 35;
 
 /// KX record - key exchange delegation (RFC 2230).
 ///
-/// Delegates key exchange information for IPsec and other security protocols.
+/// Delegates key exchange information for `IPsec` and other security protocols.
 pub const T_KX: u16 = 36;
 
 /// DNAME record - delegation name (RFC 6672).
@@ -590,13 +590,13 @@ pub const EDE_UNABLE_POLICY: i32 = 28;
 pub const EDE_SYNTHESIZED: i32 = 29;
 
 // Aliases for compatibility with dnsmasq C implementation
-/// Alias for EDE_DNSSEC_BOGUS (code 6).
+/// Alias for `EDE_DNSSEC_BOGUS` (code 6).
 pub const EDE_BOGUS: i32 = EDE_DNSSEC_BOGUS;
 
-/// Alias for EDE_DNSSEC_IND (code 5) - DNSSEC Indeterminate.
+/// Alias for `EDE_DNSSEC_IND` (code 5) - DNSSEC Indeterminate.
 pub const EDE_INDET: i32 = EDE_DNSSEC_IND;
 
-/// Alias for EDE_NO_RRSIG (code 10) - Missing RRSIG.
+/// Alias for `EDE_NO_RRSIG` (code 10) - Missing RRSIG.
 pub const EDE_RRSIG_MISS: i32 = EDE_NO_RRSIG;
 
 /// No reachable authority - custom dnsmasq extension.
@@ -618,7 +618,7 @@ pub const HB3_QR: u8 = 0x80;
 
 /// OPCODE mask - Operation code field (RFC 1035 Section 4.1.1).
 ///
-/// Bits 6-3 of header byte 3 (hb3). Extract via: (hb3 & HB3_OPCODE) >> 3
+/// Bits 6-3 of header byte 3 (hb3). Extract via: (hb3 & `HB3_OPCODE`) >> 3
 pub const HB3_OPCODE: u8 = 0x78;
 
 /// AA flag - Authoritative Answer (RFC 1035 Section 4.1.1).
@@ -626,7 +626,7 @@ pub const HB3_OPCODE: u8 = 0x78;
 /// Bit 2 of header byte 3 (hb3). Set by name servers for authoritative responses.
 pub const HB3_AA: u8 = 0x04;
 
-/// TC flag - TrunCation (RFC 1035 Section 4.1.1).
+/// TC flag - `TrunCation` (RFC 1035 Section 4.1.1).
 ///
 /// Bit 1 of header byte 3 (hb3). Indicates message was truncated due to length
 /// exceeding transmission channel capacity.
@@ -654,7 +654,7 @@ pub const HB4_CD: u8 = 0x10;
 
 /// RCODE mask - Response Code field (RFC 1035 Section 4.1.1).
 ///
-/// Bits 3-0 of header byte 4 (hb4). Extract via: hb4 & HB4_RCODE
+/// Bits 3-0 of header byte 4 (hb4). Extract via: hb4 & `HB4_RCODE`
 pub const HB4_RCODE: u8 = 0x0f;
 
 // ============================================================================

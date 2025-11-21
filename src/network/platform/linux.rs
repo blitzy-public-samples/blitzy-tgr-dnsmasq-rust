@@ -9,14 +9,14 @@
 //!
 //! This module provides the Linux implementation of the `NetworkPlatform` trait using
 //! the rtnetlink crate for real-time netlink-based interface monitoring. It replaces
-//! the C netlink.c implementation (lines 83-740, HAVE_LINUX_NETWORK sections) with
+//! the C netlink.c implementation (lines 83-740, `HAVE_LINUX_NETWORK` sections) with
 //! safe Rust code that eliminates manual pointer arithmetic, buffer management, and
 //! poll-based event loops.
 //!
 //! # Architecture
 //!
 //! The rtnetlink crate provides superior performance through kernel push notifications
-//! via netlink multicast groups (RTMGRP_LINK, RTMGRP_IPV4_IFADDR, RTMGRP_IPV6_IFADDR)
+//! via netlink multicast groups (`RTMGRP_LINK`, `RTMGRP_IPV4_IFADDR`, `RTMGRP_IPV6_IFADDR`)
 //! rather than polling. The Connection type maintains a background task that receives
 //! netlink messages and routes them through message-specific streams.
 //!
@@ -26,7 +26,7 @@
 //! - `iface_enumerate(RTM_GETLINK)` → `enumerate_interfaces`
 //! - `iface_enumerate(RTM_GETNEIGH)` → `enumerate_arp_entries`
 //! - `netlink_multicast` / `nl_async` → `subscribe_to_changes` (returns Stream)
-//! - Manual netlink socket + poll() → rtnetlink Connection + tokio async/await
+//! - Manual netlink socket + `poll()` → rtnetlink Connection + tokio async/await
 //!
 //! # Memory Safety Improvements
 //!
@@ -41,9 +41,9 @@
 //! This implementation supports:
 //! - Standard Linux (kernels 2.6+)
 //! - Android (AOSP builds)
-//! - Embedded Linux systems (OpenWrt, Yocto, Buildroot)
+//! - Embedded Linux systems (`OpenWrt`, Yocto, Buildroot)
 //!
-//! All platforms must have NETLINK_ROUTE socket support in the kernel.
+//! All platforms must have `NETLINK_ROUTE` socket support in the kernel.
 
 use crate::error::{NetworkError, Result};
 use crate::network::platform::common::{
@@ -72,7 +72,7 @@ use tracing::{debug, error, info, instrument, trace};
 /// Linux network platform implementation using rtnetlink.
 ///
 /// This struct provides Linux-specific networking capabilities through the rtnetlink
-/// crate, which communicates with the kernel via NETLINK_ROUTE sockets. It maintains
+/// crate, which communicates with the kernel via `NETLINK_ROUTE` sockets. It maintains
 /// a background connection task that processes netlink messages and routes events
 /// through appropriate channels.
 ///
@@ -117,7 +117,7 @@ pub struct LinuxNetworkPlatform {
     /// incoming netlink messages. This task is spawned in `new()` and must remain
     /// alive for the duration of the platform's lifetime.
     ///
-    /// Wrapped in Arc so LinuxNetworkPlatform can be Clone.
+    /// Wrapped in Arc so `LinuxNetworkPlatform` can be Clone.
     _connection_task: Arc<JoinHandle<()>>,
 
     /// Cache of interface index to name mappings.
@@ -132,7 +132,7 @@ impl LinuxNetworkPlatform {
     /// Create a new Linux network platform instance.
     ///
     /// This method replaces the C `netlink_init` function from netlink.c (lines 96-183).
-    /// It creates a NETLINK_ROUTE socket connection and spawns a background task to
+    /// It creates a `NETLINK_ROUTE` socket connection and spawns a background task to
     /// process incoming netlink messages.
     ///
     /// # C Implementation Comparison
@@ -152,7 +152,7 @@ impl LinuxNetworkPlatform {
     /// ```
     ///
     /// Rust equivalent:
-    /// - rtnetlink::new_connection() handles socket creation and binding
+    /// - `rtnetlink::new_connection()` handles socket creation and binding
     /// - Multicast group subscriptions are automatic
     /// - Connection spawns background task for message processing
     ///
@@ -178,7 +178,7 @@ impl LinuxNetworkPlatform {
             error!("Failed to create netlink connection: {}", e);
             NetworkError::NetlinkFailed {
                 operation: "new_connection".to_string(),
-                reason: format!("Socket creation failed: {}", e),
+                reason: format!("Socket creation failed: {e}"),
             }
         })?;
 
@@ -201,12 +201,12 @@ impl LinuxNetworkPlatform {
 
     /// Parse interface flags from netlink message flags field.
     ///
-    /// Converts Linux kernel IFF_* flags to type-safe InterfaceFlags bitflags.
-    /// Replaces C macro-based flag checking (IFF_UP, IFF_LOOPBACK, etc.).
+    /// Converts Linux kernel IFF_* flags to type-safe `InterfaceFlags` bitflags.
+    /// Replaces C macro-based flag checking (`IFF_UP`, `IFF_LOOPBACK`, etc.).
     ///
     /// # Arguments
     ///
-    /// * `ifi_flags` - Raw flags from RTM_NEWLINK message (ifi_flags field)
+    /// * `ifi_flags` - Raw flags from `RTM_NEWLINK` message (`ifi_flags` field)
     ///
     /// # C Implementation Comparison
     ///
@@ -247,12 +247,12 @@ impl LinuxNetworkPlatform {
 
     /// Parse IP address from netlink address message attributes.
     ///
-    /// Extracts IFA_LOCAL (for IPv4) or IFA_ADDRESS (for IPv6) attributes from
-    /// RTM_NEWADDR messages. Replaces C pointer arithmetic with IFA_RTA macro.
+    /// Extracts `IFA_LOCAL` (for IPv4) or `IFA_ADDRESS` (for IPv6) attributes from
+    /// `RTM_NEWADDR` messages. Replaces C pointer arithmetic with `IFA_RTA` macro.
     ///
     /// # Arguments
     ///
-    /// * `msg` - AddressMessage from netlink
+    /// * `msg` - `AddressMessage` from netlink
     ///
     /// # Returns
     ///
@@ -270,7 +270,7 @@ impl LinuxNetworkPlatform {
     /// ```
     ///
     /// Rust replacement with safe iteration and type checking.
-    /// AddressAttribute variants in netlink-packet-route 0.21 contain IpAddr directly,
+    /// `AddressAttribute` variants in netlink-packet-route 0.21 contain `IpAddr` directly,
     /// so we simply extract and return it.
     fn parse_address_from_nla(msg: &AddressMessage) -> Option<IpAddr> {
         // IPv4 addresses: Prefer IFA_LOCAL (for point-to-point) over IFA_ADDRESS
@@ -280,7 +280,7 @@ impl LinuxNetworkPlatform {
         let mut local_addr = None;
         let mut regular_addr = None;
 
-        for nla in msg.attributes.iter() {
+        for nla in &msg.attributes {
             match nla {
                 AddressAttribute::Local(addr) => {
                     local_addr = Some(*addr);
@@ -312,16 +312,16 @@ impl NetworkPlatform for LinuxNetworkPlatform {
     /// # C Implementation Comparison
     ///
     /// C code flow:
-    /// 1. Send RTM_GETLINK request → get list of interfaces
-    /// 2. Send RTM_GETADDR request → get list of addresses
+    /// 1. Send `RTM_GETLINK` request → get list of interfaces
+    /// 2. Send `RTM_GETADDR` request → get list of addresses
     /// 3. Manually parse both message types with pointer arithmetic
     /// 4. Match addresses to interfaces by index
     /// 5. Build struct irec linked list
     ///
     /// Rust equivalent:
-    /// - Use rtnetlink::Handle::link().get().execute() for interfaces
-    /// - Use rtnetlink::Handle::address().get().execute() for addresses
-    /// - Type-safe parsing with AddressMessage and LinkMessage
+    /// - Use `rtnetlink::Handle::link().get().execute()` for interfaces
+    /// - Use `rtnetlink::Handle::address().get().execute()` for addresses
+    /// - Type-safe parsing with `AddressMessage` and `LinkMessage`
     /// - Build Vec<NetworkInterface> with owned data
     ///
     /// # Errors
@@ -353,7 +353,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
         while let Some(link) = links.try_next().await.map_err(|e| {
             error!("Failed to read link message: {}", e);
             NetworkError::InterfaceEnumerationFailed {
-                reason: format!("Link message parsing failed: {}", e),
+                reason: format!("Link message parsing failed: {e}"),
             }
         })? {
             let index = link.header.index;
@@ -370,7 +370,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
                         None
                     }
                 })
-                .unwrap_or_else(|| format!("if{}", index));
+                .unwrap_or_else(|| format!("if{index}"));
 
             trace!(
                 interface = %name,
@@ -405,7 +405,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
         while let Some(addr_msg) = addresses.try_next().await.map_err(|e| {
             error!("Failed to read address message: {}", e);
             NetworkError::InterfaceEnumerationFailed {
-                reason: format!("Address message parsing failed: {}", e),
+                reason: format!("Address message parsing failed: {e}"),
             }
         })? {
             let index = addr_msg.header.index;
@@ -431,8 +431,8 @@ impl NetworkPlatform for LinuxNetworkPlatform {
 
     /// Subscribe to real-time network interface changes.
     ///
-    /// Returns a Stream that yields InterfaceEvent items whenever the kernel sends
-    /// RTM_NEWADDR, RTM_DELADDR, RTM_NEWLINK, or RTM_NEWROUTE notifications.
+    /// Returns a Stream that yields `InterfaceEvent` items whenever the kernel sends
+    /// `RTM_NEWADDR`, `RTM_DELADDR`, `RTM_NEWLINK`, or `RTM_NEWROUTE` notifications.
     ///
     /// This method replaces the C `netlink_multicast` polling loop (netlink.c lines
     /// 574-619) and `nl_async` message processing (lines 622-740) with an async
@@ -454,8 +454,8 @@ impl NetworkPlatform for LinuxNetworkPlatform {
     /// Rust replacement:
     /// - rtnetlink automatically subscribes to multicast groups
     /// - Connection task receives messages in background
-    /// - Returns tokio_stream for async iteration
-    /// - No manual poll() or message queueing needed
+    /// - Returns `tokio_stream` for async iteration
+    /// - No manual `poll()` or message queueing needed
     ///
     /// # Implementation Note
     ///
@@ -471,7 +471,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
     ///
     /// # Returns
     ///
-    /// A Stream of InterfaceEvent items. The stream remains open indefinitely
+    /// A Stream of `InterfaceEvent` items. The stream remains open indefinitely
     /// and should be consumed with `while let Some(event) = stream.next().await`.
     ///
     /// # Errors
@@ -544,7 +544,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
                         .await
                         .get(index)
                         .cloned()
-                        .unwrap_or_else(|| format!("if{}", index));
+                        .unwrap_or_else(|| format!("if{index}"));
 
                     // Detect newly added addresses
                     for addr in current_addrs {
@@ -598,7 +598,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
                             .await
                             .get(index)
                             .cloned()
-                            .unwrap_or_else(|| format!("if{}", index));
+                            .unwrap_or_else(|| format!("if{index}"));
 
                         for addr in prev_addrs {
                             let event = InterfaceEvent::AddressRemoved {
@@ -628,7 +628,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
     ///
     /// # C Implementation Comparison
     ///
-    /// C code from netlink.c used if_indextoname() from libc:
+    /// C code from netlink.c used `if_indextoname()` from libc:
     /// ```c
     /// char ifname[IF_NAMESIZE];
     /// if (if_indextoname(index, ifname)) {
@@ -678,7 +678,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
                             None
                         }
                     })
-                    .unwrap_or_else(|| format!("if{}", index));
+                    .unwrap_or_else(|| format!("if{index}"));
 
                 let mut cache = self.interface_cache.lock().await;
                 cache.insert(index, interface_name.clone());
@@ -688,7 +688,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
             }
 
             debug!(index, "Interface index not found");
-            Err(NetworkError::InterfaceNotFound { interface: format!("index {}", index) })?
+            Err(NetworkError::InterfaceNotFound { interface: format!("index {index}") })?
         }
     }
 
@@ -714,18 +714,18 @@ impl NetworkPlatform for LinuxNetworkPlatform {
     /// ```
     ///
     /// Rust replacement:
-    /// - rtnetlink::Handle::neighbours().get().execute()
-    /// - Type-safe NeighbourMessage parsing
+    /// - `rtnetlink::Handle::neighbours().get().execute()`
+    /// - Type-safe `NeighbourMessage` parsing
     /// - Safe attribute iteration without pointer arithmetic
     ///
     /// # Returns
     ///
-    /// Vector of (IpAddr, MacAddress) tuples representing active ARP/NDP entries.
+    /// Vector of (`IpAddr`, `MacAddress`) tuples representing active ARP/NDP entries.
     ///
     /// # Errors
     ///
     /// Returns `NetworkError::NetlinkFailed` if:
-    /// - RTM_GETNEIGH request fails (permission denied)
+    /// - `RTM_GETNEIGH` request fails (permission denied)
     /// - Message parsing fails (malformed responses)
     ///
     /// # Example
@@ -748,7 +748,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
             error!("Failed to read neighbor message: {}", e);
             NetworkError::NetlinkFailed {
                 operation: "neighbour_parse".to_string(),
-                reason: format!("Neighbor message parsing failed: {}", e),
+                reason: format!("Neighbor message parsing failed: {e}"),
             }
         })? {
             let mut ip_addr: Option<IpAddr> = None;
@@ -757,7 +757,7 @@ impl NetworkPlatform for LinuxNetworkPlatform {
             // Parse NDA_DST (destination IP) and NDA_LLADDR (link-layer address / MAC)
             // NeighbourAttribute::Destination contains a NeighbourAddress enum (Inet/Inet6)
             // NeighbourAttribute::LinkLocalAddress contains MAC as Vec<u8>
-            for nla in neigh_msg.attributes.iter() {
+            for nla in &neigh_msg.attributes {
                 match nla {
                     NeighbourAttribute::Destination(neighbour_addr) => {
                         // NeighbourAddress enum contains Ipv4Addr or Ipv6Addr directly

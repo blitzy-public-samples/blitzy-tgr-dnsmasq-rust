@@ -1,35 +1,35 @@
 // Copyright (c) 2000-2025 Simon Kelley
 // SPDX-License-Identifier: GPL-2.0-or-later OR GPL-3.0-or-later
 
-//! DHCPv4 Server Implementation
+//! `DHCPv4` Server Implementation
 //!
-//! This module provides a complete, memory-safe DHCPv4 server implementation per RFC 2131
+//! This module provides a complete, memory-safe `DHCPv4` server implementation per RFC 2131
 //! (Dynamic Host Configuration Protocol) and RFC 2132 (DHCP Options and BOOTP Vendor Extensions).
 //! It replaces the C implementation from `src/dhcp.c` and `src/rfc2131.c` with Rust's ownership
 //! system, async I/O, and type-safe protocol handling.
 //!
 //! # Purpose
 //!
-//! Implements the complete DHCPv4 protocol state machine for dynamic IP address allocation to
-//! network clients. This module serves as the unified interface to all DHCPv4 functionality,
+//! Implements the complete `DHCPv4` protocol state machine for dynamic IP address allocation to
+//! network clients. This module serves as the unified interface to all `DHCPv4` functionality,
 //! coordinating message processing, address allocation, lease management, and DNS integration.
 //!
 //! # Architecture
 //!
-//! The DHCPv4 implementation is organized into five submodules:
+//! The `DHCPv4` implementation is organized into five submodules:
 //!
 //! - **[`constants`]**: Protocol constants including port numbers (67/68), message types
 //!   (DISCOVER, OFFER, REQUEST, ACK, NAK, DECLINE, RELEASE, INFORM), option codes per RFC 2132,
 //!   and buffer sizes. Replaces `src/dhcp-protocol.h` with type-safe Rust constants.
 //!
-//! - **[`message`]**: DHCPv4 message parsing and serialization using nom parser combinators
+//! - **[`message`]**: `DHCPv4` message parsing and serialization using nom parser combinators
 //!   for safe, bounds-checked handling. The [`DhcpMessage`] struct represents the 236-byte
 //!   fixed header plus variable-length options field. Replaces C pointer arithmetic with
 //!   memory-safe parsing.
 //!
 //! - **[`options`]**: DHCP option encoding/decoding implementing RFC 2132 Type-Length-Value (TLV)
 //!   format. The [`DhcpOption`] enum provides type-safe option handling with variants for all
-//!   standard options (Netmask, Router, DnsServer, MessageType, LeaseTime, etc.). Replaces
+//!   standard options (Netmask, Router, `DnsServer`, `MessageType`, `LeaseTime`, etc.). Replaces
 //!   manual buffer manipulation with safe serialization.
 //!
 //! - **[`protocol`]**: RFC 2131 protocol state machine implementing the complete
@@ -37,7 +37,7 @@
 //!   message processing, lease allocation decisions, and response generation. Replaces
 //!   `src/rfc2131.c` with type-safe state transitions.
 //!
-//! - **[`server`]**: DHCPv4 server core providing async message handling with tokio,
+//! - **[`server`]**: `DHCPv4` server core providing async message handling with tokio,
 //!   dynamic address allocation from configured pools, ICMP ping-based conflict detection,
 //!   and lease database integration. The [`DhcpV4Service`] struct is the main entry point,
 //!   replacing `src/dhcp.c` with async/await patterns.
@@ -56,7 +56,7 @@
 //!
 //! # Protocol State Machine
 //!
-//! The DHCPv4 protocol implements a four-message exchange for address allocation:
+//! The `DHCPv4` protocol implements a four-message exchange for address allocation:
 //!
 //! ```text
 //! Client                 Server
@@ -117,7 +117,7 @@
 //! # buffer[238] = 0x53;
 //! # buffer[239] = 0x63;
 //! # buffer[240] = 0xFF; // End option
-//! # 
+//! #
 //! // Bounds-checked parsing with nom combinators
 //! let message = DhcpMessage::parse_dhcp_message(&buffer)?;
 //! // Compile-time prevention of buffer overflows
@@ -144,7 +144,7 @@
 //!
 //! # Usage Examples
 //!
-//! ## Basic DHCPv4 Server
+//! ## Basic `DHCPv4` Server
 //!
 //! ```rust,ignore
 //! use dnsmasq::dhcp::v4::{DhcpV4Service, DhcpMessage};
@@ -208,7 +208,7 @@
 //!
 //! # Integration with Other Modules
 //!
-//! The DHCPv4 module integrates with several other dnsmasq subsystems:
+//! The `DHCPv4` module integrates with several other dnsmasq subsystems:
 //!
 //! ## Lease Management ([`crate::dhcp::lease`])
 //!
@@ -239,7 +239,7 @@
 //! ## Helper Scripts ([`crate::util::helpers`])
 //!
 //! - **Lease events**: Execute external scripts on add/old/del lease events
-//! - **Environment variables**: Pass lease info via DNSMASQ_LEASE_* environment
+//! - **Environment variables**: Pass lease info via `DNSMASQ_LEASE`_* environment
 //! - **Custom integration**: Enable site-specific lease processing
 //!
 //! # Performance Characteristics
@@ -261,7 +261,7 @@
 //! # See Also
 //!
 //! - Parent module: [`crate::dhcp`] - Common DHCP utilities for v4 and v6
-//! - DHCPv6: [`crate::dhcp::v6`] - IPv6 address allocation per RFC 3315
+//! - `DHCPv6`: [`crate::dhcp::v6`] - IPv6 address allocation per RFC 3315
 //! - Router Advertisement: [`crate::radv`] - IPv6 RA for SLAAC
 
 /// DHCPv4 protocol constants (ports, message types, option codes)
@@ -310,13 +310,13 @@ pub mod server;
 
 /// Re-export of [`server::DhcpV4Service`] for convenient access
 ///
-/// Main entry point for DHCPv4 server functionality. Create with [`DhcpV4Service::new`]
+/// Main entry point for `DHCPv4` server functionality. Create with [`DhcpV4Service::new`]
 /// and run with [`DhcpV4Service::run`].
 pub use server::DhcpV4Service;
 
 /// Re-export of [`message::DhcpMessage`] for convenient access
 ///
-/// Represents a complete DHCPv4 packet. Parse with [`DhcpMessage::parse_dhcp_message`]
+/// Represents a complete `DHCPv4` packet. Parse with [`DhcpMessage::parse_dhcp_message`]
 /// and serialize with [`DhcpMessage::serialize_dhcp_message`].
 pub use message::DhcpMessage;
 

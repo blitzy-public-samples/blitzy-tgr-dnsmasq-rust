@@ -49,8 +49,8 @@
 //!
 //! - **Edns0**: Remove OPT pseudo-RRs (type 41) from additional section per RFC 6891
 //! - **Dnssec**: Remove DNSSEC validation records (RRSIG, NSEC, NSEC3) for non-validating clients
-//! - **AddressRecords**: Remove A/AAAA records for policy-based filtering
-//! - **PolicyBased**: Remove record types specified in configuration filter-rr directives
+//! - **`AddressRecords`**: Remove A/AAAA records for policy-based filtering
+//! - **`PolicyBased`**: Remove record types specified in configuration filter-rr directives
 //!
 //! # Memory Safety Improvements
 //!
@@ -60,8 +60,8 @@
 //!   with dynamic growth and automatic cleanup
 //! - **Bounds-checked indexing**: All packet byte access uses safe slicing with Result error propagation
 //! - **Parser combinators**: nom library replaces manual pointer arithmetic for name traversal
-//! - **Type-safe record matching**: RecordType enum replaces integer type codes (T_RRSIG, T_NSEC, etc.)
-//! - **Explicit error handling**: Result<T, DnsError> replaces -1 return codes and silent failures
+//! - **Type-safe record matching**: `RecordType` enum replaces integer type codes (`T_RRSIG`, `T_NSEC`, etc.)
+//! - **Explicit error handling**: Result<T, `DnsError`> replaces -1 return codes and silent failures
 //!
 //! # RFC Compliance
 //!
@@ -92,7 +92,10 @@
 //! This module replaces `rrfilter.c` functions:
 //! - `rrfilter()` → `RrFilter::apply_filter()`
 //! - `check_name()` → `RrFilter::check_compression_integrity()` + nom parsers
-//! - `rrfilter_desc()` → Inline record field identification using ResourceRecord structure
+//! - `rrfilter_desc()` → Inline record field identification using `ResourceRecord` structure
+
+// DNS protocol (RFC 1035) uses standard field names: qdcount, ancount, nscount, arcount
+#![allow(clippy::similar_names)]
 
 use crate::config::types::DnsConfig;
 use crate::dns::protocol::message::DnsMessage;
@@ -115,13 +118,13 @@ use tracing::{debug, error, instrument, trace, warn};
 ///   to clients that don't perform DNSSEC validation. This reduces response size and prevents
 ///   confusion for clients that may misinterpret DNSSEC records without validation.
 ///
-/// - **AddressRecords**: Remove A (IPv4) and AAAA (IPv6) address records for policy-based filtering.
+/// - **`AddressRecords`**: Remove A (IPv4) and AAAA (IPv6) address records for policy-based filtering.
 ///   Used when implementing access controls or selective DNS responses based on client identity or
 ///   network policy.
 ///
-/// - **PolicyBased**: Remove record types specified in dnsmasq configuration via filter-rr directives.
+/// - **`PolicyBased`**: Remove record types specified in dnsmasq configuration via filter-rr directives.
 ///   Allows administrators to filter arbitrary record types (MX, CNAME, etc.) based on security
-///   policy or network requirements. Requires DnsConfig.filter_rr field.
+///   policy or network requirements. Requires `DnsConfig.filter_rr` field.
 ///
 /// # C Equivalent
 ///
@@ -175,7 +178,7 @@ pub enum FilterMode {
 
 /// DNS Resource Record filter implementing safe RR removal with compression pointer validation.
 ///
-/// RrFilter provides stateless filtering operations on DNS messages. All methods take message
+/// `RrFilter` provides stateless filtering operations on DNS messages. All methods take message
 /// references rather than maintaining internal state, following Rust idioms and enabling
 /// concurrent filtering operations on different messages.
 ///
@@ -212,7 +215,7 @@ pub enum FilterMode {
 /// | Manual pointer arithmetic | Safe slice indexing | Bounds checking, no buffer overruns |
 /// | `check_name()` manual traversal | nom parser combinators | Safe parsing, no pointer errors |
 /// | `-1` return codes | `Result<(), DnsError>` | Type-safe error propagation |
-/// | Global `rrtype_desc[]` lookup | Pattern matching on RecordType | Compile-time exhaustiveness |
+/// | Global `rrtype_desc[]` lookup | Pattern matching on `RecordType` | Compile-time exhaustiveness |
 ///
 /// # Examples
 ///
@@ -249,14 +252,14 @@ impl RrFilter {
     ///
     /// * `message` - The DNS message to filter (modified in-place)
     /// * `filter_mode` - The type of filtering to apply
-    /// * `config` - Optional DNS configuration (required for PolicyBased mode)
+    /// * `config` - Optional DNS configuration (required for `PolicyBased` mode)
     ///
     /// # Returns
     ///
     /// `Ok(())` if filtering succeeded, or `DnsError` if:
     /// - Packet structure is malformed
     /// - Compression pointers would become invalid after filtering
-    /// - Required configuration is missing for PolicyBased mode
+    /// - Required configuration is missing for `PolicyBased` mode
     ///
     /// # Pass Execution
     ///
@@ -269,7 +272,7 @@ impl RrFilter {
     ///
     /// - `DnsError::ParseFailed`: Message structure prevents filtering
     /// - `DnsError::InvalidName`: Compression pointer validation failed
-    /// - `DnsError::ConfigurationError`: PolicyBased mode requires config but none provided
+    /// - `DnsError::ConfigurationError`: `PolicyBased` mode requires config but none provided
     ///
     /// # Examples
     ///
@@ -457,7 +460,7 @@ impl RrFilter {
     /// 2. Build new packet by copying non-removed byte ranges
     /// 3. Adjust compression pointers in copied data (Pass 3 integration)
     /// 4. Update ANCOUNT, NSCOUNT, ARCOUNT in DNS header
-    /// 5. Parse compacted bytes back into DnsMessage
+    /// 5. Parse compacted bytes back into `DnsMessage`
     ///
     /// # Arguments
     ///
@@ -548,10 +551,14 @@ impl RrFilter {
         }
 
         // Update header counts
+        // Casting i32 to u16 is safe because these counters are never negative and DNS section counts never exceed u16::MAX
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let ancount = u16::from_be_bytes([new_packet[4], new_packet[5]])
             .saturating_sub(removed_in_answer as u16);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let nscount = u16::from_be_bytes([new_packet[6], new_packet[7]])
             .saturating_sub(removed_in_authority as u16);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let arcount = u16::from_be_bytes([new_packet[8], new_packet[9]])
             .saturating_sub(removed_in_additional as u16);
 
@@ -580,20 +587,20 @@ impl RrFilter {
     ///
     /// * `message` - DNS message to analyze
     /// * `filter_mode` - Type of filtering to apply
-    /// * `config` - Optional configuration (required for PolicyBased mode)
+    /// * `config` - Optional configuration (required for `PolicyBased` mode)
     ///
     /// # Returns
     ///
-    /// Vec of byte ranges representing records to remove, or DnsError if:
-    /// - PolicyBased mode used without configuration
+    /// Vec of byte ranges representing records to remove, or `DnsError` if:
+    /// - `PolicyBased` mode used without configuration
     /// - Message structure is malformed
     ///
     /// # Filter Criteria
     ///
     /// - **Edns0**: TYPE = OPT (41) in additional section only
     /// - **Dnssec**: TYPE in {RRSIG, NSEC, NSEC3, DNSKEY, DS}
-    /// - **AddressRecords**: TYPE in {A, AAAA}
-    /// - **PolicyBased**: TYPE in config.filter_rr list
+    /// - **`AddressRecords`**: TYPE in {A, AAAA}
+    /// - **`PolicyBased`**: TYPE in `config.filter_rr` list
     fn identify_records_to_remove(
         message: &DnsMessage,
         filter_mode: FilterMode,
@@ -646,7 +653,7 @@ impl RrFilter {
     ///
     /// * `rr` - Resource record to evaluate
     /// * `filter_mode` - Filter criteria
-    /// * `config` - Optional configuration for PolicyBased mode
+    /// * `config` - Optional configuration for `PolicyBased` mode
     ///
     /// # Returns
     ///
@@ -706,7 +713,7 @@ impl RrFilter {
     ///
     /// # Returns
     ///
-    /// Offset immediately after the name, or DnsError if validation fails.
+    /// Offset immediately after the name, or `DnsError` if validation fails.
     fn check_name_compression(
         packet: &Bytes,
         mut offset: usize,
@@ -719,7 +726,7 @@ impl RrFilter {
             if offset >= packet.len() {
                 return Err(DnsmasqError::Dns(DnsError::ParseFailed {
                     server: "packet".to_string(),
-                    reason: format!("Name offset {} out of bounds", offset),
+                    reason: format!("Name offset {offset} out of bounds"),
                 }));
             }
 
@@ -747,8 +754,7 @@ impl RrFilter {
                         return Err(DnsmasqError::Dns(DnsError::InvalidName {
                             name: "compressed".to_string(),
                             reason: format!(
-                                "Compression pointer at {} points to removed range {:?}",
-                                offset, range
+                                "Compression pointer at {offset} points to removed range {range:?}"
                             ),
                         }));
                     }
@@ -778,7 +784,7 @@ impl RrFilter {
             if len > 63 {
                 return Err(DnsmasqError::Dns(DnsError::InvalidName {
                     name: "parsed".to_string(),
-                    reason: format!("Label length {} exceeds maximum 63", len),
+                    reason: format!("Label length {len} exceeds maximum 63"),
                 }));
             }
 

@@ -91,8 +91,8 @@ pub enum Edns0Option {
     /// RFC 7871: Client Subnet in DNS Queries
     ///
     /// Provides client IP subnet information to enable geographic DNS optimization.
-    /// The source_netmask indicates the significant bits in the address,
-    /// while scope_netmask indicates the precision of the response.
+    /// The `source_netmask` indicates the significant bits in the address,
+    /// while `scope_netmask` indicates the precision of the response.
     ClientSubnet {
         /// Address family: 1 = IPv4, 2 = IPv6
         family: u16,
@@ -186,6 +186,7 @@ pub enum Edns0Option {
 
 impl Edns0Option {
     /// Returns the EDNS0 option code for this option type
+    #[must_use]
     pub fn code(&self) -> u16 {
         match self {
             Edns0Option::ClientSubnet { .. } => EDNS0_OPTION_CLIENT_SUBNET,
@@ -202,6 +203,7 @@ impl Edns0Option {
     }
 
     /// Returns the wire-format serialized option data length
+    #[must_use]
     pub fn data_len(&self) -> usize {
         match self {
             Edns0Option::ClientSubnet { family, .. } => {
@@ -210,14 +212,15 @@ impl Edns0Option {
             }
             Edns0Option::DnssecOk => 0,
             Edns0Option::Cookie { client, server } => {
-                client.len() + server.as_ref().map_or(0, |s| s.len())
+                client.len() + server.as_ref().map_or(0, std::vec::Vec::len)
             }
             Edns0Option::ExtendedError { extra_text, .. } => 2 + extra_text.len(),
             Edns0Option::Padding { length } => *length,
             Edns0Option::Mac { .. } => 6, // MAC address is always 6 bytes
-            Edns0Option::NomDeviceId { device_id } => device_id.len(),
+            Edns0Option::NomDeviceId { device_id } | Edns0Option::Umbrella { device_id } => {
+                device_id.len()
+            }
             Edns0Option::NomCpeId { cpe_id } => cpe_id.len(),
-            Edns0Option::Umbrella { device_id } => device_id.len(),
             Edns0Option::Unknown { data, .. } => data.len(),
         }
     }
@@ -269,16 +272,12 @@ impl Edns0Option {
                 buf.extend_from_slice(address.octets());
             }
 
-            Edns0Option::NomDeviceId { device_id } => {
+            Edns0Option::NomDeviceId { device_id } | Edns0Option::Umbrella { device_id } => {
                 buf.extend_from_slice(device_id);
             }
 
             Edns0Option::NomCpeId { cpe_id } => {
                 buf.extend_from_slice(cpe_id);
-            }
-
-            Edns0Option::Umbrella { device_id } => {
-                buf.extend_from_slice(device_id);
             }
 
             Edns0Option::Unknown { data, .. } => {
@@ -291,7 +290,7 @@ impl Edns0Option {
 
     /// Serializes the option to wire format with code and data
     ///
-    /// Returns a tuple of (option_code, option_data) for wire format serialization.
+    /// Returns a tuple of (`option_code`, `option_data`) for wire format serialization.
     /// This is a convenience method that combines `code()` and `to_wire_format()`.
     pub fn serialize(&self) -> Result<(u16, Vec<u8>)> {
         let code = self.code();
@@ -370,7 +369,7 @@ impl Edns0Option {
             }
             _ => {
                 return Err(DnsError::Edns0Failed {
-                    reason: format!("Unsupported address family in client subnet: {}", family),
+                    reason: format!("Unsupported address family in client subnet: {family}"),
                 }
                 .into());
             }
@@ -449,28 +448,27 @@ impl std::fmt::Display for Edns0Option {
             Edns0Option::ClientSubnet { family, source_netmask, scope_netmask, address } => {
                 write!(
                     f,
-                    "CLIENT-SUBNET: family={} source={} scope={} addr={}",
-                    family, source_netmask, scope_netmask, address
+                    "CLIENT-SUBNET: family={family} source={source_netmask} scope={scope_netmask} addr={address}"
                 )
             }
             Edns0Option::DnssecOk => write!(f, "DNSSEC-OK"),
             Edns0Option::Cookie { client, server } => {
-                write!(f, "COOKIE: client={:?}", client)?;
+                write!(f, "COOKIE: client={client:?}")?;
                 if let Some(s) = server {
-                    write!(f, " server={:?}", s)?;
+                    write!(f, " server={s:?}")?;
                 }
                 Ok(())
             }
             Edns0Option::ExtendedError { info_code, extra_text } => {
-                write!(f, "EDE: code={} text='{}'", info_code, extra_text)
+                write!(f, "EDE: code={info_code} text='{extra_text}'")
             }
-            Edns0Option::Padding { length } => write!(f, "PADDING: {} bytes", length),
-            Edns0Option::Mac { address } => write!(f, "MAC: {}", address),
+            Edns0Option::Padding { length } => write!(f, "PADDING: {length} bytes"),
+            Edns0Option::Mac { address } => write!(f, "MAC: {address}"),
             Edns0Option::NomDeviceId { device_id } => {
-                write!(f, "NOMINUM-DEVICE: {:?}", device_id)
+                write!(f, "NOMINUM-DEVICE: {device_id:?}")
             }
-            Edns0Option::NomCpeId { cpe_id } => write!(f, "NOMINUM-CPE: {:?}", cpe_id),
-            Edns0Option::Umbrella { device_id } => write!(f, "UMBRELLA: {:?}", device_id),
+            Edns0Option::NomCpeId { cpe_id } => write!(f, "NOMINUM-CPE: {cpe_id:?}"),
+            Edns0Option::Umbrella { device_id } => write!(f, "UMBRELLA: {device_id:?}"),
             Edns0Option::Unknown { code, data } => {
                 write!(f, "UNKNOWN({}): {} bytes", code, data.len())
             }
@@ -502,6 +500,7 @@ pub struct OptRecord {
 
 impl OptRecord {
     /// Creates a new OPT record with default values
+    #[must_use]
     pub fn new() -> Self {
         Self {
             udp_payload_size: DEFAULT_UDP_PAYLOAD,
@@ -513,6 +512,7 @@ impl OptRecord {
     }
 
     /// Returns true if the DNSSEC OK (DO) bit is set
+    #[must_use]
     pub fn has_do_bit(&self) -> bool {
         (self.flags & EDNS_DO_BIT) != 0
     }
@@ -534,6 +534,7 @@ impl OptRecord {
     /// Returns the total wire format size of this OPT record
     ///
     /// Includes: NAME(1) + TYPE(2) + CLASS(2) + TTL(4) + RDLENGTH(2) + RDATA
+    #[must_use]
     pub fn wire_size(&self) -> usize {
         let mut size = 1 + 2 + 2 + 4 + 2; // OPT RR header
         for option in &self.options {
@@ -557,9 +558,9 @@ impl OptRecord {
         buf.extend_from_slice(&self.udp_payload_size.to_be_bytes());
 
         // TTL: extended RCODE(8) + version(8) + flags(16)
-        let ttl: u32 = ((self.extended_rcode as u32) << 24)
-            | ((self.version as u32) << 16)
-            | (self.flags as u32);
+        let ttl: u32 = (u32::from(self.extended_rcode) << 24)
+            | (u32::from(self.version) << 16)
+            | u32::from(self.flags);
         buf.extend_from_slice(&ttl.to_be_bytes());
 
         // RDLENGTH and RDATA (options)
@@ -576,15 +577,19 @@ impl OptRecord {
             // Option data
             let option_data = option.to_wire_format()?;
 
-            // Option length
-            rdata.extend_from_slice(&(option_data.len() as u16).to_be_bytes());
+            // Option length (EDNS0 option length is limited to u16 by protocol)
+            #[allow(clippy::cast_possible_truncation)]
+            let option_len = option_data.len() as u16;
+            rdata.extend_from_slice(&option_len.to_be_bytes());
 
             // Option data
             rdata.extend_from_slice(&option_data);
         }
 
-        // RDLENGTH
-        buf.extend_from_slice(&(rdata.len() as u16).to_be_bytes());
+        // RDLENGTH (OPT record RDATA length is limited to u16 by DNS protocol)
+        #[allow(clippy::cast_possible_truncation)]
+        let rdlength = rdata.len() as u16;
+        buf.extend_from_slice(&rdlength.to_be_bytes());
 
         // RDATA
         buf.extend_from_slice(&rdata);
@@ -623,7 +628,7 @@ impl OptRecord {
         offset += 2;
         if rr_type != T_OPT {
             return Err(DnsError::Edns0Failed {
-                reason: format!("Expected OPT type {}, got {}", T_OPT, rr_type),
+                reason: format!("Expected OPT type {T_OPT}, got {rr_type}"),
             }
             .into());
         }
@@ -728,6 +733,7 @@ pub struct Edns0Handler {
 
 impl Edns0Handler {
     /// Creates a new EDNS0 handler
+    #[must_use]
     pub fn new() -> Self {
         Self { check_source: false }
     }
@@ -790,7 +796,7 @@ impl Edns0Handler {
     pub fn add_opt_record(
         &self,
         additional: &mut Vec<Vec<u8>>,
-        opt_record: OptRecord,
+        opt_record: &OptRecord,
     ) -> Result<usize> {
         let wire_data = opt_record.to_wire_format()?;
 
@@ -838,7 +844,7 @@ impl Edns0Handler {
             IpAddr::V4(_) => {
                 if source_netmask > 32 {
                     return Err(DnsError::Edns0Failed {
-                        reason: format!("Invalid IPv4 netmask: {}", source_netmask),
+                        reason: format!("Invalid IPv4 netmask: {source_netmask}"),
                     }
                     .into());
                 }
@@ -847,7 +853,7 @@ impl Edns0Handler {
             IpAddr::V6(_) => {
                 if source_netmask > 128 {
                     return Err(DnsError::Edns0Failed {
-                        reason: format!("Invalid IPv6 netmask: {}", source_netmask),
+                        reason: format!("Invalid IPv6 netmask: {source_netmask}"),
                     }
                     .into());
                 }
@@ -960,7 +966,11 @@ impl Edns0Handler {
     /// # Returns
     ///
     /// `Some(index)` if an OPT record is found, `None` otherwise
-    pub fn find_opt_in_message(&self, message: &crate::dns::protocol::message::DnsMessage) -> Option<usize> {
+    #[must_use]
+    pub fn find_opt_in_message(
+        &self,
+        message: &crate::dns::protocol::message::DnsMessage,
+    ) -> Option<usize> {
         for (idx, rr) in message.additional.iter().enumerate() {
             if rr.rtype() == crate::types::RecordType::OPT {
                 return Some(idx);
@@ -978,8 +988,9 @@ impl Edns0Handler {
     ///
     /// # Returns
     ///
-    /// A new OptRecord configured with the specified parameters
+    /// A new `OptRecord` configured with the specified parameters
     #[allow(dead_code)]
+    #[must_use]
     pub fn create_opt_record(&self, udp_size: u16, enable_dnssec: bool) -> OptRecord {
         let mut opt = OptRecord::new();
         opt.udp_payload_size = udp_size;
@@ -1020,6 +1031,7 @@ pub struct Edns0Builder {
 
 impl Edns0Builder {
     /// Creates a new builder with default values
+    #[must_use]
     pub fn new() -> Self {
         Self { udp_payload_size: DEFAULT_UDP_PAYLOAD, do_bit: false, options: Vec::new() }
     }
@@ -1028,7 +1040,8 @@ impl Edns0Builder {
     ///
     /// # Arguments
     ///
-    /// * `size` - Maximum UDP payload size in bytes (clamped to MAX_UDP_PAYLOAD)
+    /// * `size` - Maximum UDP payload size in bytes (clamped to `MAX_UDP_PAYLOAD`)
+    #[must_use]
     pub fn udp_size(mut self, size: u16) -> Self {
         self.udp_payload_size = size.min(MAX_UDP_PAYLOAD);
         self
@@ -1039,6 +1052,7 @@ impl Edns0Builder {
     /// # Arguments
     ///
     /// * `value` - Whether to set the DO bit
+    #[must_use]
     pub fn do_bit(mut self, value: bool) -> Self {
         self.do_bit = value;
         self
@@ -1050,6 +1064,7 @@ impl Edns0Builder {
     ///
     /// * `address` - Client subnet address
     /// * `source_netmask` - Number of significant bits
+    #[must_use]
     pub fn client_subnet(mut self, address: IpAddr, source_netmask: u8) -> Self {
         let family = if address.is_ipv4() { 1 } else { 2 };
         self.options.push(Edns0Option::ClientSubnet {
@@ -1067,6 +1082,7 @@ impl Edns0Builder {
     ///
     /// * `info_code` - EDE info code
     /// * `extra_text` - Human-readable error text
+    #[must_use]
     pub fn extended_error(mut self, info_code: u16, extra_text: impl Into<String>) -> Self {
         self.options.push(Edns0Option::ExtendedError { info_code, extra_text: extra_text.into() });
         self
@@ -1077,6 +1093,7 @@ impl Edns0Builder {
     /// # Arguments
     ///
     /// * `mac` - Client MAC address
+    #[must_use]
     pub fn mac(mut self, mac: MacAddress) -> Self {
         self.options.push(Edns0Option::Mac { address: mac });
         self

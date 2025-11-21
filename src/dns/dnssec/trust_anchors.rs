@@ -27,7 +27,7 @@
 //! - DS record format support with hex digest decoding
 //! - Longest-match zone lookup for trust anchor discovery
 //! - RFC 5011 automated trust anchor rollover with revocation detection
-//! - Efficient storage using BTreeMap for O(log n) zone lookups
+//! - Efficient storage using `BTreeMap` for O(log n) zone lookups
 //!
 //! # RFC Compliance
 //!
@@ -52,7 +52,7 @@
 //! # Memory Safety
 //!
 //! Replaces C daemon->ds_config linked list with manual malloc/free from option.c
-//! with Rust BTreeMap providing automatic memory management and type-safe operations.
+//! with Rust `BTreeMap` providing automatic memory management and type-safe operations.
 //! Eliminates buffer overflows in hex digest parsing through Vec<u8> bounds checking.
 
 use crate::dns::protocol::name::DomainName;
@@ -107,7 +107,7 @@ const SHA384_DIGEST_LEN: usize = 48;
 ///
 /// # RFC 5011 Timer Semantics
 ///
-/// - **AddHold**: New key seen; waiting add-hold-down period (30 days default)
+/// - **`AddHold`**: New key seen; waiting add-hold-down period (30 days default)
 /// - **Hold**: Key confirmed valid; waiting hold-down period (30 days default)
 /// - **Valid**: Key is active and trusted for validation
 /// - **Removed**: Key revoked (DNSKEY flags bit 8 set); removed from trust set
@@ -115,7 +115,7 @@ const SHA384_DIGEST_LEN: usize = 48;
 pub enum Rfc5011State {
     /// New trust anchor in add-hold-down timer state.
     ///
-    /// Trust anchor has been seen in DNSKEY RRset but is not yet trusted.
+    /// Trust anchor has been seen in DNSKEY `RRset` but is not yet trusted.
     /// Waiting for add-hold-down timer to expire before transitioning to Hold.
     AddHold,
 
@@ -160,7 +160,7 @@ pub enum Rfc5011State {
 ///
 /// # Memory Layout
 ///
-/// Replaces C struct ds_config:
+/// Replaces C struct `ds_config`:
 ///
 /// ```c
 /// struct ds_config {
@@ -184,7 +184,7 @@ pub struct TrustAnchor {
     /// query name to root (example.com → com → .) until a matching zone is found.
     pub domain: DomainName,
 
-    /// DNS class code (default C_IN = 1 for Internet class).
+    /// DNS class code (default `C_IN` = 1 for Internet class).
     ///
     /// Supports IN (1), CH (3), and HS (4) per RFC 1035. Most deployments use IN.
     pub class: u16,
@@ -219,7 +219,7 @@ pub struct TrustAnchor {
     /// Hash digest of DNSKEY RDATA.
     ///
     /// Variable-length byte vector containing digest of corresponding DNSKEY.
-    /// Length depends on digest_type:
+    /// Length depends on `digest_type`:
     /// - SHA-1: 20 bytes
     /// - SHA-256: 32 bytes
     /// - SHA-384: 48 bytes
@@ -241,7 +241,7 @@ impl TrustAnchor {
     /// # Arguments
     ///
     /// * `domain` - Zone apex domain name
-    /// * `class` - DNS class (typically C_IN for Internet)
+    /// * `class` - DNS class (typically `C_IN` for Internet)
     /// * `keytag` - DNSKEY key tag identifier
     /// * `algorithm` - DNSSEC algorithm number
     /// * `digest_type` - Hash algorithm identifier
@@ -249,7 +249,7 @@ impl TrustAnchor {
     ///
     /// # Returns
     ///
-    /// A Result containing the constructed TrustAnchor or an error if validation fails.
+    /// A Result containing the constructed `TrustAnchor` or an error if validation fails.
     pub fn new(
         domain: DomainName,
         class: u16,
@@ -277,7 +277,7 @@ impl TrustAnchor {
             _ => {
                 return Err(crate::error::DnsmasqError::Dnssec(
                     crate::error::DnssecError::TrustAnchorFailed {
-                        reason: format!("Invalid digest type: {}", digest_type),
+                        reason: format!("Invalid digest type: {digest_type}"),
                     },
                 ))
             }
@@ -287,8 +287,7 @@ impl TrustAnchor {
             return Err(crate::error::DnsmasqError::Dnssec(
                 crate::error::DnssecError::TrustAnchorFailed {
                     reason: format!(
-                        "Invalid digest length for type {}: expected {}, got {}",
-                        digest_type, expected_len, digest_len
+                        "Invalid digest length for type {digest_type}: expected {expected_len}, got {digest_len}"
                     ),
                 },
             ));
@@ -336,36 +335,43 @@ impl TrustAnchor {
     }
 
     /// Returns the domain name for this trust anchor.
+    #[must_use]
     pub fn domain(&self) -> &DomainName {
         &self.domain
     }
 
     /// Returns the DNS class for this trust anchor.
+    #[must_use]
     pub fn class(&self) -> u16 {
         self.class
     }
 
     /// Returns the keytag for this trust anchor.
+    #[must_use]
     pub fn keytag(&self) -> u16 {
         self.keytag
     }
 
     /// Returns the algorithm for this trust anchor.
+    #[must_use]
     pub fn algorithm(&self) -> u8 {
         self.algorithm
     }
 
     /// Returns the digest type for this trust anchor.
+    #[must_use]
     pub fn digest_type(&self) -> u8 {
         self.digest_type
     }
 
     /// Returns the digest bytes for this trust anchor.
+    #[must_use]
     pub fn digest(&self) -> &[u8] {
         &self.digest
     }
 
     /// Returns the RFC 5011 state for this trust anchor, if any.
+    #[must_use]
     pub fn rfc5011_state(&self) -> Option<&Rfc5011State> {
         self.rfc5011_status.as_ref()
     }
@@ -386,11 +392,11 @@ impl TrustAnchor {
 ///
 /// Manages a collection of DNSSEC trust anchors with efficient longest-match zone
 /// lookup for validation chain termination. Replaces C daemon->ds_config linked list
-/// with Rust BTreeMap providing O(log n) lookup performance and automatic memory management.
+/// with Rust `BTreeMap` providing O(log n) lookup performance and automatic memory management.
 ///
 /// # Storage Organization
 ///
-/// Trust anchors are stored in a BTreeMap keyed by domain name, with each domain
+/// Trust anchors are stored in a `BTreeMap` keyed by domain name, with each domain
 /// potentially having multiple trust anchors (during key rollovers):
 ///
 /// ```text
@@ -417,13 +423,13 @@ impl TrustAnchor {
 /// # RFC 5011 Rollover Support
 ///
 /// The store supports automated trust anchor updates via RFC 5011 by tracking
-/// rollover state (AddHold, Hold, Valid, Removed) and providing methods to add
+/// rollover state (`AddHold`, Hold, Valid, Removed) and providing methods to add
 /// new anchors and remove revoked anchors based on DNSKEY flags inspection.
 #[derive(Debug, Clone)]
 pub struct TrustAnchorStore {
     /// Trust anchors indexed by zone name for efficient lookup.
     ///
-    /// BTreeMap provides ordered keys enabling efficient range queries for
+    /// `BTreeMap` provides ordered keys enabling efficient range queries for
     /// longest-match zone lookup. Vec<TrustAnchor> supports multiple trust
     /// anchors per zone during key rollover periods.
     anchors: BTreeMap<DomainName, Vec<TrustAnchor>>,
@@ -526,7 +532,8 @@ impl TrustAnchorStore {
             }
 
             // Parse trust anchor line
-            match self.parse_trust_anchor_line(line, line_num, path.to_str().unwrap_or("unknown")) {
+            match Self::parse_trust_anchor_line(line, line_num, path.to_str().unwrap_or("unknown"))
+            {
                 Ok(anchor) => {
                     debug!(
                         "Parsed trust anchor: domain={}, keytag={}, algorithm={}, digest_type={}",
@@ -561,9 +568,8 @@ impl TrustAnchorStore {
     ///
     /// # Returns
     ///
-    /// Result containing parsed TrustAnchor or detailed error.
+    /// Result containing parsed `TrustAnchor` or detailed error.
     fn parse_trust_anchor_line(
-        &self,
         line: &str,
         line_num: usize,
         file_path: &str,
@@ -572,7 +578,7 @@ impl TrustAnchorStore {
         let line = line.strip_prefix("trust-anchor=").unwrap_or(line);
 
         // Split by comma
-        let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+        let parts: Vec<&str> = line.split(',').map(str::trim).collect();
 
         if parts.len() < 5 {
             return Err(crate::error::DnsmasqError::Config(
@@ -590,10 +596,9 @@ impl TrustAnchorStore {
         let (class, keytag_idx) = if parts.len() >= 6 {
             let maybe_class = parts[1].to_uppercase();
             let class = match maybe_class.as_str() {
-                "IN" => C_IN,
                 "CH" | "CHAOS" => C_CHAOS,
                 "HS" | "HESIOD" => C_HESIOD,
-                _ => C_IN, // Not a class, assume default IN
+                _ => C_IN, // Default to IN (includes "IN" and unrecognized values)
             };
 
             if ["IN", "CH", "CHAOS", "HS", "HESIOD"].contains(&maybe_class.as_str()) {
@@ -646,7 +651,7 @@ impl TrustAnchorStore {
             crate::error::DnsmasqError::Config(crate::error::ConfigError::ParseError {
                 file_path: file_path.to_string(),
                 line_number: line_num,
-                reason: format!("invalid domain '{}': {}", domain_str, e),
+                reason: format!("invalid domain '{domain_str}': {e}"),
             })
         })?;
 
@@ -655,7 +660,7 @@ impl TrustAnchorStore {
             crate::error::DnsmasqError::Config(crate::error::ConfigError::ParseError {
                 file_path: file_path.to_string(),
                 line_number: line_num,
-                reason: format!("invalid keytag '{}' (must be 0-65535)", keytag_str),
+                reason: format!("invalid keytag '{keytag_str}' (must be 0-65535)"),
             })
         })?;
 
@@ -664,7 +669,7 @@ impl TrustAnchorStore {
             crate::error::DnsmasqError::Config(crate::error::ConfigError::ParseError {
                 file_path: file_path.to_string(),
                 line_number: line_num,
-                reason: format!("invalid algorithm '{}' (must be 0-255)", algo_str),
+                reason: format!("invalid algorithm '{algo_str}' (must be 0-255)"),
             })
         })?;
 
@@ -673,7 +678,7 @@ impl TrustAnchorStore {
             crate::error::DnsmasqError::Config(crate::error::ConfigError::ParseError {
                 file_path: file_path.to_string(),
                 line_number: line_num,
-                reason: format!("invalid digest_type '{}' (must be 0-255)", digest_type_str),
+                reason: format!("invalid digest_type '{digest_type_str}' (must be 0-255)"),
             })
         })?;
 
@@ -706,7 +711,7 @@ impl TrustAnchorStore {
             crate::error::DnsmasqError::Config(crate::error::ConfigError::ParseError {
                 file_path: file_path.to_string(),
                 line_number: line_num,
-                reason: format!("invalid hex digest: {}", e),
+                reason: format!("invalid hex digest: {e}"),
             })
         })
     }
@@ -790,7 +795,7 @@ impl TrustAnchorStore {
     ///
     /// # Arguments
     ///
-    /// * `anchor` - TrustAnchor to add
+    /// * `anchor` - `TrustAnchor` to add
     ///
     /// # Returns
     ///
@@ -854,7 +859,7 @@ impl TrustAnchorStore {
     /// store.parse_and_add_anchor(".,IN,20326,8,2,E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D")?;
     /// ```
     pub fn parse_and_add_anchor(&mut self, line: &str) -> Result<()> {
-        let anchor = self.parse_trust_anchor_line(line, 0, "configuration")?;
+        let anchor = Self::parse_trust_anchor_line(line, 0, "configuration")?;
         self.add_anchor(anchor)
     }
 
@@ -954,7 +959,7 @@ impl TrustAnchorStore {
     ///
     /// # Returns
     ///
-    /// Iterator yielding (DomainName, &[TrustAnchor]) pairs.
+    /// Iterator yielding (`DomainName`, &[`TrustAnchor`]) pairs.
     ///
     /// # Examples
     ///
@@ -984,8 +989,9 @@ impl TrustAnchorStore {
     /// let store = TrustAnchorStore::new();
     /// println!("Total trust anchors: {}", store.len());
     /// ```
+    #[must_use]
     pub fn len(&self) -> usize {
-        self.anchors.values().map(|v| v.len()).sum()
+        self.anchors.values().map(std::vec::Vec::len).sum()
     }
 
     /// Returns true if the store contains no trust anchors.
@@ -1002,6 +1008,7 @@ impl TrustAnchorStore {
     /// let store = TrustAnchorStore::new();
     /// assert!(store.is_empty());
     /// ```
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.anchors.is_empty()
     }

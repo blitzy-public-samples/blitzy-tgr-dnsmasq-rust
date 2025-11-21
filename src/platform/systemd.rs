@@ -134,16 +134,15 @@ pub struct WatchdogState {
 /// for `LISTEN_FDS` count. Example: if `LISTEN_FDS=2`, the fds are 3 and 4.
 pub fn sd_listen_fds(unset_environment: bool) -> Result<Vec<RawFd>> {
     // Check if we were started by systemd by looking for LISTEN_PID
-    let listen_pid = match env::var("LISTEN_PID") {
-        Ok(pid_str) => pid_str.parse::<u32>().map_err(|e| {
+    let listen_pid = if let Ok(pid_str) = env::var("LISTEN_PID") {
+        pid_str.parse::<u32>().map_err(|e| {
             error!("Invalid LISTEN_PID environment variable: {}", e);
-            PlatformError::SystemdProtocol(format!("Invalid LISTEN_PID: {}", e))
-        })?,
-        Err(_) => {
-            // Not started by systemd with socket activation
-            debug!("LISTEN_PID not set - not started with systemd socket activation");
-            return Ok(Vec::new());
-        }
+            PlatformError::SystemdProtocol(format!("Invalid LISTEN_PID: {e}"))
+        })?
+    } else {
+        // Not started by systemd with socket activation
+        debug!("LISTEN_PID not set - not started with systemd socket activation");
+        return Ok(Vec::new());
     };
 
     // Verify that LISTEN_PID matches our process ID
@@ -158,25 +157,26 @@ pub fn sd_listen_fds(unset_environment: bool) -> Result<Vec<RawFd>> {
     }
 
     // Get the number of file descriptors passed
-    let listen_fds = match env::var("LISTEN_FDS") {
-        Ok(fds_str) => fds_str.parse::<u32>().map_err(|e| {
+    let listen_fds = if let Ok(fds_str) = env::var("LISTEN_FDS") {
+        fds_str.parse::<u32>().map_err(|e| {
             error!("Invalid LISTEN_FDS environment variable: {}", e);
-            PlatformError::SystemdProtocol(format!("Invalid LISTEN_FDS: {}", e))
-        })?,
-        Err(_) => {
-            // LISTEN_PID was set but LISTEN_FDS wasn't - this is an error
-            error!("LISTEN_PID set but LISTEN_FDS not set");
-            return Err(DnsmasqError::Platform(PlatformError::SystemdProtocol(
-                "LISTEN_PID set but LISTEN_FDS not set".to_string(),
-            )));
-        }
+            PlatformError::SystemdProtocol(format!("Invalid LISTEN_FDS: {e}"))
+        })?
+    } else {
+        // LISTEN_PID was set but LISTEN_FDS wasn't - this is an error
+        error!("LISTEN_PID set but LISTEN_FDS not set");
+        return Err(DnsmasqError::Platform(PlatformError::SystemdProtocol(
+            "LISTEN_PID set but LISTEN_FDS not set".to_string(),
+        )));
     };
+
+    // Casting u32 to i32 is safe here because systemd never passes enough FDs to overflow
+    #[allow(clippy::cast_possible_wrap)]
+    let end_fd = SD_LISTEN_FDS_START + listen_fds as RawFd - 1;
 
     info!(
         "Received {} file descriptors from systemd (FDs {}-{})",
-        listen_fds,
-        SD_LISTEN_FDS_START,
-        SD_LISTEN_FDS_START + listen_fds as RawFd - 1
+        listen_fds, SD_LISTEN_FDS_START, end_fd
     );
 
     // Unset environment variables if requested to prevent inheritance by children
@@ -188,6 +188,8 @@ pub fn sd_listen_fds(unset_environment: bool) -> Result<Vec<RawFd>> {
     }
 
     // Build vector of file descriptors
+    // Casting u32 to i32 is safe because systemd never passes enough FDs to overflow
+    #[allow(clippy::cast_possible_wrap)]
     let fds: Vec<RawFd> = (0..listen_fds).map(|i| SD_LISTEN_FDS_START + i as RawFd).collect();
 
     Ok(fds)
@@ -251,13 +253,10 @@ pub fn sd_listen_fds(unset_environment: bool) -> Result<Vec<RawFd>> {
 /// a datagram with the status string as the payload.
 pub fn sd_notify(unset_environment: bool, state: &str) -> Result<()> {
     // Get the notification socket path from environment
-    let notify_socket = match env::var("NOTIFY_SOCKET") {
-        Ok(socket) => socket,
-        Err(_) => {
-            // Not running under systemd with notification support - this is OK
-            debug!("NOTIFY_SOCKET not set - not running under systemd with notification support");
-            return Ok(());
-        }
+    let Ok(notify_socket) = env::var("NOTIFY_SOCKET") else {
+        // Not running under systemd with notification support - this is OK
+        debug!("NOTIFY_SOCKET not set - not running under systemd with notification support");
+        return Ok(());
     };
 
     debug!("Sending systemd notification: {}", state);
@@ -271,7 +270,7 @@ pub fn sd_notify(unset_environment: bool, state: &str) -> Result<()> {
     // Handle abstract namespace sockets (starting with @)
     let socket_path = if let Some(stripped) = notify_socket.strip_prefix('@') {
         // Abstract socket - replace @ with null byte
-        format!("\0{}", stripped)
+        format!("\0{stripped}")
     } else {
         notify_socket.clone()
     };
@@ -279,16 +278,13 @@ pub fn sd_notify(unset_environment: bool, state: &str) -> Result<()> {
     // Create a UNIX datagram socket
     let socket = UnixDatagram::unbound().map_err(|e| {
         error!("Failed to create UNIX datagram socket for systemd notification: {}", e);
-        PlatformError::SystemdNotify(format!("Failed to create UNIX datagram socket: {}", e))
+        PlatformError::SystemdNotify(format!("Failed to create UNIX datagram socket: {e}"))
     })?;
 
     // Send the notification message
     socket.send_to(state.as_bytes(), &socket_path).map_err(|e| {
         error!("Failed to send systemd notification to {}: {}", notify_socket, e);
-        PlatformError::SystemdNotify(format!(
-            "Failed to send notification to {}: {}",
-            socket_path, e
-        ))
+        PlatformError::SystemdNotify(format!("Failed to send notification to {socket_path}: {e}"))
     })?;
 
     info!("Systemd notification sent: {}", state);
@@ -311,7 +307,7 @@ pub fn sd_notify(unset_environment: bool, state: &str) -> Result<()> {
 /// # }
 /// ```
 pub fn sd_notify_status(status: &str) -> Result<()> {
-    sd_notify(false, &format!("STATUS={}", status))
+    sd_notify(false, &format!("STATUS={status}"))
 }
 
 /// Notify systemd that the service is ready
@@ -425,7 +421,7 @@ pub fn sd_is_socket(fd: RawFd, socket_type: Option<SystemdSocket>) -> Result<boo
     // First check if the FD is a socket using fstat
     let stat = fstat(fd).map_err(|e| {
         error!("Failed to fstat fd {}: {}", fd, e);
-        PlatformError::SystemdProtocol(format!("Failed to fstat fd {}: {}", fd, e))
+        PlatformError::SystemdProtocol(format!("Failed to fstat fd {fd}: {e}"))
     })?;
 
     // Check if it's a socket using S_IFSOCK
@@ -445,18 +441,18 @@ pub fn sd_is_socket(fd: RawFd, socket_type: Option<SystemdSocket>) -> Result<boo
     let borrowed_fd = unsafe { BorrowedFd::borrow_raw(fd) };
     let sock_type = getsockopt(&borrowed_fd, sockopt::SockType).map_err(|e| {
         error!("Failed to get socket type for fd {}: {}", fd, e);
-        PlatformError::SystemdProtocol(format!("Failed to get socket type for fd {}: {}", fd, e))
+        PlatformError::SystemdProtocol(format!("Failed to get socket type for fd {fd}: {e}"))
     })?;
 
     // Get the address family by querying the socket address
     let addr: SockaddrStorage = getsockname(fd).map_err(|e| {
         error!("Failed to get socket address for fd {}: {}", fd, e);
-        PlatformError::SystemdProtocol(format!("Failed to get socket address for fd {}: {}", fd, e))
+        PlatformError::SystemdProtocol(format!("Failed to get socket address for fd {fd}: {e}"))
     })?;
 
     let domain = addr.family().ok_or_else(|| {
         error!("Failed to get address family for fd {}", fd);
-        PlatformError::SystemdProtocol(format!("Failed to get address family for fd {}", fd))
+        PlatformError::SystemdProtocol(format!("Failed to get address family for fd {fd}"))
     })?;
 
     // Check if the address family is IPv4 or IPv6
@@ -525,7 +521,7 @@ pub fn sd_is_socket_inet(fd: RawFd, socket_type: SystemdSocket) -> Result<bool> 
 ///
 /// This function checks if the systemd watchdog mechanism is enabled for this
 /// service by reading the `WATCHDOG_USEC` and `WATCHDOG_PID` environment variables.
-/// The watchdog requires periodic notifications via ``sd_notify`(false, "WATCHDOG=1")`
+/// The watchdog requires periodic notifications via `sd_notify(false, "WATCHDOG=1")`
 /// to prevent the service from being restarted by systemd.
 ///
 /// # Returns
@@ -565,16 +561,15 @@ pub fn sd_is_socket_inet(fd: RawFd, socket_type: SystemdSocket) -> Result<bool> 
 /// ```
 pub fn sd_watchdog_enabled() -> Result<WatchdogState> {
     // Check for WATCHDOG_USEC environment variable
-    let watchdog_usec = match env::var("WATCHDOG_USEC") {
-        Ok(usec_str) => usec_str.parse::<u64>().map_err(|e| {
+    let watchdog_usec = if let Ok(usec_str) = env::var("WATCHDOG_USEC") {
+        usec_str.parse::<u64>().map_err(|e| {
             error!("Invalid WATCHDOG_USEC environment variable: {}", e);
-            PlatformError::SystemdProtocol(format!("Invalid WATCHDOG_USEC: {}", e))
-        })?,
-        Err(_) => {
-            // Watchdog not configured
-            debug!("WATCHDOG_USEC not set - watchdog not enabled");
-            return Ok(WatchdogState { enabled: false, interval_usec: 0, pid: 0 });
-        }
+            PlatformError::SystemdProtocol(format!("Invalid WATCHDOG_USEC: {e}"))
+        })?
+    } else {
+        // Watchdog not configured
+        debug!("WATCHDOG_USEC not set - watchdog not enabled");
+        return Ok(WatchdogState { enabled: false, interval_usec: 0, pid: 0 });
     };
 
     // Check for WATCHDOG_PID - if set, verify it matches our PID
@@ -582,7 +577,7 @@ pub fn sd_watchdog_enabled() -> Result<WatchdogState> {
         Ok(pid_str) => {
             let pid = pid_str.parse::<u32>().map_err(|e| {
                 error!("Invalid WATCHDOG_PID environment variable: {}", e);
-                PlatformError::SystemdProtocol(format!("Invalid WATCHDOG_PID: {}", e))
+                PlatformError::SystemdProtocol(format!("Invalid WATCHDOG_PID: {e}"))
             })?;
 
             // If WATCHDOG_PID is set, verify it matches our process ID
@@ -647,6 +642,7 @@ pub fn sd_watchdog_enabled() -> Result<WatchdogState> {
 /// # Ok(())
 /// # }
 /// ```
+#[allow(clippy::unused_async)] // async for API consistency with other socket conversion functions
 pub async fn fd_to_tcp_listener(fd: RawFd) -> Result<TcpListener> {
     // SAFETY: We trust that systemd has given us a valid TCP listener FD
     // The caller should have validated this with sd_is_socket_inet()
@@ -711,6 +707,7 @@ pub async fn fd_to_tcp_listener(fd: RawFd) -> Result<TcpListener> {
 /// # Ok(())
 /// # }
 /// ```
+#[allow(clippy::unused_async)] // async for API consistency with other socket conversion functions
 pub async fn fd_to_udp_socket(fd: RawFd) -> Result<UdpSocket> {
     // SAFETY: We trust that systemd has given us a valid UDP socket FD
     // The caller should have validated this with sd_is_socket_inet()

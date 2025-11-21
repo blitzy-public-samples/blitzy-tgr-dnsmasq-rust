@@ -344,12 +344,12 @@ pub const DEFAULT_CONFIG_PATH: &str = crate::constants::CONFFILE;
 ///
 /// This function returns [`ConfigError`] variants for:
 ///
-/// - **FileNotFound**: Configuration file specified but not readable
-/// - **ParseError**: Syntax error in configuration file (line number included)
-/// - **UnknownDirective**: Unrecognized configuration option
-/// - **InvalidValue**: Configuration value fails validation (type mismatch, out of range)
+/// - **`FileNotFound`**: Configuration file specified but not readable
+/// - **`ParseError`**: Syntax error in configuration file (line number included)
+/// - **`UnknownDirective`**: Unrecognized configuration option
+/// - **`InvalidValue`**: Configuration value fails validation (type mismatch, out of range)
 /// - **Conflict**: Conflicting configuration directives detected
-/// - **ValidationError**: Configuration fails semantic validation (DHCP pool overlap, etc.)
+/// - **`ValidationError`**: Configuration fails semantic validation (DHCP pool overlap, etc.)
 ///
 /// # Example
 ///
@@ -414,7 +414,7 @@ where
     T: Into<String> + Clone,
 {
     // Parse command-line arguments first (to check for --no-conf and --conf-file)
-    let args_vec: Vec<String> = args.into_iter().map(|s| s.into()).collect();
+    let args_vec: Vec<String> = args.into_iter().map(std::convert::Into::into).collect();
     let cli_args = parse_args_from(args_vec)?;
 
     // Start with builder using compile-time defaults

@@ -26,7 +26,7 @@
 //! - **Longest Match Algorithm**: Selects the most specific domain match for query routing
 //! - **Split-Horizon DNS**: Different upstream servers for different domain patterns
 //! - **DNSSEC-Aware**: Filters servers based on DNSSEC capabilities
-//! - **Performance**: O(log n) lookups using BTreeMap for sorted domain patterns
+//! - **Performance**: O(log n) lookups using `BTreeMap` for sorted domain patterns
 //!
 //! # Architecture
 //!
@@ -101,17 +101,17 @@
 //!
 //! # Performance Characteristics
 //!
-//! - **Pattern Addition**: O(log n) due to BTreeMap insertion
-//! - **Exact Match**: O(log n) binary search through BTreeMap
+//! - **Pattern Addition**: O(log n) due to `BTreeMap` insertion
+//! - **Exact Match**: O(log n) binary search through `BTreeMap`
 //! - **Longest Match**: O(m log n) where m = number of domain labels
 //! - **Memory**: ~100 bytes per pattern (domain name + server list)
 //!
 //! # Memory Safety
 //!
 //! Replaces C implementation's manual memory management and pointer arithmetic with:
-//! - BTreeMap for automatic sorting and safe iteration
+//! - `BTreeMap` for automatic sorting and safe iteration
 //! - Vec for dynamic server lists with bounds checking
-//! - DomainName for validated domain names
+//! - `DomainName` for validated domain names
 //! - No unsafe code required
 //!
 //! # RFC Compliance
@@ -178,26 +178,31 @@ impl ServerFlags {
     pub const IPV6_ADDR: Self = Self(1 << 4);
 
     /// Returns the raw bitflags value.
+    #[must_use]
     pub const fn bits(self) -> u16 {
         self.0
     }
 
-    /// Creates ServerFlags from raw bits.
+    /// Creates `ServerFlags` from raw bits.
+    #[must_use]
     pub const fn from_bits(bits: u16) -> Self {
         Self(bits)
     }
 
     /// Checks if a specific flag is set.
+    #[must_use]
     pub const fn contains(self, other: Self) -> bool {
         (self.0 & other.0) == other.0
     }
 
-    /// Combines two ServerFlags values with bitwise OR.
+    /// Combines two `ServerFlags` values with bitwise OR.
+    #[must_use]
     pub const fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }
 
-    /// Returns the intersection of two ServerFlags values.
+    /// Returns the intersection of two `ServerFlags` values.
+    #[must_use]
     pub const fn intersection(self, other: Self) -> Self {
         Self(self.0 & other.0)
     }
@@ -255,8 +260,8 @@ pub struct MatchResult {
 ///
 /// # Thread Safety
 ///
-/// DomainMatcher can be safely shared across threads using `Arc<DomainMatcher>`.
-/// The internal BTreeMap provides efficient concurrent reads. For writes, use
+/// `DomainMatcher` can be safely shared across threads using `Arc<DomainMatcher>`.
+/// The internal `BTreeMap` provides efficient concurrent reads. For writes, use
 /// `Arc<RwLock<DomainMatcher>>` or rebuild the matcher and swap the Arc.
 ///
 /// # Example
@@ -284,7 +289,7 @@ pub struct MatchResult {
 #[derive(Debug, Clone)]
 pub struct DomainMatcher {
     /// Patterns mapped to their server configurations.
-    /// BTreeMap ensures sorted order for efficient longest-match search.
+    /// `BTreeMap` ensures sorted order for efficient longest-match search.
     patterns: BTreeMap<String, PatternEntry>,
 
     /// Quick flag indicating if any wildcard patterns are configured.
@@ -316,6 +321,7 @@ impl DomainMatcher {
     /// ```rust,ignore
     /// let matcher = DomainMatcher::new();
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self { patterns: BTreeMap::new(), has_wildcards: false }
     }
@@ -335,6 +341,7 @@ impl DomainMatcher {
     /// // Pre-allocate for 100 domain patterns
     /// let matcher = DomainMatcher::with_capacity(100);
     /// ```
+    #[must_use]
     pub fn with_capacity(_capacity: usize) -> Self {
         // BTreeMap doesn't support capacity hints, but we maintain the API
         // for consistency and potential future optimization.
@@ -380,7 +387,7 @@ impl DomainMatcher {
         }
 
         let label_count = domain.labels().count();
-        let key = self.normalize_pattern(&domain);
+        let key = Self::normalize_pattern(&domain);
 
         let entry = PatternEntry { domain, servers, is_wildcard, label_count };
 
@@ -474,7 +481,7 @@ impl DomainMatcher {
 
             // Try wildcard match if wildcards are configured
             if self.has_wildcards && start_idx > 0 {
-                let wildcard_pattern = format!("*.{}", suffix);
+                let wildcard_pattern = format!("*.{suffix}");
                 trace!("Checking wildcard pattern: {}", wildcard_pattern);
                 if let Some(entry) = self.patterns.get(&wildcard_pattern.to_lowercase()) {
                     if entry.is_wildcard {
@@ -508,7 +515,7 @@ impl DomainMatcher {
     ///
     /// # Returns
     ///
-    /// Vector of MatchResult entries, sorted by match_length descending (longest first).
+    /// Vector of `MatchResult` entries, sorted by `match_length` descending (longest first).
     ///
     /// # Example
     ///
@@ -546,7 +553,7 @@ impl DomainMatcher {
 
             // Check wildcard match
             if self.has_wildcards && start_idx > 0 {
-                let wildcard_pattern = format!("*.{}", suffix);
+                let wildcard_pattern = format!("*.{suffix}");
                 if let Some(entry) = self.patterns.get(&wildcard_pattern.to_lowercase()) {
                     if entry.is_wildcard {
                         matches.push(MatchResult {
@@ -581,6 +588,7 @@ impl DomainMatcher {
     ///     // Use faster exact-match-only algorithm
     /// }
     /// ```
+    #[must_use]
     pub fn has_wildcard_patterns(&self) -> bool {
         self.has_wildcards
     }
@@ -592,6 +600,7 @@ impl DomainMatcher {
     /// ```rust,ignore
     /// println!("Configured patterns: {}", matcher.pattern_count());
     /// ```
+    #[must_use]
     pub fn pattern_count(&self) -> usize {
         self.patterns.len()
     }
@@ -609,10 +618,10 @@ impl DomainMatcher {
         self.has_wildcards = false;
     }
 
-    /// Normalizes a domain pattern for use as a BTreeMap key.
+    /// Normalizes a domain pattern for use as a `BTreeMap` key.
     ///
     /// Converts to lowercase for case-insensitive matching per RFC 1035.
-    fn normalize_pattern(&self, domain: &DomainName) -> String {
+    fn normalize_pattern(domain: &DomainName) -> String {
         domain.as_str().to_lowercase()
     }
 }

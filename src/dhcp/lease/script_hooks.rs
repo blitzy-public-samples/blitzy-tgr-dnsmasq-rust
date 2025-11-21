@@ -16,7 +16,7 @@
 //! Privilege-separated helper script execution module for DHCP lease lifecycle event notifications.
 //!
 //! This module provides secure, async external script execution for DHCP lease state changes,
-//! replacing the C implementation in `src/helper.c` (queue_script function, lines 1132-1201)
+//! replacing the C implementation in `src/helper.c` (`queue_script` function, lines 1132-1201)
 //! with memory-safe Rust using `tokio::process::Command`. It eliminates manual fork/exec and
 //! pipe management while maintaining 100% functional equivalence with the C version.
 //!
@@ -35,7 +35,7 @@
 //! - **Add**: New lease allocated to client (first-time address assignment)
 //! - **Old**: Existing lease renewed by known client (lease refresh)
 //! - **Del**: Lease expired or released (address reclaimed)
-//! - **OldHostname**: Hostname changed for existing lease (metadata update)
+//! - **`OldHostname`**: Hostname changed for existing lease (metadata update)
 //!
 //! # Environment Variables Passed to Scripts
 //!
@@ -47,9 +47,9 @@
 //! - `DNSMASQ_LEASE_LENGTH`: Remaining lease duration in seconds from current time
 //!
 //! ## Client Identification
-//! - `DNSMASQ_MAC`: DHCPv4 MAC address in colon-separated hex (aa:bb:cc:dd:ee:ff)
+//! - `DNSMASQ_MAC`: `DHCPv4` MAC address in colon-separated hex (aa:bb:cc:dd:ee:ff)
 //! - `DNSMASQ_CLIENT_ID`: Client identifier option as colon-separated hex bytes
-//! - `DNSMASQ_IAID`: DHCPv6 Identity Association Identifier as decimal string
+//! - `DNSMASQ_IAID`: `DHCPv6` Identity Association Identifier as decimal string
 //!
 //! ## Network Context
 //! - `DNSMASQ_INTERFACE`: Network interface name where lease was allocated
@@ -65,7 +65,7 @@
 //! Scripts receive 4 positional arguments matching C helper.c behavior:
 //!
 //! 1. **Action**: "add", "old", "del", or "old-hostname"
-//! 2. **Identifier**: MAC address (DHCPv4) or IAID decimal (DHCPv6)
+//! 2. **Identifier**: MAC address (`DHCPv4`) or IAID decimal (`DHCPv6`)
 //! 3. **IP Address**: IPv4 or IPv6 address string
 //! 4. **Hostname**: Client hostname or "*" if not present
 //!
@@ -199,14 +199,14 @@ use tracing::{debug, error, info, warn};
 /// Default script execution timeout in seconds
 const DEFAULT_SCRIPT_TIMEOUT_SECS: u64 = 60;
 
-/// Helper function to convert LeaseAction to action string for script arguments
+/// Helper function to convert `LeaseAction` to action string for script arguments
 ///
 /// Maps from Rust enum to string representation matching C ACTION_* constants:
-/// - ACTION_ADD → "add"
-/// - ACTION_DEL → "del"
-/// - ACTION_OLD → "old"
-/// - ACTION_OLD_HOSTNAME → "old-hostname"
-fn lease_action_to_str(action: &LeaseAction) -> &'static str {
+/// - `ACTION_ADD` → "add"
+/// - `ACTION_DEL` → "del"
+/// - `ACTION_OLD` → "old"
+/// - `ACTION_OLD_HOSTNAME` → "old-hostname"
+fn lease_action_to_str(action: LeaseAction) -> &'static str {
     match action {
         LeaseAction::Add => "add",
         LeaseAction::Del => "del",
@@ -225,7 +225,7 @@ fn lease_action_to_str(action: &LeaseAction) -> &'static str {
 ///
 /// The script is called with 4 positional arguments:
 /// 1. **action**: "add", "del", "old", or "old-hostname"
-/// 2. **identifier**: MAC address (DHCPv4) or IAID decimal (DHCPv6)
+/// 2. **identifier**: MAC address (`DHCPv4`) or IAID decimal (`DHCPv6`)
 /// 3. **ip**: IPv4 or IPv6 address as string
 /// 4. **hostname**: Client hostname or "*" if not available
 ///
@@ -239,9 +239,9 @@ fn lease_action_to_str(action: &LeaseAction) -> &'static str {
 /// - `DNSMASQ_LEASE_LENGTH`: Remaining seconds until expiration from current time
 ///
 /// ## Client Identification
-/// - `DNSMASQ_MAC`: DHCPv4 MAC address in colon-separated hex (aa:bb:cc:dd:ee:ff)
+/// - `DNSMASQ_MAC`: `DHCPv4` MAC address in colon-separated hex (aa:bb:cc:dd:ee:ff)
 /// - `DNSMASQ_CLIENT_ID`: Client ID option as colon-separated hex bytes
-/// - `DNSMASQ_IAID`: DHCPv6 IAID as decimal string
+/// - `DNSMASQ_IAID`: `DHCPv6` IAID as decimal string
 ///
 /// ## Network Context
 /// - `DNSMASQ_INTERFACE`: Interface name where lease was allocated
@@ -255,9 +255,9 @@ fn lease_action_to_str(action: &LeaseAction) -> &'static str {
 /// # Arguments
 ///
 /// * `script_path` - Path to the script to execute
-/// * `action` - Lease lifecycle event type (Add, Del, Old, OldHostname)
+/// * `action` - Lease lifecycle event type (Add, Del, Old, `OldHostname`)
 /// * `lease` - The DHCP lease being processed
-/// * `old_hostname` - Previous hostname for OldHostname action (ignored for other actions)
+/// * `old_hostname` - Previous hostname for `OldHostname` action (ignored for other actions)
 ///
 /// # Returns
 ///
@@ -318,6 +318,7 @@ fn lease_action_to_str(action: &LeaseAction) -> &'static str {
 /// - Failed to spawn script process (permission denied, etc.)
 /// - Script execution exceeds timeout
 /// - Script exits with non-zero status code
+#[allow(clippy::too_many_lines)] // Complex lease script execution with validation, env setup, and error handling
 pub async fn execute_lease_script(
     script_path: &PathBuf,
     action: LeaseAction,
@@ -346,7 +347,7 @@ pub async fn execute_lease_script(
     }
 
     // Prepare script action string
-    let action_str = lease_action_to_str(&action);
+    let action_str = lease_action_to_str(action);
 
     // Build command-line arguments: <action> <mac_or_iaid> <ip> <hostname>
     // Argument 2: MAC address (DHCPv4) or IAID (DHCPv6)
@@ -403,7 +404,7 @@ pub async fn execute_lease_script(
         let _client_id_hex = hex::encode(client_id.as_slice());
         // Convert to colon-separated format like C implementation
         let client_id_formatted =
-            client_id.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
+            client_id.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(":");
         cmd.env("DNSMASQ_CLIENT_ID", client_id_formatted);
     }
 
@@ -423,14 +424,14 @@ pub async fn execute_lease_script(
     // Environment variable: DNSMASQ_VENDOR_CLASS (hex-encoded)
     if let Some(ref vendor_class) = lease.vendorclass {
         let vendor_hex =
-            vendor_class.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
+            vendor_class.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(":");
         cmd.env("DNSMASQ_VENDOR_CLASS", vendor_hex);
     }
 
     // Environment variable: DNSMASQ_RELAY_ADDRESS (hex-encoded relay agent info)
     if let Some(ref relay_agent) = lease.agent_id {
         let relay_hex =
-            relay_agent.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
+            relay_agent.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(":");
         cmd.env("DNSMASQ_RELAY_ADDRESS", relay_hex);
     }
 
@@ -479,7 +480,7 @@ pub async fn execute_lease_script(
             );
             return Err(DhcpError::ScriptFailed {
                 script: script_path.display().to_string(),
-                reason: format!("Failed to spawn script: {}", e),
+                reason: format!("Failed to spawn script: {e}"),
             });
         }
     };
@@ -498,7 +499,7 @@ pub async fn execute_lease_script(
             );
             return Err(DhcpError::ScriptFailed {
                 script: script_path.display().to_string(),
-                reason: format!("Script wait failed: {}", e),
+                reason: format!("Script wait failed: {e}"),
             });
         }
         Err(_elapsed) => {
@@ -516,7 +517,7 @@ pub async fn execute_lease_script(
 
             return Err(DhcpError::ScriptFailed {
                 script: script_path.display().to_string(),
-                reason: format!("Script timeout after {}s", DEFAULT_SCRIPT_TIMEOUT_SECS),
+                reason: format!("Script timeout after {DEFAULT_SCRIPT_TIMEOUT_SECS}s"),
             });
         }
     };
@@ -595,7 +596,7 @@ pub async fn execute_lease_script(
 /// * `script_path` - Path to .lua script file
 /// * `action` - Lease lifecycle event
 /// * `lease` - DHCP lease data
-/// * `old_hostname` - Previous hostname for OldHostname action
+/// * `old_hostname` - Previous hostname for `OldHostname` action
 ///
 /// # Returns
 ///
@@ -607,6 +608,7 @@ pub async fn execute_lease_script(
 /// Replaces C `HAVE_LUASCRIPT` blocks with safe Rust `mlua` bindings,
 /// eliminating manual Lua C API calls and memory management.
 #[cfg(feature = "lua-scripts")]
+#[allow(clippy::unused_async)] // Maintains uniform async API across script execution methods
 async fn execute_lua_script(
     script_path: &Path,
     action: LeaseAction,
@@ -636,7 +638,7 @@ async fn execute_lua_script(
             );
             return Err(DhcpError::ScriptFailed {
                 script: script_path.display().to_string(),
-                reason: format!("Failed to read Lua script: {}", e),
+                reason: format!("Failed to read Lua script: {e}"),
             });
         }
     };
@@ -649,14 +651,14 @@ async fn execute_lua_script(
         );
         return Err(DhcpError::ScriptFailed {
             script: script_path.display().to_string(),
-            reason: format!("Lua compilation error: {}", e),
+            reason: format!("Lua compilation error: {e}"),
         });
     }
 
     // Build environment table for Lua script
     let env_table = lua.create_table().map_err(|e| DhcpError::ScriptFailed {
         script: script_path.display().to_string(),
-        reason: format!("Failed to create Lua table: {}", e),
+        reason: format!("Failed to create Lua table: {e}"),
     })?;
 
     // Populate environment table with lease metadata
@@ -675,7 +677,7 @@ async fn execute_lua_script(
 
     if let Some(ref client_id) = lease.client_id {
         let client_id_hex: String =
-            client_id.iter().map(|b| format!("{:02x}", b)).collect::<Vec<String>>().join(":");
+            client_id.iter().map(|b| format!("{b:02x}")).collect::<Vec<String>>().join(":");
         let _ = env_table.set("DNSMASQ_CLIENT_ID", client_id_hex);
     }
 
@@ -691,13 +693,13 @@ async fn execute_lua_script(
 
     if let Some(ref vendor) = lease.vendorclass {
         let vendor_hex: String =
-            vendor.iter().map(|b| format!("{:02x}", b)).collect::<Vec<String>>().join(":");
+            vendor.iter().map(|b| format!("{b:02x}")).collect::<Vec<String>>().join(":");
         let _ = env_table.set("DNSMASQ_VENDOR_CLASS", vendor_hex);
     }
 
     if let Some(ref agent) = lease.agent_id {
         let agent_hex: String =
-            agent.iter().map(|b| format!("{:02x}", b)).collect::<Vec<String>>().join(":");
+            agent.iter().map(|b| format!("{b:02x}")).collect::<Vec<String>>().join(":");
         let _ = env_table.set("DNSMASQ_RELAY_ADDRESS", agent_hex);
     }
 
@@ -721,12 +723,12 @@ async fn execute_lua_script(
         );
         DhcpError::ScriptFailed {
             script: script_path.display().to_string(),
-            reason: format!("Lua script missing lease_event function: {}", e),
+            reason: format!("Lua script missing lease_event function: {e}"),
         }
     })?;
 
     // Prepare function arguments
-    let action_str = lease_action_to_str(&action);
+    let action_str = lease_action_to_str(action);
 
     let identifier = if let Some(ref mac) = lease.mac {
         mac.to_string()
@@ -750,7 +752,7 @@ async fn execute_lua_script(
             );
             DhcpError::ScriptFailed {
                 script: script_path.display().to_string(),
-                reason: format!("Lua execution error: {}", e),
+                reason: format!("Lua execution error: {e}"),
             }
         },
     )?;
