@@ -741,7 +741,7 @@ mod tests {
 
         let record = ArpRecord {
             ip,
-            mac: Some(mac.clone()),
+            mac: Some(mac),
             status: ArpStatus::Found,
             last_seen: Instant::now(),
         };
