@@ -168,6 +168,7 @@ const QUERY_TIMEOUT: Duration = Duration::from_secs(TIMEOUT as u64);
 const MAX_UDP_PAYLOAD: usize = 512;
 
 /// Maximum UDP payload size with EDNS0 support (RFC 6891).
+#[allow(dead_code)]
 const MAX_EDNS_PAYLOAD: usize = 4096;
 
 /// Maximum number of retry attempts for failed queries.
