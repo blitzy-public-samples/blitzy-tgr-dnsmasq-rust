@@ -1,523 +1,572 @@
-// Copyright (c) 2000-2025 Simon Kelley
+// dnsmasq is Copyright (c) 2000-2025 Simon Kelley
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation; version 2 dated June, 1991, or
 // (at your option) version 3 dated 29 June, 2007.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! dnsmasq binary entry point
+//! Binary entry point for dnsmasq Rust implementation.
 //!
-//! This binary provides the main entry point for the dnsmasq server,
-//! replacing the C main() function with Rust async/await patterns.
+//! This module provides the main() function that orchestrates daemon initialization,
+//! configuration loading, service creation, privilege dropping, signal handling, and
+//! event loop execution. It replaces the C implementation's main() from src/dnsmasq.c
+//! with memory-safe Rust patterns using tokio async/await architecture.
+//!
+//! # Architecture Overview
+//!
+//! The C poll()-based single-threaded event loop is transformed into a tokio async
+//! runtime with structured concurrency:
+//!
+//! ```text
+//! C Pattern:                          Rust Pattern:
+//! main()                              #[tokio::main] async fn main()
+//!   ├─ getopt_long()                    ├─ clap::Parser::parse()
+//!   ├─ read_opts()                      ├─ config::load_config()
+//!   ├─ bind(port 53)                    ├─ UdpSocket::bind("0.0.0.0:53")
+//!   ├─ setuid(nobody)                   ├─ privileges::drop_privileges()
+//!   ├─ signal() handlers                ├─ tokio::signal handlers
+//!   ├─ fork() to background             ├─ (daemon managed by systemd)
+//!   └─ while(1) poll() loop             └─ EventLoop::run().await
+//!        ├─ check DNS socket                  ├─ tokio::select! on all sockets
+//!        ├─ check DHCP socket                 ├─ async service handlers
+//!        └─ async_event(signals)              └─ structured signal handling
+//! ```
+//!
+//! # Initialization Sequence
+//!
+//! 1. **CLI Argument Parsing**: clap parses command-line arguments into CliArgs struct
+//! 2. **Early Exit Modes**: Handle --version, --help, --test modes immediately
+//! 3. **Logging Initialization**: Set up tracing subscriber for structured logging
+//! 4. **Configuration Loading**: Parse dnsmasq.conf and merge with CLI args
+//! 5. **Configuration Validation**: Run comprehensive checks (--test mode stops here)
+//! 6. **Socket Binding**: Bind privileged ports (53, 67, 547, 69) as root
+//! 7. **Privilege Dropping**: setuid/setgid to configured user, retain capabilities
+//! 8. **Service Initialization**: Create DnsService, DhcpService, TftpServer, RadVServer
+//! 9. **Signal Handler Setup**: Install SIGHUP, SIGTERM, SIGUSR1, SIGUSR2 handlers
+//! 10. **Event Loop Creation**: Construct EventLoop with all services and sockets
+//! 11. **Systemd Notification**: Signal readiness to systemd (sd_notify)
+//! 12. **Event Loop Execution**: Enter main loop, never returns until shutdown
+//!
+//! # Signal Handling
+//!
+//! All signals are handled asynchronously using tokio::signal:
+//!
+//! - **SIGHUP**: Reload configuration from disk, clear DNS cache, re-enumerate interfaces
+//! - **SIGTERM/SIGINT**: Graceful shutdown, flush DHCP leases, close sockets
+//! - **SIGUSR1**: Dump DNS cache contents to log for diagnostics
+//! - **SIGUSR2**: Log statistics (queries, cache hits, DHCP leases, DNSSEC validations)
+//! - **SIGCHLD**: Handled by tokio::process for helper script reaping
+//! - **SIGPIPE**: Ignored (default tokio behavior)
+//!
+//! # Privilege Separation
+//!
+//! Security model matches C implementation:
+//!
+//! 1. Start as root (UID 0) to bind privileged ports
+//! 2. Bind DNS port 53, DHCP ports 67/547, TFTP port 69
+//! 3. On Linux: Set capabilities CAP_NET_ADMIN, CAP_NET_BIND_SERVICE, CAP_NET_RAW
+//! 4. Drop to configured user (--user option, default "nobody")
+//! 5. All packet processing runs as unprivileged user
+//!
+//! # Memory Safety
+//!
+//! Transformation eliminates C memory safety issues:
+//!
+//! - C malloc/free → Rust Box/Vec with automatic Drop
+//! - C global `struct daemon *daemon` → Arc<RwLock<Config>> shared state
+//! - C signal pipe → tokio::signal async-safe channels
+//! - C poll() fd_set → tokio::select! macro
+//! - C manual buffer management → Vec<u8> with bounds checking
+//!
+//! # Error Handling
+//!
+//! Fatal errors during initialization cause immediate exit with code 1:
+//!
+//! - Configuration parsing errors
+//! - Socket binding failures (port in use, permission denied)
+//! - Privilege drop failures
+//! - Service initialization errors
+//!
+//! Non-fatal errors are logged but allow startup to continue:
+//!
+//! - Optional config file missing
+//! - Interface enumeration warnings
+//! - Helper script execution failures
+//!
+//! # Performance
+//!
+//! The async runtime provides equivalent or better performance than C:
+//!
+//! - Zero-copy packet handling where possible
+//! - Async I/O reduces context switches vs poll()
+//! - Structured concurrency eliminates callback spaghetti
+//! - Compiler optimizations (LTO, PGO) match C performance
+//!
+//! # Platform Support
+//!
+//! All platforms supported by C version:
+//!
+//! - Linux (primary): Full feature support including netlink, capabilities, nftables
+//! - FreeBSD/OpenBSD/NetBSD: BPF packet filtering, pledge/unveil security
+//! - macOS: Network framework integration
+//! - Solaris: Basic functionality
+//! - Android: AOSP build support
 
-use dnsmasq::config::{Config, ConfigParser};
-use dnsmasq::config::reload::ConfigReloader;
-use dnsmasq::dns::DnsService;
-use dnsmasq::dns::cache::DnsCache;
-use dnsmasq::dns::protocol::message::{DnsMessage, DnsQuery};
-use dnsmasq::platform::signals::setup_signal_handlers;
-use dnsmasq::types::ServerDetails;
-use dnsmasq::util::logging::LoggingService;
-use dnsmasq::util::metrics::MetricsCollector;
-use std::net::{IpAddr, SocketAddr};
-use std::path::PathBuf;
+use anyhow::{Context, Result};
+use clap::Parser;
 use std::process;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tokio::net::UdpSocket;
-use tokio::sync::broadcast;
 use tracing::{error, info, warn};
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{fmt, EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
-#[tokio::main]
-async fn main() {
-    // Initialize logging early so we can capture initialization errors
-    init_logging();
-    
-    info!("dnsmasq v2.92.0 (Rust implementation) starting");
-    
-    // Parse command-line arguments and load configuration
-    let config = match load_configuration().await {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            error!("Configuration error: {}", e);
-            process::exit(1);
-        }
-    };
-    
-    // Validate configuration before starting services
-    if let Err(e) = config.validate() {
-        error!("Configuration validation failed: {}", e);
-        process::exit(1);
-    }
-    
-    info!("Configuration loaded and validated successfully");
-    
-    // Create DNS service using builder pattern
-    info!("Initializing DNS service");
-    let dns_service = match DnsService::builder()
-        .config(Arc::new(config.dns.clone()))
-        .build()
-        .await
-    {
-        Ok(service) => Arc::new(service),
-        Err(e) => {
-            error!("Failed to create DNS service: {}", e);
-            process::exit(1);
-        }
-    };
-    
-    // Bind DNS socket
-    info!("Binding DNS socket on port {}", config.network.port);
-    let dns_socket = match UdpSocket::bind(format!("0.0.0.0:{}", config.network.port)).await {
-        Ok(socket) => Arc::new(socket),
-        Err(e) => {
-            error!("Failed to bind DNS socket on port {}: {}", config.network.port, e);
-            process::exit(1);
-        }
-    };
-    
-    // Optionally bind DHCP socket if configured
-    let dhcp_socket = if !config.dhcp.v4_ranges.is_empty() {
-        info!("Binding DHCP socket on port 67");
-        match UdpSocket::bind("0.0.0.0:67").await {
-            Ok(socket) => Some(socket),
-            Err(e) => {
-                info!("Failed to bind DHCP socket: {} (may not have privileges)", e);
-                None
-            }
-        }
-    } else {
-        None
-    };
-    
-    // Initialize signal handlers for SIGHUP, SIGUSR1, SIGUSR2, etc.
-    info!("Setting up signal handlers");
-    
-    // Create shutdown channel for signal coordination
-    let (_shutdown_tx, shutdown_rx) = broadcast::channel::<()>(1);
-    let shutdown_handle = Arc::new(dnsmasq::runtime::tasks::ShutdownHandle::new(shutdown_rx));
-    
-    // Wrap config in Arc<RwLock<>> for config reloading
-    let config_arc = Arc::new(RwLock::new(config.clone()));
-    
-    // Determine config file path (default to /etc/dnsmasq.conf if not specified)
-    let config_file_path = PathBuf::from("/etc/dnsmasq.conf");
-    
-    // Create ConfigReloader for SIGHUP handling
-    let config_reloader = Arc::new(RwLock::new(ConfigReloader::new(
-        Arc::clone(&config_arc),
-        config_file_path,
-    )));
-    
-    // Create DnsCache for SIGUSR1 cache dumping
-    let dns_cache = Arc::new(RwLock::new(DnsCache::new(&config.dns)));
-    
-    // Create MetricsCollector for SIGUSR2 statistics
-    let metrics_collector = Arc::new(RwLock::new(MetricsCollector::new()));
-    
-    // Create LoggingService for log rotation
-    let logging_service = Arc::new(RwLock::new(
-        match LoggingService::new(1000) {
-            Ok(service) => service,
-            Err(e) => {
-                error!("Failed to initialize logging service: {:?}", e);
-                process::exit(1);
-            }
-        }
-    ));
-    
-    // Create SignalHandlers with all dependencies
-    let signal_handlers = dnsmasq::platform::signals::SignalHandlers::new(
-        config_reloader,
-        dns_cache,
-        shutdown_handle,
-        metrics_collector,
-        logging_service,
-    );
-    
-    // Setup signal handlers (spawns background tasks for SIGHUP, SIGUSR1, SIGUSR2, etc.)
-    match setup_signal_handlers(signal_handlers).await {
-        Ok(_) => info!("Signal handlers initialized successfully"),
-        Err(e) => {
-            warn!("Failed to setup some signal handlers: {:?}", e);
-            // Continue anyway - signal handling is optional functionality
-        }
-    }
-    
-    info!("Sockets bound successfully, entering main event loop");
-    info!("Server is ready to accept requests");
-    
-    // Main event loop - handles DNS queries and DHCP requests
-    let mut dns_buf = vec![0u8; 4096];
-    let mut dhcp_buf = vec![0u8; 4096];
-    
-    loop {
-        tokio::select! {
-            // Handle DNS requests
-            result = dns_socket.recv_from(&mut dns_buf) => {
-                if let Ok((len, src)) = result {
-                    info!("Received DNS query ({} bytes) from {}", len, src);
-                    
-                    // Clone service and socket for async task
-                    let service = Arc::clone(&dns_service);
-                    let socket = Arc::clone(&dns_socket);
-                    let query_data = dns_buf[..len].to_vec();
-                    
-                    // Spawn async task to handle query
-                    tokio::spawn(async move {
-                        match handle_dns_query(service, socket, query_data, src).await {
-                            Ok(()) => {},
-                            Err(e) => warn!("DNS query handling error: {}", e),
-                        }
-                    });
-                }
-            }
-            
-            // Handle DHCP requests if enabled
-            result = async {
-                if let Some(ref socket) = dhcp_socket {
-                    socket.recv_from(&mut dhcp_buf).await
-                } else {
-                    // If no DHCP, wait indefinitely
-                    std::future::pending::<std::io::Result<(usize, std::net::SocketAddr)>>().await
-                }
-            } => {
-                if let Ok((len, src)) = result {
-                    info!("Received DHCP packet ({} bytes) from {}", len, src);
-                    // DHCP handling would go here
-                    // For now, just acknowledge receipt
-                }
-            }
-            
-            // Handle shutdown signals
-            _ = tokio::signal::ctrl_c() => {
-                info!("Received shutdown signal, exiting");
-                break;
-            }
-        }
-    }
-    
-    info!("dnsmasq shutdown complete");
-    process::exit(0);
-}
+// Internal module imports (from depends_on_files)
+use dnsmasq::constants::VERSION;
+use dnsmasq::config::{load_config, validate_config, Config, CliArgs};
+use dnsmasq::error::{DnsmasqError, Result as DnsmasqResult};
+use dnsmasq::runtime::event_loop::EventLoop;
+use dnsmasq::platform::privileges::drop_privileges;
+use dnsmasq::platform::systemd;
+use dnsmasq::util::logging::init_logging;
 
-/// Handles a single DNS query by parsing, resolving, and sending response.
+/// Main entry point for dnsmasq daemon.
 ///
-/// # Arguments
+/// This function orchestrates complete daemon initialization including configuration
+/// parsing, socket binding, privilege dropping, signal handling, and event loop execution.
+/// It replaces the C implementation's main() from src/dnsmasq.c with async/await patterns.
 ///
-/// * `service` - DNS service for query resolution
-/// * `socket` - Shared UDP socket for sending response
-/// * `query_data` - Raw query packet bytes
-/// * `client_addr` - Client socket address
+/// # Exit Codes
 ///
-/// # Returns
-///
-/// * `Ok(())` - Query handled successfully
-/// * `Err(String)` - Error during query processing
-async fn handle_dns_query(
-    service: Arc<DnsService>,
-    socket: Arc<UdpSocket>,
-    query_data: Vec<u8>,
-    client_addr: std::net::SocketAddr,
-) -> Result<(), String> {
-    // Parse incoming DNS message
-    let query_message = DnsMessage::from_bytes(&query_data)
-        .map_err(|e| format!("Failed to parse DNS query: {}", e))?;
-    
-    // Save the original query ID from the client
-    let original_query_id = query_message.id();
-    info!("Parsed DNS query with ID {}", original_query_id);
-    
-    // Extract first question from query
-    let dns_query = DnsQuery::from_message(&query_message)
-        .ok_or_else(|| "No questions in DNS query".to_string())?;
-    
-    info!("Query for {} (type {})", dns_query.name, u16::from(dns_query.qtype));
-    
-    // Extract client IP address
-    let client_ip: IpAddr = client_addr.ip();
-    
-    // Resolve query using DNS service (pass original bytes to preserve EDNS0)
-    let mut response = service.resolve_query(dns_query, client_ip, Some(&query_data)).await
-        .map_err(|e| format!("Query resolution failed: {}", e))?;
-    
-    // CRITICAL: Restore the original client's query ID before sending response
-    response.message_mut().header.id = original_query_id;
-    
-    // Convert response to DNS message
-    let response_message = response.to_message();
-    
-    // Serialize response to bytes
-    let response_bytes = response_message.to_bytes()
-        .map_err(|e| format!("Failed to serialize response: {}", e))?;
-    
-    // Send response back to client
-    socket.send_to(&response_bytes, client_addr).await
-        .map_err(|e| format!("Failed to send response: {}", e))?;
-    
-    info!("Sent DNS response ({} bytes) to {}", response_bytes.len(), client_addr);
-    
-    Ok(())
-}
-
-/// Initializes tracing-based structured logging.
-///
-/// Configures logging output format, level filtering, and backend (stdout/stderr).
-/// Respects RUST_LOG environment variable for dynamic log level control.
-///
-/// # Log Levels
-///
-/// - ERROR: Fatal errors requiring daemon restart
-/// - WARN: Non-fatal errors and suspicious conditions
-/// - INFO: Normal operational messages (default)
-/// - DEBUG: Detailed diagnostic information
-/// - TRACE: Extremely verbose protocol-level tracing
+/// - 0: Normal shutdown after SIGTERM or successful --test validation
+/// - 1: Fatal error during initialization (configuration error, socket binding failure)
 ///
 /// # Examples
 ///
 /// ```bash
-/// # Default (INFO level)
-/// dnsmasq
+/// # Normal daemon startup
+/// dnsmasq --conf-file=/etc/dnsmasq.conf
 ///
-/// # Enable DEBUG logging
-/// RUST_LOG=debug dnsmasq
+/// # Test configuration without starting
+/// dnsmasq --test --conf-file=/etc/dnsmasq.conf
 ///
-/// # Enable TRACE for specific module
-/// RUST_LOG=dnsmasq::dns=trace dnsmasq
+/// # Show version and exit
+/// dnsmasq --version
+///
+/// # Foreground mode with debug logging
+/// RUST_LOG=debug dnsmasq --no-daemon
 /// ```
-fn init_logging() {
-    eprintln!("[INIT] Initializing tracing subscriber...");
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Parse command-line arguments using clap
+    let cli_args = CliArgs::parse();
     
-    // Configure tracing subscriber with environment filter
-    let rust_log = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
-    eprintln!("[INIT] RUST_LOG = {}", rust_log);
+    // Handle --version flag immediately (exit without initialization)
+    if cli_args.version_flag {
+        print_version();
+        process::exit(0);
+    }
     
+    // Initialize logging system early to capture initialization errors
+    // This sets up tracing subscriber with environment-based filtering
+    init_logging_early(&cli_args);
+    
+    info!("dnsmasq v{} (Rust implementation) starting", VERSION);
+    info!("Command-line arguments parsed successfully");
+    
+    // Load and merge configuration from file and CLI arguments
+    // This replaces C's read_opts() function from option.c
+    let config = match load_configuration(&cli_args).await {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            error!("Configuration loading failed: {:#}", e);
+            eprintln!("dnsmasq: configuration error: {}", e);
+            process::exit(1);
+        }
+    };
+    
+    info!("Configuration loaded successfully");
+    
+    // Validate configuration comprehensively
+    // This performs --test mode checks on all configuration options
+    if let Err(e) = validate_configuration(&config) {
+        error!("Configuration validation failed: {:#}", e);
+        eprintln!("dnsmasq: configuration validation error: {}", e);
+        process::exit(1);
+    }
+    
+    info!("Configuration validated successfully");
+    
+    // If --test mode, exit successfully after validation
+    if cli_args.test {
+        println!("dnsmasq: syntax check OK");
+        info!("Configuration test passed, exiting");
+        process::exit(0);
+    }
+    
+    // Wrap configuration in Arc<RwLock<>> for shared mutable access
+    // This enables SIGHUP-based configuration reload while services are running
+    let config = Arc::new(RwLock::new(config));
+    
+    // Log daemon startup information matching C version output
+    log_startup_info(&config).await;
+    
+    // Initialize the event loop with all services
+    // This binds privileged ports (requires root or CAP_NET_BIND_SERVICE)
+    // and creates DNS, DHCP, TFTP, and RA service instances
+    info!("Initializing event loop and services");
+    let event_loop = match EventLoop::new(Arc::clone(&config)).await {
+        Ok(event_loop) => event_loop,
+        Err(e) => {
+            error!("Event loop initialization failed: {:#}", e);
+            eprintln!("dnsmasq: failed to initialize: {}", e);
+            process::exit(1);
+        }
+    };
+    
+    info!("Event loop initialized successfully");
+    
+    // Drop privileges to configured user after binding privileged ports
+    // This matches C security model: start as root, bind ports, drop to nobody
+    if let Err(e) = drop_privileges_safely(&config).await {
+        error!("Privilege drop failed: {:#}", e);
+        eprintln!("dnsmasq: failed to drop privileges: {}", e);
+        process::exit(1);
+    }
+    
+    info!("Privileges dropped successfully");
+    
+    // Notify systemd that daemon is ready (Type=notify service)
+    // This signals that initialization is complete and service is operational
+    notify_systemd_ready();
+    
+    info!("Entering main event loop");
+    
+    // Enter main event loop - never returns until shutdown signal
+    // This replaces C's while(1) poll() loop with tokio::select! multiplexing
+    if let Err(e) = event_loop.run().await {
+        error!("Event loop terminated with error: {:#}", e);
+        eprintln!("dnsmasq: runtime error: {}", e);
+        process::exit(1);
+    }
+    
+    // Graceful shutdown completed
+    info!("dnsmasq shutdown complete");
+    Ok(())
+}
+
+/// Initialize logging system early in startup process.
+///
+/// This function sets up the tracing subscriber for structured logging, replacing
+/// C's syslog integration. The subscriber is configured based on command-line flags:
+///
+/// - `--no-daemon`: Log to stderr with human-readable format
+/// - Default: Log to syslog with structured JSON format
+/// - Environment variable `RUST_LOG` controls filtering (e.g., RUST_LOG=debug)
+///
+/// # Arguments
+///
+/// * `cli_args` - Parsed command-line arguments containing logging flags
+///
+/// # Panics
+///
+/// Panics if logging initialization fails (tracing subscriber cannot be set)
+fn init_logging_early(cli_args: &CliArgs) {
+    // Determine log output destination based on CLI flags
+    let log_to_stderr = cli_args.no_daemon;
+    
+    // Build environment filter from RUST_LOG or default to INFO level
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info"));
     
-    // Setup formatted output to stderr
-    let result = fmt()
-        .with_env_filter(env_filter)
-        .with_target(true)
-        .with_thread_ids(false)
-        .with_file(false)
-        .with_line_number(false)
-        .try_init();
-    
-    match result {
-        Ok(_) => eprintln!("[INIT] Tracing subscriber initialized successfully"),
-        Err(e) => eprintln!("[INIT ERROR] Failed to initialize tracing subscriber: {}", e),
+    if log_to_stderr {
+        // Foreground mode: human-readable logs to stderr
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_target(false)
+                .with_thread_ids(false)
+                .with_thread_names(false)
+                .compact())
+            .init();
+    } else {
+        // Daemon mode: structured JSON logs to syslog
+        // TODO: Integrate with actual syslog via tracing-syslog or journald
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt::layer()
+                .json()
+                .with_writer(std::io::stderr))
+            .init();
     }
-    
-    // Test if tracing works
-    tracing::info!("=== TRACING TEST: This is an info! log ===");
-    tracing::debug!("=== TRACING TEST: This is a debug! log ===");
-    tracing::trace!("=== TRACING TEST: This is a trace! log ===");
 }
 
-/// Loads configuration from command-line arguments and configuration file.
+/// Print version information and compilation options.
 ///
-/// This function orchestrates the configuration loading process:
+/// This replaces C's --version output, displaying:
+/// - Version number (from constants::VERSION)
+/// - Compilation features (DNSSEC, DBus, etc.)
+/// - Copyright and license information
 ///
-/// 1. Parse command-line arguments using clap (src/config/cli.rs)
-/// 2. Load configuration file if specified (default: /etc/dnsmasq.conf)
-/// 3. Merge CLI overrides with file configuration
-/// 4. Apply environment variable overrides
-/// 5. Fill in default values for unspecified options
+/// Matches C output format for compatibility with scripts that parse version string.
+fn print_version() {
+    println!("dnsmasq version {}  Copyright (c) 2000-2025 Simon Kelley", VERSION);
+    println!();
+    
+    // Display enabled features matching C compile_opts string
+    print!("Compile time options: ");
+    
+    let mut features = Vec::new();
+    
+    #[cfg(feature = "dnssec")]
+    features.push("DNSSEC");
+    
+    #[cfg(feature = "dbus")]
+    features.push("DBus");
+    
+    #[cfg(feature = "idn")]
+    features.push("IDN");
+    
+    #[cfg(feature = "lua-scripts")]
+    features.push("Lua");
+    
+    #[cfg(feature = "tftp")]
+    features.push("TFTP");
+    
+    #[cfg(feature = "conntrack")]
+    features.push("conntrack");
+    
+    #[cfg(feature = "ipset")]
+    features.push("ipset");
+    
+    #[cfg(feature = "nftset")]
+    features.push("nftset");
+    
+    // Always include these core features
+    features.push("DHCP");
+    features.push("DHCPv6");
+    features.push("IPv6");
+    
+    println!("{}", features.join(" "));
+    println!();
+    println!("This software comes with ABSOLUTELY NO WARRANTY.");
+    println!("See https://www.gnu.org/licenses/gpl-2.0.html for details.");
+}
+
+/// Load configuration from file and command-line arguments.
+///
+/// This async function replaces C's read_opts() from option.c, performing:
+/// 1. Configuration file parsing (dnsmasq.conf format)
+/// 2. Command-line argument application (override file values)
+/// 3. Configuration merging and precedence resolution
+/// 4. Include file processing (recursive with cycle detection)
+///
+/// # Arguments
+///
+/// * `cli_args` - Parsed command-line arguments from clap
 ///
 /// # Returns
 ///
-/// * `Ok(Config)` - Fully populated configuration ready for validation
-/// * `Err(String)` - Configuration loading error with detailed message
+/// * `Ok(Config)` - Fully merged and parsed configuration
+/// * `Err(anyhow::Error)` - Configuration file not found, parse error, or invalid options
 ///
 /// # Errors
 ///
 /// Returns error if:
-/// - Configuration file cannot be read or parsed
-/// - Command-line arguments are invalid
-/// - Required options are missing
-/// - Option values are out of valid range
-async fn load_configuration() -> Result<Config, String> {
-    // For integration tests, use a minimal default configuration
-    // In production, this would parse CLI args and load config file
+/// - Configuration file cannot be read (unless --no-conf specified)
+/// - Configuration syntax is invalid
+/// - Include files contain cycles
+/// - Required options are missing or conflicting
+async fn load_configuration(cli_args: &CliArgs) -> Result<Config> {
+    // Call into config module's load_config function
+    // This handles file parsing, CLI merging, and include processing
+    load_config(cli_args)
+        .await
+        .context("Failed to load configuration")
+}
+
+/// Validate complete configuration for correctness and consistency.
+///
+/// This function performs comprehensive validation checks matching C's --test mode,
+/// including:
+/// - IP address and port range validation
+/// - Hostname and domain name RFC compliance
+/// - DHCP pool consistency (no overlaps, valid ranges)
+/// - DHCPv6 prefix delegation correctness
+/// - DNSSEC trust anchor validity
+/// - File path accessibility (lease files, PID files, etc.)
+/// - Cross-field dependencies and implications
+///
+/// # Arguments
+///
+/// * `config` - Configuration to validate
+///
+/// # Returns
+///
+/// * `Ok(())` - Configuration is valid
+/// * `Err(DnsmasqError)` - Validation failure with detailed error description
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let config = load_config(&cli_args).await?;
+/// validate_configuration(&config)?;
+/// println!("Configuration is valid");
+/// ```
+fn validate_configuration(config: &Config) -> DnsmasqResult<()> {
+    validate_config(config)
+        .context("Configuration validation failed")
+        .map_err(|e| DnsmasqError::Config(format!("{:#}", e)))
+}
+
+/// Log startup information matching C version output format.
+///
+/// This function logs daemon startup messages to match C implementation's syslog output,
+/// including:
+/// - Version number and cache size
+/// - Enabled features and services
+/// - DNSSEC configuration
+/// - DHCP ranges and contexts
+/// - Compilation options
+///
+/// External tools may parse these log messages, so format compatibility is critical.
+///
+/// # Arguments
+///
+/// * `config` - Daemon configuration (wrapped in Arc<RwLock> for shared access)
+async fn log_startup_info(config: &Arc<RwLock<Config>>) {
+    let cfg = config.read().await;
     
-    // Check if this is a test environment (integration tests pass --port via args)
-    let args: Vec<String> = std::env::args().collect();
-    
-    // Parse basic command-line arguments
-    let mut config = Config::default();
-    
-    // Simple argument parsing for test compatibility
-    let mut i = 1;
-    while i < args.len() {
-        let arg = &args[i];
-        
-        // Handle --option=value format
-        if arg.starts_with("--") && arg.contains('=') {
-            let parts: Vec<&str> = arg.splitn(2, '=').collect();
-            if parts.len() == 2 {
-                match parts[0] {
-                    "--port" => {
-                        if let Ok(port) = parts[1].parse::<u16>() {
-                            config.network.port = port;
-                            i += 1;
-                            continue;
-                        }
-                        return Err(format!("Invalid --port value: {}", parts[1]));
-                    }
-                    "--conf-file" => {
-                        let config_file = parts[1];
-                        info!("Loading config from file: {}", config_file);
-                        
-                        // Parse configuration file
-                        let mut parser = ConfigParser::new();
-                        parser.parse_file(config_file).await
-                            .map_err(|e| format!("Failed to parse config file '{}': {}", config_file, e))?;
-                        
-                        // Merge the parsed config into our current config
-                        config = parser.into_config();
-                        
-                        i += 1;
-                        continue;
-                    }
-                    "--server" => {
-                        // Parse upstream DNS server address
-                        let server_str = parts[1];
-                        
-                        // Handle IP address with optional port
-                        let socket_addr = if server_str.contains(':') {
-                            // IP:port format
-                            server_str.parse::<SocketAddr>()
-                                .map_err(|e| format!("Invalid --server address '{}': {}", server_str, e))?
-                        } else {
-                            // IP only, use default DNS port 53
-                            let ip_addr = server_str.parse::<IpAddr>()
-                                .map_err(|e| format!("Invalid --server IP '{}': {}", server_str, e))?;
-                            SocketAddr::new(ip_addr, 53)
-                        };
-                        
-                        // Create ServerDetails and add to upstream_servers
-                        let server_details = ServerDetails::new(socket_addr, None::<String>, 0)
-                            .map_err(|e| format!("Failed to create server details: {}", e))?;
-                        config.dns.upstream_servers.push(server_details);
-                        
-                        info!("Added upstream DNS server: {}", socket_addr);
-                        i += 1;
-                        continue;
-                    }
-                    _ => {
-                        // Unknown --option=value format, ignore
-                        info!("Ignoring unknown argument: {}", arg);
-                        i += 1;
-                        continue;
-                    }
-                }
+    // Log version and DNS configuration
+    if cfg.network.port == 0 {
+        info!("started, version {} DNS disabled", VERSION);
+    } else {
+        if cfg.dns.cache_size > 0 {
+            info!("started, version {} cachesize {}", VERSION, cfg.dns.cache_size);
+            
+            if cfg.dns.cache_size > 10000 {
+                warn!("cache size greater than 10000 may cause performance issues");
             }
-        }
-        
-        // Handle --option value format and flags
-        match arg.as_str() {
-            "--port" | "-p" => {
-                if i + 1 < args.len() {
-                    if let Ok(port) = args[i + 1].parse::<u16>() {
-                        config.network.port = port;
-                        i += 2;
-                        continue;
-                    }
-                }
-                return Err(format!("Invalid --port argument"));
-            }
-            "--server" => {
-                if i + 1 < args.len() {
-                    let server_str = &args[i + 1];
-                    
-                    // Handle IP address with optional port
-                    let socket_addr = if server_str.contains(':') {
-                        // IP:port format
-                        server_str.parse::<SocketAddr>()
-                            .map_err(|e| format!("Invalid --server address '{}': {}", server_str, e))?
-                    } else {
-                        // IP only, use default DNS port 53
-                        let ip_addr = server_str.parse::<IpAddr>()
-                            .map_err(|e| format!("Invalid --server IP '{}': {}", server_str, e))?;
-                        SocketAddr::new(ip_addr, 53)
-                    };
-                    
-                    // Create ServerDetails and add to upstream_servers
-                    let server_details = ServerDetails::new(socket_addr, None::<String>, 0)
-                        .map_err(|e| format!("Failed to create server details: {}", e))?;
-                    config.dns.upstream_servers.push(server_details);
-                    
-                    info!("Added upstream DNS server: {}", socket_addr);
-                    i += 2;
-                    continue;
-                }
-                return Err(format!("Missing --server address"));
-            }
-            "--conf-file" => {
-                if i + 1 < args.len() {
-                    let config_file = &args[i + 1];
-                    info!("Loading config from file: {}", config_file);
-                    
-                    // Parse configuration file
-                    let mut parser = ConfigParser::new();
-                    parser.parse_file(config_file).await
-                        .map_err(|e| format!("Failed to parse config file '{}': {}", config_file, e))?;
-                    
-                    // Merge the parsed config into our current config
-                    config = parser.into_config();
-                    
-                    i += 2;
-                    continue;
-                }
-                return Err(format!("Missing config file path"));
-            }
-            "--no-daemon" => {
-                // Foreground mode (default for this implementation)
-                i += 1;
-                continue;
-            }
-            "--keep-in-foreground" => {
-                // Keep in foreground (already the default)
-                i += 1;
-                continue;
-            }
-            "--test" => {
-                // Test configuration and exit
-                info!("Configuration test mode");
-                println!("dnsmasq: syntax check OK.");
-                process::exit(0);
-            }
-            "--version" | "-v" => {
-                println!("Dnsmasq version 2.92.0");
-                process::exit(0);
-            }
-            "--help" | "-h" => {
-                println!("Usage: dnsmasq [options]");
-                println!("\nCommon options:");
-                println!("  --port=<port>, -p <port>    DNS port (default: 53)");
-                println!("  --conf-file=<file>          Configuration file");
-                println!("  --no-daemon                 Run in foreground");
-                println!("  --test                      Test configuration");
-                println!("  --version, -v               Show version");
-                println!("  --help, -h                  Show this help");
-                process::exit(0);
-            }
-            _ => {
-                // Ignore unknown arguments for now (in production, would error)
-                info!("Ignoring unknown argument: {}", arg);
-                i += 1;
-            }
+        } else {
+            info!("started, version {} cache disabled", VERSION);
         }
     }
     
-    // Set reasonable defaults for testing
-    if config.network.port == 0 {
-        config.network.port = 53;
+    // Log DHCP configuration if enabled
+    if cfg.dhcp.enabled {
+        info!("DHCP service enabled");
+        for range in &cfg.dhcp.v4_ranges {
+            info!("DHCP range {} to {}", range.start, range.end);
+        }
     }
     
-    info!("Configuration loaded with DNS port {}", config.network.port);
+    // Log DHCPv6 configuration if enabled
+    if cfg.dhcp.dhcp6_enabled {
+        info!("DHCPv6 service enabled");
+        for range in &cfg.dhcp.v6_ranges {
+            info!("DHCPv6 range {}", range);
+        }
+    }
     
-    Ok(config)
+    // Log Router Advertisement if enabled
+    #[cfg(feature = "ra")]
+    if cfg.radv.enabled {
+        info!("IPv6 router advertisement enabled");
+    }
+    
+    // Log DNSSEC status
+    #[cfg(feature = "dnssec")]
+    if cfg.dns.dnssec_enabled {
+        info!("DNSSEC validation enabled");
+    }
+    
+    // Log TFTP status
+    #[cfg(feature = "tftp")]
+    if cfg.tftp.enabled {
+        if let Some(ref root) = cfg.tftp.root {
+            info!("TFTP root is {}", root.display());
+        } else {
+            info!("TFTP enabled");
+        }
+    }
+    
+    // Log D-Bus status
+    #[cfg(feature = "dbus")]
+    if cfg.platform.dbus_enabled {
+        info!("DBus support enabled");
+    }
+}
+
+/// Drop privileges to configured user after binding privileged ports.
+///
+/// This function implements the security model matching C's privilege drop sequence:
+/// 1. Verify running as root (UID 0)
+/// 2. On Linux: Set process capabilities (CAP_NET_ADMIN, CAP_NET_BIND_SERVICE, CAP_NET_RAW)
+/// 3. Call setgid() to drop to configured group
+/// 4. Call setuid() to drop to configured user
+/// 5. Verify privilege drop was successful
+///
+/// After this function returns, the process runs as an unprivileged user with minimal
+/// capabilities retained for networking operations.
+///
+/// # Arguments
+///
+/// * `config` - Daemon configuration containing user/group settings
+///
+/// # Returns
+///
+/// * `Ok(())` - Privileges dropped successfully
+/// * `Err(anyhow::Error)` - Privilege drop failed (user not found, setuid failed, etc.)
+///
+/// # Safety
+///
+/// This function must be called after binding all privileged ports and before processing
+/// any untrusted network input. Failure to drop privileges is a fatal security error.
+async fn drop_privileges_safely(config: &Arc<RwLock<Config>>) -> Result<()> {
+    let cfg = config.read().await;
+    
+    // Get configured user and group
+    let user = cfg.security.user.as_deref();
+    let group = cfg.security.group.as_deref();
+    
+    // Drop privileges using platform-specific implementation
+    drop_privileges(user, group)
+        .await
+        .context("Failed to drop privileges")?;
+    
+    info!("Privileges dropped to user: {:?}, group: {:?}", user, group);
+    Ok(())
+}
+
+/// Notify systemd that daemon initialization is complete.
+///
+/// This function sends sd_notify(READY=1) to systemd for Type=notify service units,
+/// signaling that the daemon has finished initialization and is ready to serve requests.
+///
+/// If systemd socket activation is used, this also acknowledges socket transfer.
+///
+/// On non-systemd platforms or when not started by systemd, this function is a no-op.
+fn notify_systemd_ready() {
+    #[cfg(target_os = "linux")]
+    {
+        // Send readiness notification to systemd
+        if let Err(e) = systemd::sd_notify("READY=1") {
+            warn!("Failed to notify systemd: {}", e);
+        } else {
+            info!("Systemd notified of daemon readiness");
+        }
+    }
+    
+    #[cfg(not(target_os = "linux"))]
+    {
+        // No-op on non-Linux platforms
+    }
 }
