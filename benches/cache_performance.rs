@@ -77,13 +77,13 @@
 //! cargo bench --bench cache_performance -- --baseline main
 //! ```
 
-use criterion::{criterion_group, criterion_main, BenchmarkGroup, BenchmarkId, Criterion, black_box, BatchSize};
-use dnsmasq::dns::cache::{CacheEntry, CacheKey, DnsCache};
-use dnsmasq::types::{CacheFlags, DomainName, IpAddr, RecordType, Timestamp};
-use std::collections::HashMap;
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, black_box, BatchSize};
+use dnsmasq::dns::cache::{CacheEntry, DnsCache};
+use dnsmasq::dns::protocol::name::DomainName;
+use dnsmasq::types::{CacheFlags, IpAddr, RecordType};
 use std::net::Ipv4Addr;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
 
@@ -121,7 +121,8 @@ fn cache_insert_sequential(c: &mut Criterion) {
                     |mut cache| {
                         // Benchmark: Insert entries sequentially
                         for i in 0..size {
-                            let domain = DomainName::new(format!("host{}.example.com", i))
+                            let domain_str = format!("host{}.example.com", i);
+                            let domain = DomainName::new(&domain_str)
                                 .expect("Valid domain name");
                             let ip = IpAddr::V4(Ipv4Addr::new(
                                 192,
@@ -186,7 +187,8 @@ fn cache_lookup_by_name(c: &mut Criterion) {
                         let num_entries = (cache_capacity as f64 * ratio) as usize;
                         
                         for i in 0..num_entries {
-                            let domain = DomainName::new(format!("host{}.example.com", i))
+                            let domain_str = format!("host{}.example.com", i);
+                            let domain = DomainName::new(&domain_str)
                                 .expect("Valid domain name");
                             let ip = IpAddr::V4(Ipv4Addr::new(192, 168, (i / 256) as u8, (i % 256) as u8));
                             let entry = CacheEntry::new(
@@ -200,9 +202,9 @@ fn cache_lookup_by_name(c: &mut Criterion) {
                         }
                         
                         // Create lookup domain (50% hit rate - lookup middle entry)
-                        let lookup_domain = DomainName::new(
-                            format!("host{}.example.com", num_entries / 2)
-                        ).expect("Valid domain name");
+                        let lookup_str = format!("host{}.example.com", num_entries / 2);
+                        let lookup_domain = DomainName::new(&lookup_str)
+                            .expect("Valid domain name");
                         
                         (cache, lookup_domain)
                     },
@@ -251,7 +253,8 @@ fn cache_lookup_by_addr(c: &mut Criterion) {
                         let mut cache = DnsCache::with_capacity(size);
                         
                         for i in 0..size {
-                            let domain = DomainName::new(format!("host{}.example.com", i))
+                            let domain_str = format!("host{}.example.com", i);
+                            let domain = DomainName::new(&domain_str)
                                 .expect("Valid domain name");
                             let ip = IpAddr::V4(Ipv4Addr::new(192, 168, (i / 256) as u8, (i % 256) as u8));
                             let entry = CacheEntry::new(
@@ -316,7 +319,8 @@ fn cache_lru_eviction(c: &mut Criterion) {
                 let mut cache = DnsCache::with_capacity(cache_capacity);
                 
                 for i in 0..cache_capacity {
-                    let domain = DomainName::new(format!("host{}.example.com", i))
+                    let domain_str = format!("host{}.example.com", i);
+                    let domain = DomainName::new(&domain_str)
                         .expect("Valid domain name");
                     let ip = IpAddr::V4(Ipv4Addr::new(192, 168, (i / 256) as u8, (i % 256) as u8));
                     let entry = CacheEntry::new(
@@ -374,7 +378,8 @@ fn cache_concurrent_reads(c: &mut Criterion) {
                 
                 let mut cache = DnsCache::with_capacity(cache_size);
                 for i in 0..cache_size {
-                    let domain = DomainName::new(format!("host{}.example.com", i))
+                    let domain_str = format!("host{}.example.com", i);
+                    let domain = DomainName::new(&domain_str)
                         .expect("Valid domain name");
                     let ip = IpAddr::V4(Ipv4Addr::new(192, 168, (i / 256) as u8, (i % 256) as u8));
                     let entry = CacheEntry::new(
@@ -398,7 +403,8 @@ fn cache_concurrent_reads(c: &mut Criterion) {
                     for i in 0..num_readers {
                         let cache_clone = Arc::clone(&cache_arc);
                         let handle = tokio::spawn(async move {
-                            let domain = DomainName::new(format!("host{}.example.com", i * 10))
+                            let domain_str = format!("host{}.example.com", i * 10);
+                            let _domain = DomainName::new(&domain_str)
                                 .expect("Valid domain name");
                             let cache_read = cache_clone.read().await;
                             // Need to clone cache to call mutable method
@@ -461,9 +467,9 @@ fn cache_concurrent_writes(c: &mut Criterion) {
                         let cache_clone = Arc::clone(&cache_arc);
                         let handle = tokio::spawn(async move {
                             for j in 0..10 {
-                                let domain = DomainName::new(
-                                    format!("host{}.example.com", i * 100 + j)
-                                ).expect("Valid domain name");
+                                let domain_str = format!("host{}.example.com", i * 100 + j);
+                                let domain = DomainName::new(&domain_str)
+                                    .expect("Valid domain name");
                                 let ip = IpAddr::V4(Ipv4Addr::new(192, 168, i as u8, j as u8));
                                 let entry = CacheEntry::new(
                                     domain,
@@ -523,7 +529,8 @@ fn cache_mixed_workload(c: &mut Criterion) {
                 let mut cache = DnsCache::with_capacity(cache_size);
                 
                 for i in 0..cache_size / 2 {
-                    let domain = DomainName::new(format!("host{}.example.com", i))
+                    let domain_str = format!("host{}.example.com", i);
+                    let domain = DomainName::new(&domain_str)
                         .expect("Valid domain name");
                     let ip = IpAddr::V4(Ipv4Addr::new(192, 168, (i / 256) as u8, (i % 256) as u8));
                     let entry = CacheEntry::new(
@@ -551,9 +558,9 @@ fn cache_mixed_workload(c: &mut Criterion) {
                             black_box(cache_read.len());
                         } else {
                             // Write operation
-                            let domain = DomainName::new(
-                                format!("newhost{}.example.com", i)
-                            ).expect("Valid domain name");
+                            let domain_str = format!("newhost{}.example.com", i);
+                            let domain = DomainName::new(&domain_str)
+                                .expect("Valid domain name");
                             let ip = IpAddr::V4(Ipv4Addr::new(10, 0, (i / 256) as u8, (i % 256) as u8));
                             let entry = CacheEntry::new(
                                 domain,
@@ -607,7 +614,8 @@ fn cache_invalidation(c: &mut Criterion) {
                         let mut cache = DnsCache::with_capacity(size);
                         
                         for i in 0..size {
-                            let domain = DomainName::new(format!("host{}.example.com", i))
+                            let domain_str = format!("host{}.example.com", i);
+                            let domain = DomainName::new(&domain_str)
                                 .expect("Valid domain name");
                             let ip = IpAddr::V4(Ipv4Addr::new(
                                 192,
