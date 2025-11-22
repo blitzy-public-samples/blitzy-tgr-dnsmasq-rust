@@ -72,29 +72,17 @@
 //! RUST_LOG=debug cargo test --test dns_tests -- --nocapture
 //! ```
 
-use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
-use bytes::{Bytes, BytesMut};
-use futures::future;
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
-use tempfile::NamedTempFile;
-use tokio::net::UdpSocket;
-use tokio::time::{sleep, timeout};
-use tracing::{debug, info, warn};
+use tokio::time::sleep;
+use tracing::info;
 use tracing_subscriber;
 
 // Internal imports from dnsmasq implementation
-use dnsmasq::config::Config;
-use dnsmasq::dns::{
-    CacheEntry, DnsCache, DnsQuery, DnsResponse, DnsService,
-    clear_cache, get_cache_stats,
-};
 use dnsmasq::dns::protocol::message::DnsMessage;
-use dnsmasq::error::{DnsError, Result};
-use dnsmasq::types::{DomainName, IpAddr as DnsIpAddr, RecordType, Timestamp};
+use dnsmasq::error::Result;
+use dnsmasq::types::RecordType;
 
 // Test utilities
 #[path = "common/mod.rs"]
@@ -102,7 +90,7 @@ mod common;
 use common::{
     MockDnsServer, TestConfigOptions, DnsQueryBuilder,
     create_test_dns_socket,
-    generate_test_config, send_dns_query, recv_dns_response,
+    send_dns_query, recv_dns_response,
     setup_test_server, teardown_test_server, with_timeout,
 };
 
@@ -791,7 +779,7 @@ async fn test_cache_statistics() {
     send_dns_query(&client_socket, &test_query, server.address())
         .await
         .expect("Failed to send verification query");
-    let test_response = recv_dns_response(&client_socket, Duration::from_secs(5))
+    let _test_response = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive verification response");
     

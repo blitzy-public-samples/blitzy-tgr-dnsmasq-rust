@@ -407,7 +407,7 @@ fn lease_persistence(c: &mut Criterion) {
                     (temp_dir, lease_file)
                 })
             },
-            |(temp_dir, lease_file)| {
+            |(_temp_dir, lease_file)| {
                 rt.block_on(async {
                     // Read lease database from disk
                     let result = read_lease_database(&lease_file).await;
@@ -537,6 +537,7 @@ fn dhcp_packet_parsing(c: &mut Criterion) {
 
 /// Test configuration for DHCPv4 benchmarks
 #[derive(Clone)]
+#[allow(dead_code)]
 struct TestDhcpV4Config {
     range_start: Ipv4Addr,
     range_end: Ipv4Addr,
@@ -547,6 +548,7 @@ struct TestDhcpV4Config {
 
 /// Test configuration for DHCPv6 benchmarks
 #[derive(Clone)]
+#[allow(dead_code)]
 struct TestDhcpV6Config {
     prefix: Ipv6Addr,
     prefix_len: u8,
@@ -556,6 +558,7 @@ struct TestDhcpV6Config {
 
 /// Mock lease manager for benchmarking
 #[derive(Clone)]
+#[allow(dead_code)]
 struct MockLeaseManager {
     leases: Arc<std::sync::RwLock<Vec<TestLease>>>,
 }
@@ -577,6 +580,7 @@ struct TestLease {
 }
 
 /// DHCPv4 message structure for benchmarking
+#[allow(dead_code)]
 struct DhcpV4Message {
     op: u8,
     htype: u8,
@@ -587,6 +591,7 @@ struct DhcpV4Message {
 }
 
 /// DHCPv6 message structure for benchmarking
+#[allow(dead_code)]
 struct DhcpV6Message {
     msg_type: u8,
     transaction_id: [u8; 3],

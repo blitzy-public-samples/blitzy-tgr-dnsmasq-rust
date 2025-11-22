@@ -652,8 +652,10 @@ impl MockDnsServer {
     /// Create a new mock DNS server.
     #[allow(dead_code)]
     pub fn new() -> Self {
-        let port = find_available_port().expect("No available ports");
-        let address = SocketAddr::new("127.0.0.1".parse().unwrap(), port);
+        // Use port 0 to let the OS assign an available port when start() is called
+        // This avoids the TOCTOU race condition of finding a port, releasing it, 
+        // then trying to bind to it later
+        let address = SocketAddr::new("127.0.0.1".parse().unwrap(), 0);
 
         Self {
             socket: None,
@@ -1633,7 +1635,7 @@ where
 ///
 /// This is a simplified placeholder for a macro. In full implementation,
 /// this would be a declarative macro providing detailed diff output.
-#[macro_export]
+///
 /// Assert that a DNS response matches expected content.
 #[macro_export]
 macro_rules! assert_dns_response_matches {
