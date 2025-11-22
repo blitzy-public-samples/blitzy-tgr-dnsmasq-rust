@@ -64,7 +64,7 @@
 //! and caching patterns without DNSSEC validation, DHCP, TFTP, or other advanced features.
 
 use dnsmasq::Result;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 use tokio::signal;
@@ -123,10 +123,12 @@ async fn main() -> Result<()> {
         }
         Err(e) => {
             error!("Failed to bind to {}: {}", bind_addr, e);
-            return Err(dnsmasq::DnsmasqError::Network(format!(
-                "Bind failed: {}",
-                e
-            )));
+            return Err(dnsmasq::DnsmasqError::Network(
+                dnsmasq::error::NetworkError::PortBindFailed {
+                    port: 5353,
+                    reason: e.to_string(),
+                },
+            ));
         }
     };
 

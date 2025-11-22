@@ -88,7 +88,6 @@ use dnsmasq::{
     },
     types::RecordType,
 };
-use futures::future;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::Arc,
