@@ -64,13 +64,10 @@
 //! ```
 
 use std::net::Ipv4Addr;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use tokio::net::UdpSocket;
 use tokio::select;
 use tokio::signal::ctrl_c;
-use tokio::sync::RwLock;
 
 use tracing::{error, info, warn};
 use tracing_subscriber::fmt;
@@ -249,6 +246,7 @@ fn create_dhcp_context() -> DhcpContextExample {
 /// without requiring the full dnsmasq library to be compiled. In production code,
 /// use the actual `DhcpContext` type from the config module.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct DhcpContextExample {
     /// Starting IP address of the range (inclusive)
     start: Ipv4Addr,
