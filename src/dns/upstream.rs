@@ -1144,7 +1144,8 @@ impl UpstreamPool {
                     .expect("Valid server details");
 
             // Convert types::DomainName to protocol::name::DomainName for matcher
-            let protocol_domain = match ProtocolDomainName::new(domain.as_str()) {
+            // Use new_pattern() to support wildcard domains like *.example.com
+            let protocol_domain = match ProtocolDomainName::new_pattern(domain.as_str()) {
                 Ok(name) => name,
                 Err(e) => {
                     error!(addr = %server.addr, domain = %domain.as_str(), error = %e,

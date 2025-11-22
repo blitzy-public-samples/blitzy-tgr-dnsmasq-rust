@@ -324,6 +324,7 @@ pub async fn execute_lease_script(
     action: LeaseAction,
     lease: &Lease,
     old_hostname: Option<&str>,
+    domain: Option<&str>,
 ) -> Result<(), DhcpError> {
     // Verify script exists
     if !script_path.exists() {
@@ -419,6 +420,11 @@ pub async fn execute_lease_script(
     // Environment variable: DNSMASQ_SUPPLIED_HOSTNAME
     if let Some(ref hostname) = lease.hostname {
         cmd.env("DNSMASQ_SUPPLIED_HOSTNAME", hostname);
+    }
+
+    // Environment variable: DNSMASQ_DOMAIN (local domain suffix)
+    if let Some(domain_name) = domain {
+        cmd.env("DNSMASQ_DOMAIN", domain_name);
     }
 
     // Environment variable: DNSMASQ_VENDOR_CLASS (hex-encoded)

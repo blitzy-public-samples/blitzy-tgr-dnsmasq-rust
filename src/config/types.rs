@@ -479,6 +479,15 @@ pub struct DnsConfig {
     /// Default: false
     pub bogus_priv: bool,
 
+    /// Block DNS responses containing private IP addresses (DNS rebinding protection).
+    ///
+    /// Replaces C option bit `OPT_NO_REBIND`. Filters out responses from upstream
+    /// servers that contain private IP addresses (RFC 1918, link-local, loopback).
+    /// Prevents DNS rebinding attacks where external names resolve to internal IPs.
+    ///
+    /// Default: false
+    pub stop_dns_rebind: bool,
+
     /// Add domain suffix to simple names from /etc/hosts.
     ///
     /// Replaces C option bit `OPT_EXPAND_HOSTS`. Appends configured domain to
@@ -614,6 +623,25 @@ pub struct DnsConfig {
     ///
     /// Default: empty vector
     pub local_domains: Vec<String>,
+
+    /// Maximum EDNS0 packet size advertised.
+    ///
+    /// Replaces C `edns_packet_max` option. Controls the UDP payload size
+    /// advertised via EDNS0 OPT record. Larger values allow bigger DNS
+    /// responses but require network support for large UDP packets.
+    ///
+    /// Default: 4096 bytes (RFC 6891 recommendation)
+    /// Range: 512-65535 bytes
+    pub edns_packet_max: u16,
+
+    /// Authoritative zone configurations.
+    ///
+    /// Zones for which this server provides authoritative answers.
+    /// Enabled by `auth-zone` and `auth-server` directives.
+    ///
+    /// Default: empty vector (no authoritative zones)
+    #[cfg(feature = "auth")]
+    pub authoritative_zones: Vec<crate::dns::auth::AuthoritativeZone>,
 }
 
 impl Default for DnsConfig {
@@ -626,6 +654,7 @@ impl Default for DnsConfig {
             domain_filters: Vec::new(),
             domain_needed: false,
             bogus_priv: false,
+            stop_dns_rebind: false,
             expand_hosts: false,
             strict_order: false,
             all_servers: false,
@@ -647,6 +676,9 @@ impl Default for DnsConfig {
             ptr_records: Vec::new(),
             servers: Vec::new(),
             local_domains: Vec::new(),
+            edns_packet_max: 4096, // RFC 6891 recommendation
+            #[cfg(feature = "auth")]
+            authoritative_zones: Vec::new(),
         }
     }
 }
@@ -1003,6 +1035,12 @@ pub struct DhcpContext {
     /// ensures it's an IPv6 address for DHCPv6-specific operations.
     pub start6: IpAddr,
 
+    /// IPv6 range end address.
+    ///
+    /// Replaces C `struct in6_addr end6`. Required for `DHCPv6` ranges.
+    /// Defines the upper bound of the address pool for dynamic allocation.
+    pub end6: IpAddr,
+
     /// Context flags.
     ///
     /// Replaces C `int flags`. Bitfield with CONTEXT_* constants:
@@ -1025,6 +1063,13 @@ pub struct DhcpContext {
     /// for addresses allocated from this context. Used for calculating
     /// valid and preferred lifetimes in Router Advertisements.
     pub lease_time: u32,
+
+    /// Prefix length for IPv6 prefix delegation (0 for address allocation).
+    ///
+    /// For prefix delegation ranges (IA_PD), specifies the prefix length
+    /// to delegate to requesting routers (e.g., 48 for /48, 56 for /56).
+    /// For regular address allocation ranges (IA_NA), this is 0.
+    pub prefix_len: u8,
 }
 
 impl DhcpContext {
@@ -1799,6 +1844,9 @@ impl ConfigBuilder {
         }
         if args.bogus_priv {
             self.config.dns.bogus_priv = true;
+        }
+        if args.stop_dns_rebind {
+            self.config.dns.stop_dns_rebind = true;
         }
         // Add more CLI argument mappings as needed
         Ok(self)

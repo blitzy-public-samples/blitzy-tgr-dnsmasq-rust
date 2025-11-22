@@ -594,7 +594,8 @@ impl LeaseManager {
         if let Some(ref script_path) = self.config.scripts.script_path {
             let action = if is_new { LeaseAction::Add } else { LeaseAction::Old };
 
-            if let Err(e) = execute_lease_script(script_path, action, &lease, None).await {
+            // TODO: Pass actual domain from config when domain field is added
+            if let Err(e) = execute_lease_script(script_path, action, &lease, None, None).await {
                 warn!(ip = %ip, action = ?action, error = %e, "Failed to execute lease script");
             }
         }
@@ -646,10 +647,16 @@ impl LeaseManager {
 
         // Execute lease script if configured
         if let Some(ref script_path) = self.config.scripts.script_path {
-            if let Err(e) = execute_lease_script(script_path, LeaseAction::Del, &lease, None).await
+            // TODO: Pass actual domain from config when domain field is added
+            if let Err(e) = execute_lease_script(script_path, LeaseAction::Del, &lease, None, None).await
             {
                 warn!(ip = %ip, error = %e, "Failed to execute lease script for deletion");
             }
+        }
+
+        // Persist lease database to disk
+        if let Err(e) = self.save_leases().await {
+            warn!(ip = %ip, error = %e, "Failed to save lease database after release");
         }
 
         info!(ip = %ip, mac = ?lease.mac, hostname = ?lease.hostname, "Lease released");
@@ -687,6 +694,43 @@ impl LeaseManager {
         }
 
         debug!(ip = %ip, duration_secs = duration.as_secs(), "Lease renewed");
+
+        Ok(lease)
+    }
+
+    /// Marks a lease as declined to prevent reallocation.
+    ///
+    /// When a client sends DHCPDECLINE, the IP address must be marked as
+    /// unavailable and not reallocated until manually cleared or timeout expires.
+    /// This prevents the server from offering a problematic IP to another client.
+    ///
+    /// # Arguments
+    ///
+    /// * `ip` - IP address of lease to mark as declined
+    ///
+    /// # Returns
+    ///
+    /// Ok(updated Lease) on success
+    ///
+    /// # Errors
+    ///
+    /// Returns `DhcpError::LeaseNotFound` if lease doesn't exist
+    pub async fn mark_lease_declined(&self, ip: &IpAddr) -> Result<Lease, DhcpError> {
+        let mut lease = {
+            let repo = self.repository.read().await;
+            repo.find_by_ip(ip).await.ok_or(DhcpError::LeaseNotFound { ip: ip.to_string() })?
+        };
+
+        // Set the DECLINED flag to mark this IP as unavailable
+        lease.flags.insert(LeaseFlags::DECLINED);
+
+        // Store updated lease
+        {
+            let mut repo = self.repository.write().await;
+            repo.insert(lease.clone()).await?;
+        }
+
+        info!(ip = %ip, mac = ?lease.mac, "Lease marked as DECLINED to prevent reallocation");
 
         Ok(lease)
     }

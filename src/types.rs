@@ -298,6 +298,11 @@ impl DomainName {
                 return Err(DnsmasqError::Other(format!("Label '{label}' exceeds 63 bytes")));
             }
 
+            // Special case: allow a single "*" as a wildcard label
+            if label == "*" {
+                continue; // Wildcard label is valid, skip further validation
+            }
+
             // Validate label characters
             if label.starts_with('-') || label.ends_with('-') {
                 return Err(DnsmasqError::Other(format!(

@@ -499,11 +499,29 @@ impl DnsCache {
 
         let key = CacheKey::new(domain.clone(), record_type);
 
+        // DEBUG: Log all cache keys to understand what's in the cache
+        eprintln!(
+            "[CACHE DEBUG] Looking up key: domain={}, type={:?}. Cache contains {} entries",
+            domain,
+            record_type,
+            self.entries.len()
+        );
+        for (cache_key, cache_entry) in self.entries.iter() {
+            eprintln!(
+                "[CACHE DEBUG]   Cache entry: domain={}, type={:?}, flags={:?}, expired={}",
+                cache_key.domain,
+                cache_key.record_type,
+                cache_entry.flags(),
+                cache_entry.is_expired()
+            );
+        }
+
         // Check LRU cache (promotes entry to most-recently-used)
         if let Some(entry) = self.lru.get(&key) {
             // Check if expired
             if entry.is_expired() {
-                debug!("Cache entry expired, removing");
+                eprintln!("[CACHE DEBUG] Cache entry expired, removing");
+                info!(domain = %domain, record_type = ?record_type, "Cache entry expired, removing");
                 self.lru.pop(&key);
                 self.entries.remove(&key);
                 self.stats.expirations += 1;
@@ -511,12 +529,14 @@ impl DnsCache {
                 return None;
             }
 
-            trace!("Cache hit");
+            eprintln!("[CACHE DEBUG] Cache hit for domain={}, type={:?}", domain, record_type);
+            info!(domain = %domain, record_type = ?record_type, "Cache HIT - entry promoted");
             self.stats.hits += 1;
             return Some(Arc::clone(entry));
         }
 
-        trace!("Cache miss");
+        eprintln!("[CACHE DEBUG] Cache miss for domain={}, type={:?}", domain, record_type);
+        info!(domain = %domain, record_type = ?record_type, "Cache MISS");
         self.stats.misses += 1;
         None
     }
@@ -601,13 +621,40 @@ impl DnsCache {
     pub fn insert(&mut self, entry: CacheEntry) -> Result<()> {
         let key = CacheKey::new(entry.domain_name().clone(), entry.record_type());
 
+        eprintln!(
+            "[CACHE DEBUG] Inserting entry: domain={}, type={:?}, flags={:?}",
+            entry.domain_name(),
+            entry.record_type(),
+            entry.flags()
+        );
+
         // Check if we need to evict before inserting
+        eprintln!("[INSERT] Checking eviction: len={}, capacity={}, contains_key={}", 
+                  self.entries.len(), self.capacity, self.entries.contains_key(&key));
         if self.entries.len() >= self.capacity && !self.entries.contains_key(&key) {
-            debug!("Cache at capacity, evicting LRU entry");
-            self.evict_lru();
+            eprintln!("[INSERT] Cache at capacity, calling evict_lru()");
+            info!(
+                current_size = self.entries.len(),
+                capacity = self.capacity,
+                "Cache at capacity, evicting LRU entry"
+            );
+            if let Some(evicted) = self.evict_lru() {
+                eprintln!("[INSERT] Successfully evicted: {}", evicted.domain_name());
+                info!(evicted_domain = %evicted.domain_name(), "Evicted entry from cache");
+            } else {
+                eprintln!("[INSERT] ERROR: evict_lru() returned None");
+                warn!("Cache at capacity but evict_lru() returned None");
+            }
+        } else {
+            eprintln!("[INSERT] No eviction needed");
         }
 
         let entry_arc = Arc::new(entry);
+        let domain_name = entry_arc.domain_name().clone();
+
+        eprintln!("[EPRINTLN BEFORE INSERT] About to insert into HashMap and LRU");
+        eprintln!("[EPRINTLN BEFORE INSERT] Current HashMap size: {}", self.entries.len());
+        eprintln!("[EPRINTLN BEFORE INSERT] Max capacity: {}", self.capacity);
 
         // Insert into both hash map and LRU
         self.entries.insert(key.clone(), Arc::clone(&entry_arc));
@@ -616,6 +663,12 @@ impl DnsCache {
         self.stats.insertions += 1;
         self.stats.current_size = self.entries.len();
 
+        eprintln!("[EPRINTLN AFTER INSERT] Entry inserted: domain={}, cache_size={}", domain_name, self.entries.len());
+        info!(
+            domain = %domain_name,
+            cache_size = self.entries.len(),
+            "Entry inserted into cache"
+        );
         trace!("Entry inserted into cache");
         Ok(())
     }
@@ -638,15 +691,19 @@ impl DnsCache {
     /// ```
     #[instrument(skip(self))]
     pub fn evict_lru(&mut self) -> Option<Arc<CacheEntry>> {
+        eprintln!("[EVICT_LRU] Called, LRU cache len before pop: {}", self.lru.len());
         if let Some((key, entry)) = self.lru.pop_lru() {
+            eprintln!("[EVICT_LRU] Popped LRU entry: domain={}", entry.domain_name());
             self.entries.remove(&key);
             self.stats.evictions += 1;
             self.stats.current_size = self.entries.len();
+            eprintln!("[EVICT_LRU] HashMap size after removal: {}", self.entries.len());
 
             debug!(domain = %entry.domain_name(), "Evicted LRU entry");
             return Some(entry);
         }
 
+        eprintln!("[EVICT_LRU] No LRU entry to evict");
         None
     }
 

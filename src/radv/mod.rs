@@ -1418,9 +1418,11 @@ mod tests {
     fn test_calc_prefix_valid_lifetime_with_context() {
         let context = DhcpContext {
             start6: IpAddr::V6(StdIpv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1)),
+            end6: IpAddr::V6(StdIpv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0xff)),
             flags: 0,
             if_index: 1,
             lease_time: 3600,
+            prefix_len: 0,
         };
 
         let lifetime = calc_prefix_valid_lifetime(Some(&context), 7200);
@@ -1439,9 +1441,11 @@ mod tests {
     fn test_calc_prefix_preferred_lifetime() {
         let context = DhcpContext {
             start6: IpAddr::V6(StdIpv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1)),
+            end6: IpAddr::V6(StdIpv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0xff)),
             flags: 0,
             if_index: 1,
             lease_time: 3600,
+            prefix_len: 0,
         };
 
         let valid_lifetime = 7200;
@@ -1456,9 +1460,11 @@ mod tests {
     fn test_should_set_managed_flag_with_context() {
         let context = DhcpContext {
             start6: IpAddr::V6(StdIpv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1)),
+            end6: IpAddr::V6(StdIpv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0xff)),
             flags: 0, // Not CONTEXT_RA_STATELESS
             if_index: 1,
             lease_time: 3600,
+            prefix_len: 0,
         };
 
         assert!(should_set_managed_flag(Some(&context)));
@@ -1469,9 +1475,11 @@ mod tests {
     fn test_should_set_managed_flag_stateless() {
         let context = DhcpContext {
             start6: IpAddr::V6(StdIpv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1)),
+            end6: IpAddr::V6(StdIpv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0xff)),
             flags: CONTEXT_RA_STATELESS,
             if_index: 1,
             lease_time: 3600,
+            prefix_len: 0,
         };
 
         assert!(!should_set_managed_flag(Some(&context)));
@@ -1488,9 +1496,11 @@ mod tests {
     fn test_should_set_other_flag_with_context() {
         let context = DhcpContext {
             start6: IpAddr::V6(StdIpv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1)),
+            end6: IpAddr::V6(StdIpv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0xff)),
             flags: 0,
             if_index: 1,
             lease_time: 3600,
+            prefix_len: 0,
         };
 
         assert!(should_set_other_flag(Some(&context)));

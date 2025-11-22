@@ -313,6 +313,28 @@ impl DhcpV6Server {
         })
     }
 
+    /// Returns the local socket address that the server is bound to
+    ///
+    /// This is useful for tests and diagnostics to determine the actual port the server
+    /// is listening on, especially when using port 0 for OS-assigned ports.
+    ///
+    /// # Returns
+    ///
+    /// The local `SocketAddr` of the UDP socket, or an error if the socket is not bound.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let addr = server.local_addr()?;
+    /// println!("DHCPv6 server listening on {}", addr);
+    /// ```
+    pub fn local_addr(&self) -> crate::error::Result<SocketAddr> {
+        self.socket.local_addr()
+            .map_err(|e| crate::error::DnsmasqError::Dhcp(
+                crate::error::DhcpError::SocketError(format!("Failed to get local address: {e}"))
+            ))
+    }
+
     /// Runs the main `DHCPv6` server event loop.
     ///
     /// This async function runs indefinitely, processing incoming `DHCPv6` packets using
@@ -550,6 +572,42 @@ impl DhcpV6Server {
         // Build request context for protocol handlers
         // TODO: Determine actual interface from socket/routing table
         let interface = "eth0".to_string(); // Placeholder - should be determined from actual interface
+        
+        // Look up DhcpContext from configured address pools for this interface
+        // Try interface-specific lookup first, then fall back to "default" for catch-all ranges
+        let dhcp_context = self.address_pools.get(&interface)
+            .or_else(|| self.address_pools.get("default"))
+            .and_then(|ranges| {
+                // Use the first available range for this interface
+                ranges.first().map(|range| {
+                    // Convert interface name to index
+                    let if_index = nix::net::if_::if_nametoindex(interface.as_str())
+                        .unwrap_or(0) as i32;
+                    
+                    // Determine appropriate flags for DHCPv6 context
+                    let mut flags = crate::config::types::CONTEXT_V6 | crate::config::types::CONTEXT_DHCP;
+                    
+                    // Add CONTEXT_STATIC flag if range is for static allocation
+                    if range.prefix_len > 0 {
+                        // This is a prefix delegation range
+                        flags |= crate::config::types::CONTEXT_RA;
+                    }
+                    
+                    // Determine lease time (use range-specific or fall back to default)
+                    let lease_time = range.lease_time.unwrap_or(86400) as u32; // Default 24 hours
+                    
+                    // Create DhcpContext matching the C struct dhcp_context
+                    crate::config::types::DhcpContext {
+                        start6: range.start,
+                        end6: range.end,
+                        flags,
+                        if_index,
+                        lease_time,
+                        prefix_len: range.prefix_len,
+                    }
+                })
+            });
+        
         let ctx = RequestContext::new(
             client_id,
             *xid, // Dereference array reference
@@ -557,7 +615,7 @@ impl DhcpV6Server {
             iaid,
             ia_type,
             multicast_dest,
-        );
+        ).with_context(dhcp_context);
 
         // Dispatch based on message type
         let response_opt = match msg_type {

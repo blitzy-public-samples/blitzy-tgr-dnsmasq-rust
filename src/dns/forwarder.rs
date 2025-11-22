@@ -133,10 +133,11 @@ use crate::constants::TIMEOUT;
 use crate::dns::cache::{CacheEntry, DnsCache};
 use crate::dns::edns0::Edns0Handler;
 use crate::dns::protocol::message::{DnsMessage as ProtocolMessage, DnsQuery, DnsResponse};
+use crate::dns::protocol::record::RData;
 use crate::dns::upstream::UpstreamPool;
 use crate::error::{DnsError, DnsmasqError, Result};
 use crate::network::sockets::DnsSocket;
-use crate::types::{DomainName, IpAddr, Timestamp};
+use crate::types::{DomainName, IpAddr, RecordType, Timestamp};
 
 use bytes::{Bytes, BytesMut};
 use std::collections::HashMap;
@@ -175,6 +176,83 @@ const MAX_RETRY_ATTEMPTS: usize = 3;
 
 /// TCP query prefix length (2 bytes for message length).
 const TCP_PREFIX_LEN: usize = 2;
+
+// ============================================================================
+// DNS REBINDING PROTECTION HELPERS
+// ============================================================================
+
+/// Checks if an IP address is private or reserved (RFC 1918, RFC 3927, RFC 4193, etc.).
+///
+/// This is used for DNS rebinding protection when `stop-dns-rebind` or `bogus-priv` is enabled.
+/// Returns true for:
+/// - Private IPv4 ranges: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+/// - Link-local: 169.254.0.0/16 (IPv4), fe80::/10 (IPv6)
+/// - Loopback: 127.0.0.0/8 (IPv4), ::1/128 (IPv6)
+/// - Unique local: fc00::/7 (IPv6)
+/// - Documentation/TEST-NET ranges: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24
+///
+/// # Arguments
+///
+/// * `ip` - The IP address to check
+///
+/// # Returns
+///
+/// `true` if the IP is private/reserved, `false` if it's a public/routable address
+fn is_private_or_reserved_ip(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(addr) => {
+            let octets = addr.octets();
+            
+            // RFC 1918 private ranges
+            if octets[0] == 10 {
+                return true; // 10.0.0.0/8
+            }
+            if octets[0] == 172 && (octets[1] >= 16 && octets[1] <= 31) {
+                return true; // 172.16.0.0/12
+            }
+            if octets[0] == 192 && octets[1] == 168 {
+                return true; // 192.168.0.0/16
+            }
+            
+            // Loopback
+            if octets[0] == 127 {
+                return true; // 127.0.0.0/8
+            }
+            
+            // Link-local
+            if octets[0] == 169 && octets[1] == 254 {
+                return true; // 169.254.0.0/16
+            }
+            
+            // Note: TEST-NET documentation ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24)
+            // are NOT blocked here. While reserved for documentation, they don't pose the same
+            // DNS rebinding security risk as truly private addresses, and blocking them would
+            // interfere with testing environments that use these ranges as stand-ins for public IPs.
+            
+            false
+        }
+        IpAddr::V6(addr) => {
+            let segments = addr.segments();
+            
+            // Loopback: ::1
+            if addr.is_loopback() {
+                return true;
+            }
+            
+            // Link-local: fe80::/10
+            if (segments[0] & 0xffc0) == 0xfe80 {
+                return true;
+            }
+            
+            // Unique local addresses: fc00::/7
+            if (segments[0] & 0xfe00) == 0xfc00 {
+                return true;
+            }
+            
+            false
+        }
+    }
+}
 
 // ============================================================================
 // QUERY STATE ENUM
@@ -363,6 +441,11 @@ pub struct OutstandingQuery {
     /// Replaces C `forward->stash` blockdata storage. When UDP response is
     /// truncated (TC bit), must retry query over TCP with identical content.
     query_bytes: Bytes,
+
+    /// Client socket for sending responses.
+    ///
+    /// Stored for use in retry logic to send responses back to the client.
+    client_socket: Arc<DnsSocket>,
 }
 
 impl OutstandingQuery {
@@ -376,6 +459,7 @@ impl OutstandingQuery {
     /// * `query` - Parsed DNS query
     /// * `query_bytes` - Raw query packet bytes for retries
     /// * `edns0` - EDNS0 handler if client supports extensions
+    /// * `client_socket` - Socket for sending responses back to client
     pub fn new(
         query_id: u16,
         original_id: u16,
@@ -383,6 +467,7 @@ impl OutstandingQuery {
         query: DnsQuery,
         query_bytes: Bytes,
         edns0: Option<Edns0Handler>,
+        client_socket: Arc<DnsSocket>,
     ) -> Self {
         Self {
             query_id,
@@ -394,6 +479,7 @@ impl OutstandingQuery {
             created_at: Instant::now(),
             edns0_options: edns0,
             query_bytes,
+            client_socket,
         }
     }
 
@@ -701,6 +787,37 @@ impl DnsForwarder {
         CacheEntry::new(query.name.clone(), query.qtype, ip_addr, ttl, flags)
     }
 
+    /// Create a cache entry for a negative DNS response (NXDOMAIN or NODATA).
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - Original DNS query that resulted in negative response
+    /// * `is_nxdomain` - True if this is an NXDOMAIN (rcode 3), false for NODATA
+    /// * `ttl` - Time to live for the negative cache entry (from SOA or default)
+    /// * `_received_at` - Timestamp when response was received
+    ///
+    /// # Returns
+    ///
+    /// `CacheEntry` ready for insertion into DNS cache with NEG flag
+    fn create_negative_cache_entry(
+        query: &DnsQuery,
+        is_nxdomain: bool,
+        ttl: u32,
+        _received_at: Timestamp,
+    ) -> CacheEntry {
+        use crate::types::CacheFlags;
+
+        // Create cache entry with NEG flag for negative response
+        // Add NXDOMAIN flag if this is an NXDOMAIN response
+        let mut flags = CacheFlags::NEG | CacheFlags::FORWARD;
+        if is_nxdomain {
+            flags |= CacheFlags::NXDOMAIN;
+        }
+
+        // No IP address for negative responses
+        CacheEntry::new(query.name.clone(), query.qtype, None, ttl, flags)
+    }
+
     /// Receive and process a DNS query from a client.
     ///
     /// Implements the initial query reception and cache lookup phase of the state machine.
@@ -857,8 +974,18 @@ impl DnsForwarder {
         // Generate random query ID for security
         let new_query_id = self.generate_query_id().await;
 
+        // Debug: Check original query EDNS0
+        if let Ok(check_msg) = ProtocolMessage::from_bytes(&query_bytes) {
+            tracing::info!(
+                "forward_query: Original query has {} questions, {} additional records",
+                check_msg.questions.len(),
+                check_msg.additional.len()
+            );
+        }
+
         // Parse EDNS0 options from original query if present
         let edns0 = Self::extract_edns0_from_query(&query_bytes);
+        tracing::info!("forward_query: EDNS0 extracted = {}", edns0.is_some());
 
         // Create outstanding query tracking structure
         let outstanding = OutstandingQuery::new(
@@ -868,6 +995,7 @@ impl DnsForwarder {
             query.clone(),
             query_bytes.clone(),
             edns0,
+            Arc::clone(&socket),
         );
 
         // Rewrite query with new ID (Bytes is immutable, so convert to mutable Vec)
@@ -875,6 +1003,15 @@ impl DnsForwarder {
         if forward_bytes.len() >= 2 {
             forward_bytes[0] = (new_query_id >> 8) as u8;
             forward_bytes[1] = (new_query_id & 0xFF) as u8;
+        }
+
+        // Debug: Check if EDNS0 is in the forward bytes
+        if let Ok(check_msg) = ProtocolMessage::from_bytes(&Bytes::copy_from_slice(&forward_bytes)) {
+            tracing::info!(
+                "forward_query: Forwarding query with {} questions, {} additional records",
+                check_msg.questions.len(),
+                check_msg.additional.len()
+            );
         }
 
         // Send query to upstream server via UDP
@@ -946,7 +1083,7 @@ impl DnsForwarder {
         upstream_socket: UdpSocket,
         client_socket: Arc<DnsSocket>,
     ) -> Result<()> {
-        let mut buf = vec![0u8; MAX_EDNS_PAYLOAD];
+        let mut buf = vec![0u8; self.config.edns_packet_max as usize];
 
         let (len, upstream_addr) = upstream_socket
             .recv_from(&mut buf)
@@ -1059,36 +1196,116 @@ impl DnsForwarder {
         }
 
         // Cache the response (if cacheable)
-        // Compute minimum TTL from all answer records
-        let min_ttl = response_message
-            .answers
-            .iter()
-            .map(super::protocol::record::ResourceRecord::ttl)
-            .filter(|&ttl| ttl > 0)
-            .min();
+        // Check if this is a negative response (NXDOMAIN or NODATA)
+        let rcode = response_message.header.flags.rcode();
+        let is_nxdomain = rcode == 3; // NXDOMAIN
+        let is_nodata = rcode == 0 && response_message.answers.is_empty();
+        
+        if is_nxdomain || is_nodata {
+            // Negative caching: cache NXDOMAIN and NODATA responses
+            // Use SOA minimum field if available, otherwise default to 5 minutes
+            let ttl = response_message
+                .authority
+                .iter()
+                .find_map(|rr| {
+                    if let crate::dns::protocol::record::RData::Soa { minimum, .. } = rr.rdata() {
+                        Some(*minimum)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(300); // Default 5 minutes for negative caching
 
-        if let Some(ttl) = min_ttl {
-            // Get current timestamp for TTL tracking
             let received_at = Timestamp::now();
+            eprintln!("[FORWARDER DEBUG] Creating negative cache entry for {} (NXDOMAIN={})", 
+                outstanding.query.name, is_nxdomain);
+            let cache_entry = Self::create_negative_cache_entry(
+                &outstanding.query,
+                is_nxdomain,
+                ttl,
+                received_at,
+            );
 
-            // Create cache entry with proper timestamp tracking
-            let cache_entry =
-                Self::create_cache_entry(&outstanding.query, &response_message, received_at);
-
+            eprintln!("[FORWARDER DEBUG] Acquiring cache write lock to insert negative entry...");
             let mut cache = self.cache.write().await;
+            eprintln!("[FORWARDER DEBUG] Inserting negative cache entry...");
             cache.insert(cache_entry)?;
+            eprintln!("[FORWARDER DEBUG] Negative cache entry inserted successfully!");
 
             trace!(
                 name = %outstanding.query.name,
                 ttl = ttl,
+                nxdomain = is_nxdomain,
                 received_at = received_at.as_secs(),
-                "Cached response with timestamp"
+                "Cached negative response"
             );
+        } else {
+            // Positive caching: cache responses with answer records
+            // Compute minimum TTL from all answer records
+            let min_ttl = response_message
+                .answers
+                .iter()
+                .map(super::protocol::record::ResourceRecord::ttl)
+                .filter(|&ttl| ttl > 0)
+                .min();
+
+            if let Some(ttl) = min_ttl {
+                // Get current timestamp for TTL tracking
+                let received_at = Timestamp::now();
+
+                // Create cache entry with proper timestamp tracking
+                let cache_entry =
+                    Self::create_cache_entry(&outstanding.query, &response_message, received_at);
+
+                let mut cache = self.cache.write().await;
+                cache.insert(cache_entry)?;
+
+                trace!(
+                    name = %outstanding.query.name,
+                    ttl = ttl,
+                    received_at = received_at.as_secs(),
+                    "Cached response with timestamp"
+                );
+            }
         }
 
         // Restore original client query ID
         let mut final_response = response_message.clone();
         final_response.header.id = outstanding.original_id;
+
+        // Add EDNS0 OPT record if client sent one
+        tracing::debug!(
+            "reply_query: edns0_options present = {}",
+            outstanding.edns0_options.is_some()
+        );
+        if outstanding.edns0_options.is_some() {
+            tracing::debug!("Adding EDNS0 OPT record to response");
+            // Check if response already has an OPT record
+            let has_opt = final_response.additional.iter().any(|rr| {
+                matches!(rr.rtype(), crate::types::RecordType::OPT)
+            });
+
+            if !has_opt {
+                tracing::debug!("Response doesn't have OPT, adding one");
+                // Add OPT record with server's UDP payload size
+                use crate::dns::protocol::name::DomainName;
+                use crate::dns::protocol::record::{RData, ResourceRecord};
+                use crate::types::RecordType;
+
+                let opt_rr = ResourceRecord::new(
+                    DomainName::new(".").unwrap_or_else(|_| DomainName::new("").unwrap()),
+                    RecordType::OPT,
+                    self.config.edns_packet_max,  // UDP payload size
+                    0,                             // Extended RCODE and flags
+                    RData::Opt(Vec::new()),        // No additional options
+                );
+                final_response.additional.push(opt_rr);
+            } else {
+                tracing::debug!("Response already has OPT record");
+            }
+        } else {
+            tracing::debug!("Client did not send EDNS0, not adding OPT record");
+        }
 
         // Send response to client
         let response_bytes = final_response.to_bytes().map_err(|e| {
@@ -1281,24 +1498,167 @@ impl DnsForwarder {
 
     /// Handle query timeout by marking server failed and notifying client.
     async fn handle_query_timeout(&self, query_id: u16) {
-        let outstanding = {
+        info!(query_id, "=== handle_query_timeout CALLED ===");
+        
+        // Remove the query and start retry loop
+        let query = {
             let mut queries = self.outstanding_queries.write().await;
             queries.remove(&query_id)
         };
 
-        if let Some(query) = outstanding {
-            // Mark upstream server as failed
-            if let Some(upstream_addr) = query.upstream_server {
-                let mut pool = self.upstream_pool.write().await;
-                pool.mark_failed(upstream_addr);
+        let Some(mut current_query) = query else {
+            warn!(query_id, "Query not found in outstanding queries");
+            return;
+        };
 
-                warn!(
-                    upstream = %upstream_addr,
-                    query_id = query_id,
-                    "Upstream server timeout"
-                );
+        info!(query_id, "Query found, starting retry logic");
+
+        // Mark initial upstream server as failed
+        if let Some(upstream_addr) = current_query.upstream_server {
+            let mut pool = self.upstream_pool.write().await;
+            pool.mark_failed(upstream_addr);
+            warn!(
+                upstream = %upstream_addr,
+                query_id = query_id,
+                "Upstream server timeout, marked as failed"
+            );
+        }
+
+        // Get initial retry count
+        let mut retry_count = match current_query.state {
+            QueryState::Forwarded { retry_count, .. } => retry_count,
+            _ => 0,
+        };
+
+        // Loop-based retry mechanism (no recursion)
+        info!(retry_count, max_retries = MAX_RETRY_ATTEMPTS, "Starting retry loop");
+        while retry_count < MAX_RETRY_ATTEMPTS {
+            info!(retry_count, "Retry loop iteration {}", retry_count);
+            
+            // Try to select another upstream server
+            let next_server = {
+                let mut pool = self.upstream_pool.write().await;
+                if let Ok(domain_name) = crate::types::DomainName::new(current_query.query.name.as_str()) {
+                    let server = pool.select_server(&domain_name, false).map(|server| server.addr);
+                    info!("Selected upstream server: {:?}", server);
+                    server
+                } else {
+                    warn!("Failed to parse domain name for upstream selection");
+                    None
+                }
+            };
+
+            let Some(upstream_server) = next_server else {
+                warn!(retry_count = retry_count, "No more upstream servers available for retry");
+                break;
+            };
+
+            retry_count += 1;
+            info!(
+                query_id = current_query.query_id,
+                retry_count = retry_count,
+                new_upstream = %upstream_server,
+                "Retrying query with different upstream server"
+            );
+
+            // Generate new query ID for retry
+            let new_query_id = self.generate_query_id().await;
+
+            // Rewrite query with new ID
+            let mut forward_bytes = current_query.query_bytes.to_vec();
+            if forward_bytes.len() >= 2 {
+                forward_bytes[0] = (new_query_id >> 8) as u8;
+                forward_bytes[1] = (new_query_id & 0xFF) as u8;
+            }
+
+            // Send query to new upstream server
+            let upstream_socket = match UdpSocket::bind("0.0.0.0:0").await {
+                Ok(sock) => sock,
+                Err(e) => {
+                    error!(error = %e, "Failed to bind socket for retry");
+                    continue; // Try next server
+                }
+            };
+
+            match upstream_socket.send_to(&forward_bytes, upstream_server).await {
+                Ok(bytes_sent) => {
+                    info!(bytes_sent, upstream = %upstream_server, new_query_id, "Sent retry query to upstream");
+                }
+                Err(e) => {
+                    error!(error = %e, "Failed to send retry query");
+                    continue; // Try next server
+                }
+            }
+
+            // Clone client socket for await
+            let client_socket = Arc::clone(&current_query.client_socket);
+            
+            // Update query state with incremented retry count
+            current_query.query_id = new_query_id;
+            current_query.upstream_server = Some(upstream_server);
+            current_query.state = QueryState::Forwarded {
+                upstream_addr: upstream_server,
+                sent_at: Instant::now(),
+                retry_count,
+            };
+
+            // Re-insert into outstanding queries with new ID
+            {
+                let mut queries = self.outstanding_queries.write().await;
+                queries.insert(new_query_id, current_query.clone());
+            }
+
+            // Wait for response with timeout (synchronous within the loop)
+            info!(new_query_id, "Waiting for upstream response (timeout: {:?})", QUERY_TIMEOUT);
+            match timeout(
+                QUERY_TIMEOUT,
+                self.wait_for_upstream_response(
+                    new_query_id,
+                    upstream_socket,
+                    client_socket,
+                ),
+            )
+            .await
+            {
+                Ok(Ok(())) => {
+                    // Success - query completed
+                    info!(query_id = new_query_id, "=== Upstream response processed successfully - EXITING ===");
+                    return;
+                }
+                Ok(Err(e)) => {
+                    // Error processing response - give up
+                    error!(query_id = new_query_id, error = %e, "Error processing upstream response - GIVING UP");
+                    let dns_error = match e {
+                        DnsmasqError::Dns(de) => de,
+                        other => DnsError::NetworkError(format!("Upstream error: {other}")),
+                    };
+                    self.handle_query_error(new_query_id, dns_error).await;
+                    return;
+                }
+                Err(_) => {
+                    // Timeout - mark server as failed and continue loop to try next server
+                    warn!(query_id = new_query_id, retry_count = retry_count, upstream = %upstream_server, "Query timeout on retry, trying next server");
+                    {
+                        let mut pool = self.upstream_pool.write().await;
+                        pool.mark_failed(upstream_server);
+                    }
+                    // Remove failed query from outstanding queries before next iteration
+                    {
+                        let mut queries = self.outstanding_queries.write().await;
+                        current_query = queries.remove(&new_query_id).unwrap_or(current_query);
+                    }
+                    info!("Continuing to next retry iteration");
+                    // Loop continues to try next server
+                }
             }
         }
+
+        // If we get here, max retries exceeded or no servers available
+        warn!(
+            query_id = query_id,
+            retry_count = retry_count,
+            "Query failed after max retries or no available servers"
+        );
     }
 
     /// Handle query error by cleaning up state and logging.
@@ -1316,6 +1676,231 @@ impl DnsForwarder {
                 "Query processing error"
             );
         }
+    }
+
+    /// Forward a query to an upstream server and wait for the response.
+    ///
+    /// This is a synchronous-style helper method for the DnsService layer that handles
+    /// the complete query-response cycle and returns the parsed response. Unlike the
+    /// event-driven `forward_query` method, this method waits for the response before
+    /// returning.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The DNS query to forward
+    /// * `query_bytes` - Raw DNS query packet bytes
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(DnsMessage)` containing the parsed upstream response, or a `DnsError`
+    /// if the query fails (no upstream servers, network error, timeout, etc.).
+    ///
+    /// # Errors
+    ///
+    /// Returns `DnsError` if:
+    /// - No upstream servers are available
+    /// - Network send/receive fails
+    /// - Query times out (QUERY_TIMEOUT)
+    /// - Response parsing fails
+    #[instrument(skip(self, query_bytes), fields(name = %query.name, qtype = ?query.qtype))]
+    pub async fn forward_query_and_wait(
+        &self,
+        query: &DnsQuery,
+        query_bytes: &[u8],
+    ) -> Result<ProtocolMessage> {
+        use crate::types::DomainName as TypesDomainName;
+        
+        // Convert protocol::name::DomainName to types::DomainName for upstream pool
+        let query_name_types = TypesDomainName::new(query.name.as_str())
+            .map_err(|e| DnsError::InvalidName { 
+                name: query.name.as_str().to_string(), 
+                reason: format!("{e}")
+            })?;
+        
+        // Retry loop - try up to MAX_RETRY_ATTEMPTS different upstream servers
+        let mut retry_count = 0;
+        let mut tried_servers = Vec::new();
+        
+        while retry_count < MAX_RETRY_ATTEMPTS {
+            // Select upstream server (excluding previously failed servers)
+            let upstream = {
+                let mut pool = self.upstream_pool.write().await;
+                pool.select_server(&query_name_types, false) // false = DNSSEC not required for now
+                    .filter(|srv| !tried_servers.contains(&srv.addr)) // Skip already-tried servers
+                    .cloned()
+            };
+            
+            let Some(upstream) = upstream else {
+                warn!(
+                    name = %query.name,
+                    retry_count = retry_count,
+                    "No more upstream servers available for retry"
+                );
+                break;
+            };
+            
+            tried_servers.push(upstream.addr);
+
+            debug!(
+                name = %query.name,
+                qtype = ?query.qtype,
+                upstream = %upstream.addr,
+                retry_count = retry_count,
+                "Forwarding query to upstream server"
+            );
+
+            // Create UDP socket for upstream communication
+            let upstream_socket = match UdpSocket::bind("0.0.0.0:0").await {
+                Ok(sock) => sock,
+                Err(e) => {
+                    error!(error = %e, "Failed to bind upstream socket");
+                    retry_count += 1;
+                    continue;
+                }
+            };
+
+            // Send query to upstream server
+            if let Err(e) = upstream_socket.send_to(query_bytes, upstream.addr).await {
+                warn!(
+                    upstream = %upstream.addr,
+                    error = %e,
+                    "Failed to send to upstream, trying next server"
+                );
+                {
+                    let mut pool = self.upstream_pool.write().await;
+                    pool.mark_failed(upstream.addr);
+                }
+                retry_count += 1;
+                continue;
+            }
+
+            trace!(
+                upstream = %upstream.addr,
+                size = query_bytes.len(),
+                "Sent query to upstream"
+            );
+
+            // Wait for response with timeout
+            let mut buf = vec![0u8; self.config.edns_packet_max as usize];
+            match timeout(QUERY_TIMEOUT, upstream_socket.recv_from(&mut buf)).await {
+                Ok(Ok((len, response_addr))) => {
+                    trace!(
+                        upstream = %response_addr,
+                        size = len,
+                        "Received response from upstream"
+                    );
+
+                    // Parse the response
+                    let response_bytes = &buf[..len];
+                    match ProtocolMessage::from_bytes(response_bytes) {
+                        Ok(response_message) => {
+                            debug!(
+                                name = %query.name,
+                                upstream = %upstream.addr,
+                                answers = response_message.answers.len(),
+                                retry_count = retry_count,
+                                "Successfully received and parsed upstream response"
+                            );
+                            
+                            // DNS rebinding protection: filter private IPs from responses
+                            if self.config.stop_dns_rebind {
+                                for answer in &response_message.answers {
+                                    // Check A records (IPv4)
+                                    if answer.rtype() == RecordType::A {
+                                        if let RData::A(ipv4) = answer.rdata() {
+                                            let ip = IpAddr::V4(*ipv4);
+                                            if is_private_or_reserved_ip(&ip) {
+                                                warn!(
+                                                    name = %query.name,
+                                                    ip = %ip,
+                                                    upstream = %upstream.addr,
+                                                    "Blocked DNS rebinding attempt: upstream returned private IP"
+                                                );
+                                                // Return NXDOMAIN (name does not exist) to block the rebinding
+                                                let mut blocked_response = response_message.clone();
+                                                blocked_response.set_rcode(3); // NXDOMAIN
+                                                blocked_response.answers.clear();
+                                                blocked_response.authority.clear();
+                                                blocked_response.additional.clear();
+                                                return Ok(blocked_response);
+                                            }
+                                        }
+                                    }
+                                    // Check AAAA records (IPv6)
+                                    else if answer.rtype() == RecordType::AAAA {
+                                        if let RData::AAAA(ipv6) = answer.rdata() {
+                                            let ip = IpAddr::V6(*ipv6);
+                                            if is_private_or_reserved_ip(&ip) {
+                                                warn!(
+                                                    name = %query.name,
+                                                    ip = %ip,
+                                                    upstream = %upstream.addr,
+                                                    "Blocked DNS rebinding attempt: upstream returned private IPv6"
+                                                );
+                                                // Return NXDOMAIN to block the rebinding
+                                                let mut blocked_response = response_message.clone();
+                                                blocked_response.set_rcode(3); // NXDOMAIN
+                                                blocked_response.answers.clear();
+                                                blocked_response.authority.clear();
+                                                blocked_response.additional.clear();
+                                                return Ok(blocked_response);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            return Ok(response_message);
+                        }
+                        Err(e) => {
+                            warn!(
+                                upstream = %upstream.addr,
+                                error = %e,
+                                "Failed to parse upstream response, trying next server"
+                            );
+                            {
+                                let mut pool = self.upstream_pool.write().await;
+                                pool.mark_failed(upstream.addr);
+                            }
+                            retry_count += 1;
+                            continue;
+                        }
+                    }
+                }
+                Ok(Err(e)) => {
+                    warn!(
+                        upstream = %upstream.addr,
+                        error = %e,
+                        "Failed to receive from upstream, trying next server"
+                    );
+                    {
+                        let mut pool = self.upstream_pool.write().await;
+                        pool.mark_failed(upstream.addr);
+                    }
+                    retry_count += 1;
+                    continue;
+                }
+                Err(_) => {
+                    warn!(
+                        upstream = %upstream.addr,
+                        timeout_ms = QUERY_TIMEOUT.as_millis(),
+                        "Timeout waiting for upstream response, trying next server"
+                    );
+                    {
+                        let mut pool = self.upstream_pool.write().await;
+                        pool.mark_failed(upstream.addr);
+                    }
+                    retry_count += 1;
+                    continue;
+                }
+            }
+        }
+        
+        // All retries exhausted
+        Err(DnsmasqError::Dns(DnsError::Timeout {
+            query: query.name.as_str().to_string(),
+            timeout_ms: (QUERY_TIMEOUT.as_millis() * MAX_RETRY_ATTEMPTS as u128) as u64,
+        }))
     }
 }
 
@@ -1359,8 +1944,8 @@ mod tests {
         assert!(!state.is_terminal());
     }
 
-    #[test]
-    fn test_outstanding_query_creation() {
+    #[tokio::test]
+    async fn test_outstanding_query_creation() {
         // Test basic query creation with protocol DnsQuery type
         let query = DnsQuery {
             name: DomainName::new("example.com").expect("valid domain"),
@@ -1368,6 +1953,10 @@ mod tests {
             qclass: 1,
         };
 
+        // Create a dummy socket for testing
+        let udp_socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let dummy_socket = Arc::new(DnsSocket::new(udp_socket));
+        
         let outstanding = OutstandingQuery::new(
             12345,
             54321,
@@ -1375,6 +1964,7 @@ mod tests {
             query,
             Bytes::new(),
             None,
+            dummy_socket,
         );
 
         assert_eq!(outstanding.query_id, 12345);
@@ -1421,13 +2011,17 @@ mod tests {
         assert!(!forwarded.needs_validation());
     }
 
-    #[test]
-    fn test_outstanding_query_state_transitions() {
+    #[tokio::test]
+    async fn test_outstanding_query_state_transitions() {
         let query = DnsQuery {
             name: DomainName::new("example.com").expect("valid domain"),
             qtype: RecordType::A,
             qclass: 1,
         };
+
+        // Create a dummy socket for testing
+        let udp_socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let dummy_socket = Arc::new(DnsSocket::new(udp_socket));
 
         let mut outstanding = OutstandingQuery::new(
             12345,
@@ -1436,6 +2030,7 @@ mod tests {
             query,
             Bytes::new(),
             None,
+            dummy_socket,
         );
 
         // Initially in New state

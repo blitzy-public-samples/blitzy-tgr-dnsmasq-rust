@@ -250,9 +250,9 @@ pub struct CliArgs {
     #[arg(long = "dns-loop-detect")]
     pub dns_loop_detect: bool,
 
-    /// Set DNS query packet maximum size. Default: 4096.
+    /// Set DNS query packet maximum size. Default: 4096. Range: 512-65535.
     #[arg(long = "edns-packet-max", value_name = "SIZE")]
-    pub edns_packet_max: Option<usize>,
+    pub edns_packet_max: Option<u16>,
 
     /// Query upstream servers in strict sequential order.
     #[arg(long = "strict-order")]

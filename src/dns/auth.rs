@@ -154,7 +154,7 @@ use tracing::{debug, info, instrument, trace, warn};
 /// - Retry: Should be significantly less than refresh
 /// - Expire: At least 1 week, typically 2-4 weeks
 /// - Minimum: Controls negative caching, typically 1-3 hours
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SoaParams {
     /// Zone serial number for change detection.
     ///
@@ -253,7 +253,7 @@ impl Default for SoaParams {
 ///     exclude_filters: vec!["10.99.0.0/16".parse()?],
 /// };
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AuthoritativeZone {
     /// Zone apex domain name.
     ///

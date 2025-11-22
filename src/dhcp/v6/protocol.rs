@@ -192,9 +192,10 @@ use crate::config::types::DhcpContext;
 use crate::config::Config;
 use crate::dhcp::lease::{Lease, LeaseManager};
 use crate::dhcp::v6::constants::{
-    MSG_ADVERTISE, MSG_REPLY, OPTION_CLIENT_ID, OPTION_IAADDR, OPTION_IA_NA, OPTION_RAPID_COMMIT,
-    OPTION_SERVER_ID, OPTION_STATUS_CODE, STATUS_NOADDRS, STATUS_NOBINDING, STATUS_NOPREFIXAVAIL,
-    STATUS_NOTONLINK, STATUS_SUCCESS, STATUS_UNSPEC, STATUS_USEMULTICAST,
+    MSG_ADVERTISE, MSG_REPLY, OPTION_CLIENT_ID, OPTION_IAADDR, OPTION_IAPREFIX, OPTION_IA_NA,
+    OPTION_IA_PD, OPTION_RAPID_COMMIT, OPTION_SERVER_ID, OPTION_STATUS_CODE, STATUS_NOADDRS,
+    STATUS_NOBINDING, STATUS_NOPREFIXAVAIL, STATUS_NOTONLINK, STATUS_SUCCESS, STATUS_UNSPEC,
+    STATUS_USEMULTICAST,
 };
 use crate::dhcp::v6::message::DhcpV6Message;
 use crate::error::DhcpError;
@@ -568,35 +569,75 @@ impl DhcpV6StateMachine {
         // OPTION_CLIENT_ID (echo from request, required)
         response.add_option(OPTION_CLIENT_ID, ctx.clid.clone());
 
-        // Build IA_NA option manually
-        // IA_NA format: IAID (4) + T1 (4) + T2 (4) + IA options
         #[allow(clippy::cast_possible_truncation)]
         let lease_secs = self.config.dhcp.lease_time.as_secs() as u32;
-        let mut ia_na_data = Vec::new();
 
-        // Write IAID, T1, T2
-        ia_na_data.extend_from_slice(&ctx.iaid.to_be_bytes());
-        ia_na_data.extend_from_slice(&lease_secs.to_be_bytes()); // T1
-        ia_na_data.extend_from_slice(&lease_secs.to_be_bytes()); // T2
+        // Check request type and build appropriate IA option
+        if ctx.ia_type == OPTION_IA_PD {
+            // Build IA_PD option for prefix delegation
+            // IA_PD format: IAID (4) + T1 (4) + T2 (4) + IA_PD options
+            
+            // Validate context has prefix delegation configured
+            if context.prefix_len == 0 {
+                return Err(DhcpError::V6ProtocolError {
+                    reason: "No prefix delegation configured for this range".to_string(),
+                });
+            }
 
-        // Add IAADDR sub-option
-        // Extract IPv6 address from IpAddr
-        if let IpAddr::V6(ipv6_addr) = available_address {
-            // IAADDR option header
-            ia_na_data.extend_from_slice(&OPTION_IAADDR.to_be_bytes());
+            let mut ia_pd_data = Vec::new();
 
-            // IAADDR length: 16 (address) + 4 (preferred) + 4 (valid) = 24 bytes
-            ia_na_data.extend_from_slice(&24u16.to_be_bytes());
+            // Write IAID, T1, T2
+            ia_pd_data.extend_from_slice(&ctx.iaid.to_be_bytes());
+            ia_pd_data.extend_from_slice(&lease_secs.to_be_bytes()); // T1
+            ia_pd_data.extend_from_slice(&lease_secs.to_be_bytes()); // T2
 
-            // IAADDR data: address + preferred_lifetime + valid_lifetime
-            ia_na_data.extend_from_slice(&ipv6_addr.octets());
-            ia_na_data.extend_from_slice(&lease_secs.to_be_bytes()); // preferred_lifetime
-            ia_na_data.extend_from_slice(&lease_secs.to_be_bytes()); // valid_lifetime
+            // Add IAPREFIX sub-option
+            // Extract IPv6 address from IpAddr
+            if let IpAddr::V6(ipv6_addr) = available_address {
+                // IAPREFIX option header
+                ia_pd_data.extend_from_slice(&OPTION_IAPREFIX.to_be_bytes());
+
+                // IAPREFIX length: 4 (preferred) + 4 (valid) + 1 (prefix-len) + 16 (prefix) = 25 bytes
+                ia_pd_data.extend_from_slice(&25u16.to_be_bytes());
+
+                // IAPREFIX data: preferred_lifetime + valid_lifetime + prefix_len + prefix
+                ia_pd_data.extend_from_slice(&lease_secs.to_be_bytes()); // preferred_lifetime
+                ia_pd_data.extend_from_slice(&lease_secs.to_be_bytes()); // valid_lifetime
+                ia_pd_data.push(context.prefix_len); // prefix length
+                ia_pd_data.extend_from_slice(&ipv6_addr.octets()); // prefix address
+            }
+
+            response.add_option(OPTION_IA_PD, ia_pd_data);
+            info!("Sending ADVERTISE with offered prefix delegation");
+        } else {
+            // Build IA_NA option for address allocation (default)
+            // IA_NA format: IAID (4) + T1 (4) + T2 (4) + IA options
+            let mut ia_na_data = Vec::new();
+
+            // Write IAID, T1, T2
+            ia_na_data.extend_from_slice(&ctx.iaid.to_be_bytes());
+            ia_na_data.extend_from_slice(&lease_secs.to_be_bytes()); // T1
+            ia_na_data.extend_from_slice(&lease_secs.to_be_bytes()); // T2
+
+            // Add IAADDR sub-option
+            // Extract IPv6 address from IpAddr
+            if let IpAddr::V6(ipv6_addr) = available_address {
+                // IAADDR option header
+                ia_na_data.extend_from_slice(&OPTION_IAADDR.to_be_bytes());
+
+                // IAADDR length: 16 (address) + 4 (preferred) + 4 (valid) = 24 bytes
+                ia_na_data.extend_from_slice(&24u16.to_be_bytes());
+
+                // IAADDR data: address + preferred_lifetime + valid_lifetime
+                ia_na_data.extend_from_slice(&ipv6_addr.octets());
+                ia_na_data.extend_from_slice(&lease_secs.to_be_bytes()); // preferred_lifetime
+                ia_na_data.extend_from_slice(&lease_secs.to_be_bytes()); // valid_lifetime
+            }
+
+            response.add_option(OPTION_IA_NA, ia_na_data);
+            info!("Sending ADVERTISE with offered address");
         }
 
-        response.add_option(OPTION_IA_NA, ia_na_data);
-
-        info!("Sending ADVERTISE with offered address");
         Ok(response)
     }
 
@@ -1412,21 +1453,101 @@ impl DhcpV6StateMachine {
     ///
     /// Scans pool range for an unallocated address.
     async fn find_available_address(&self, context: &DhcpContext) -> Result<IpAddr, DhcpError> {
-        // For now, return the start address of the pool
-        // Full implementation would scan for available addresses in range
-        // This is a simplified version for the initial implementation
-
         let lease_mgr = self.lease_manager.read().await;
         let start_addr = context.start6;
+        let end_addr = context.end6;
 
-        // Check if start address is available
-        if lease_mgr.find_by_ip(&start_addr).await.is_none() {
-            return Ok(start_addr);
+        // Handle prefix delegation differently from regular address allocation
+        if context.prefix_len > 0 {
+            // Prefix delegation: find an available prefix
+            return self.find_available_prefix(context, &lease_mgr).await;
         }
 
-        // In full implementation, would iterate through pool range
-        // For now, return error if start address is taken
-        Err(DhcpError::V6ProtocolError { reason: "No addresses available in pool".to_string() })
+        // Regular address allocation: iterate through pool range
+        let IpAddr::V6(start_v6) = start_addr else {
+            return Err(DhcpError::V6ProtocolError {
+                reason: "DHCPv6 pool must use IPv6 addresses".to_string(),
+            });
+        };
+
+        let IpAddr::V6(end_v6) = end_addr else {
+            return Err(DhcpError::V6ProtocolError {
+                reason: "DHCPv6 pool must use IPv6 addresses".to_string(),
+            });
+        };
+
+        // Convert to u128 for easy iteration
+        let start_u128 = u128::from_be_bytes(start_v6.octets());
+        let end_u128 = u128::from_be_bytes(end_v6.octets());
+
+        // Iterate through addresses in the pool
+        for addr_u128 in start_u128..=end_u128 {
+            let addr_v6 = std::net::Ipv6Addr::from(addr_u128);
+            let addr = IpAddr::V6(addr_v6);
+
+            // Check if address is available
+            if lease_mgr.find_by_ip(&addr).await.is_none() {
+                return Ok(addr);
+            }
+
+            // Safety check: don't iterate forever on huge ranges
+            if addr_u128 >= start_u128.saturating_add(10000) {
+                break;
+            }
+        }
+
+        Err(DhcpError::V6ProtocolError {
+            reason: "No addresses available in pool".to_string(),
+        })
+    }
+
+    /// Find an available prefix for prefix delegation.
+    async fn find_available_prefix(
+        &self,
+        context: &DhcpContext,
+        lease_mgr: &tokio::sync::RwLockReadGuard<'_, LeaseManager>,
+    ) -> Result<IpAddr, DhcpError> {
+        let IpAddr::V6(start_v6) = context.start6 else {
+            return Err(DhcpError::V6ProtocolError {
+                reason: "DHCPv6 prefix delegation must use IPv6 addresses".to_string(),
+            });
+        };
+
+        // For prefix delegation, the pool configuration specifies a larger prefix
+        // from which smaller prefixes are delegated to clients.
+        // Example: Pool is 2001:db8:1::/48, and we delegate /56 prefixes to clients.
+        // 
+        // The pool's prefix_len is the length of prefixes we delegate (e.g., 56).
+        // We need to calculate how many such prefixes fit in the pool's base prefix.
+
+        let pool_prefix_len = context.prefix_len;
+        
+        // The pool base address defines the start of the delegatable space
+        let start_u128 = u128::from_be_bytes(start_v6.octets());
+
+        // Calculate the size of one delegatable prefix
+        // For a /56 prefix, the increment is 2^(128-56) = 2^72
+        let prefix_size = if pool_prefix_len < 128 {
+            1u128 << (128 - pool_prefix_len)
+        } else {
+            1u128
+        };
+
+        // Try up to 256 prefixes (reasonable limit for scanning)
+        for i in 0..256 {
+            let prefix_u128 = start_u128.saturating_add(i * prefix_size);
+            let prefix_v6 = std::net::Ipv6Addr::from(prefix_u128);
+            let prefix_addr = IpAddr::V6(prefix_v6);
+
+            // Check if this prefix is available
+            if lease_mgr.find_by_ip(&prefix_addr).await.is_none() {
+                return Ok(prefix_addr);
+            }
+        }
+
+        Err(DhcpError::V6ProtocolError {
+            reason: "No prefixes available in delegation pool".to_string(),
+        })
     }
 
     /// Validates that address is within configured pool range.
@@ -1635,9 +1756,11 @@ mod tests {
 
         let dhcp_ctx = DhcpContext {
             start6: IpAddr::V6(Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1)),
+            end6: IpAddr::V6(Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0xff)),
             flags: 0,
             if_index: 1,
             lease_time: 3600, // 1 hour lease time
+            prefix_len: 0, // Not a prefix delegation range
         };
 
         let ctx = RequestContext::new(clid, txid, "eth0", 0x9999, OPTION_IA_PD, true)

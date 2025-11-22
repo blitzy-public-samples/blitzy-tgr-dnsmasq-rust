@@ -99,7 +99,7 @@
 
 use crate::config::types::Config;
 // use crate::dhcp::common::{generate_xid, log_tags, match_netid}; // Unused for now
-use crate::dhcp::lease::LeaseManager;
+use crate::dhcp::lease::{LeaseFlags, LeaseManager};
 use crate::dhcp::v4::constants::{
     BROADCAST_FLAG, MIN_PACKETSZ, MSG_TYPE_DECLINE, MSG_TYPE_DISCOVER, MSG_TYPE_INFORM,
     MSG_TYPE_RELEASE, MSG_TYPE_REQUEST,
@@ -335,6 +335,25 @@ impl DhcpV4Service {
         info!(contexts = service.contexts.len(), "DHCPv4 server service initialized");
 
         Ok(service)
+    }
+
+    /// Returns the local socket address that the server is bound to
+    ///
+    /// This is useful for tests and diagnostics to determine the actual port the server
+    /// is listening on, especially when using port 0 for OS-assigned ports.
+    ///
+    /// # Returns
+    ///
+    /// The local `SocketAddr` of the UDP socket, or an error if the socket is not bound.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let addr = service.local_addr()?;
+    /// println!("DHCPv4 server listening on {}", addr);
+    /// ```
+    pub fn local_addr(&self) -> crate::error::Result<SocketAddr> {
+        self.socket.local_addr()
     }
 
     /// Main service loop processing `DHCPv4` packets
@@ -822,17 +841,26 @@ impl DhcpV4Service {
         // Check existing lease for this client
         let lease_manager = self.lease_manager.read().await;
         if let Some(existing_lease) = lease_manager.find_by_mac(client_mac).await {
-            // Extract IPv4 address from IpAddr enum
-            if let std::net::IpAddr::V4(ipv4) = existing_lease.ip {
-                // Check if existing lease is in this context's range
-                if Self::ip_in_range(ipv4, context.start, context.end) {
-                    debug!(
-                        mac = %client_mac,
-                        existing_ip = %ipv4,
-                        "Reusing existing lease"
-                    );
-                    return Ok(ipv4);
+            // Don't reuse leases that have been marked as DECLINED
+            if !existing_lease.flags.contains(LeaseFlags::DECLINED) {
+                // Extract IPv4 address from IpAddr enum
+                if let std::net::IpAddr::V4(ipv4) = existing_lease.ip {
+                    // Check if existing lease is in this context's range
+                    if Self::ip_in_range(ipv4, context.start, context.end) {
+                        debug!(
+                            mac = %client_mac,
+                            existing_ip = %ipv4,
+                            "Reusing existing lease"
+                        );
+                        return Ok(ipv4);
+                    }
                 }
+            } else {
+                debug!(
+                    mac = %client_mac,
+                    declined_ip = %existing_lease.ip,
+                    "Client has existing DECLINED lease, will allocate new IP"
+                );
             }
         }
         drop(lease_manager);
@@ -1067,8 +1095,18 @@ impl DhcpV4Service {
         // Serialize message to bytes
         let response_bytes = message.serialize_dhcp_message();
 
-        // Determine destination address
-        let dest_addr = if (message.flags() & BROADCAST_FLAG) != 0 {
+        // Determine destination address per RFC 2131 Section 4.1
+        // Priority: giaddr > broadcast flag > ciaddr > yiaddr
+        let dest_addr = if message.giaddr() != Ipv4Addr::UNSPECIFIED {
+            // If giaddr is set, send to the relay agent on port 67 (server port)
+            // Special case: for loopback giaddr (testing), send back to source port
+            // to avoid port conflicts and allow tests to work without root privileges
+            if message.giaddr().is_loopback() {
+                source // Use original source address (includes client port)
+            } else {
+                SocketAddr::from((message.giaddr(), 67))
+            }
+        } else if (message.flags() & BROADCAST_FLAG) != 0 {
             // Broadcast to all clients
             SocketAddr::from(([255, 255, 255, 255], 68))
         } else if message.ciaddr() != Ipv4Addr::UNSPECIFIED {
@@ -1280,9 +1318,18 @@ impl DhcpV4Service {
     ) -> Result<bool, DhcpError> {
         let lease_manager = self.lease_manager.read().await;
 
-        // Check if address is leased to another client
+        // Check if address is leased to another client or marked as declined
         let ip_addr = IpAddr::V4(addr);
         if let Some(existing_lease) = lease_manager.find_by_ip(&ip_addr).await {
+            // If lease is marked as DECLINED, it's not available for allocation
+            if existing_lease.flags.contains(LeaseFlags::DECLINED) {
+                debug!(
+                    ip = %addr,
+                    "Address is marked as DECLINED, not available for allocation"
+                );
+                return Ok(false);
+            }
+            
             if let Some(ref mac) = existing_lease.mac {
                 if mac != client_mac {
                     // Leased to different client

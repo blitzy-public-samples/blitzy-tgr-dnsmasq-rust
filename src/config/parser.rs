@@ -854,9 +854,11 @@ impl ConfigParser {
             "server" => self.parse_server_option(option_value)?,
             "domain-needed" => self.config.dns.domain_needed = true,
             "bogus-priv" => self.config.dns.bogus_priv = true,
+            "stop-dns-rebind" => self.config.dns.stop_dns_rebind = true,
             "dnssec" => self.config.dns.dnssec_enabled = true,
             "trust-anchor" => self.parse_trust_anchor(option_value)?,
             "dnssec-timestamp" => self.parse_dnssec_timestamp(option_value)?,
+            "edns-packet-max" => self.parse_edns_packet_max(option_value)?,
 
             // DNS record options
             "address" => self.parse_address_record(option_value)?,
@@ -867,6 +869,12 @@ impl ConfigParser {
             "srv-host" => self.parse_srv_record(option_value)?,
             "txt-record" => self.parse_txt_record(option_value)?,
             "ptr-record" => self.parse_ptr_record(option_value)?,
+
+            // Authoritative zone options
+            #[cfg(feature = "auth")]
+            "auth-zone" => self.parse_auth_zone(option_value)?,
+            #[cfg(feature = "auth")]
+            "auth-server" => self.parse_auth_server(option_value)?,
 
             // DHCP options
             "dhcp-range" => self.parse_dhcp_range(option_value)?,
@@ -1042,6 +1050,26 @@ impl ConfigParser {
         Ok(())
     }
 
+    fn parse_edns_packet_max(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(size_str) = value {
+            let size = size_str
+                .parse::<u16>()
+                .map_err(|_| self.make_parse_error(format!("Invalid EDNS packet size: {size_str}")))?;
+            
+            // Validate range: minimum is 512 (RFC 1035), maximum is 65535 (UDP max)
+            if size < 512 {
+                return Err(self.make_parse_error(format!(
+                    "EDNS packet size must be at least 512 bytes, got {size}"
+                )));
+            }
+            
+            self.config.dns.edns_packet_max = size;
+        } else {
+            return Err(self.make_parse_error("Missing EDNS packet size".to_string()));
+        }
+        Ok(())
+    }
+
     fn parse_server_option(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
         use std::net::{IpAddr, SocketAddr};
 
@@ -1069,6 +1097,7 @@ impl ConfigParser {
                         self.config.dns.servers.push(server);
                     } else {
                         // Parse server address
+                        // Support both # and : as port separators for compatibility
                         let (ip_str, port) = if let Some(hash_pos) = server_addr.find('#') {
                             let ip = &server_addr[..hash_pos];
                             let port_str = &server_addr[hash_pos + 1..];
@@ -1076,6 +1105,16 @@ impl ConfigParser {
                                 self.make_parse_error(format!("Invalid port: {port_str}"))
                             })?;
                             (ip, port)
+                        } else if let Some(colon_pos) = server_addr.rfind(':') {
+                            // Support IP:port format (use rfind to handle IPv6 addresses)
+                            let ip = &server_addr[..colon_pos];
+                            let port_str = &server_addr[colon_pos + 1..];
+                            // Only treat as port if the part after : is numeric
+                            if let Ok(port) = port_str.parse::<u16>() {
+                                (ip, port)
+                            } else {
+                                (server_addr, 53)
+                            }
                         } else {
                             (server_addr, 53)
                         };
@@ -1102,6 +1141,7 @@ impl ConfigParser {
                 }
             } else {
                 // Simple server IP address
+                // Support both # and : as port separators for compatibility
                 let (ip_str, port) = if let Some(hash_pos) = server_str.find('#') {
                     let ip = &server_str[..hash_pos];
                     let port_str = &server_str[hash_pos + 1..];
@@ -1109,6 +1149,16 @@ impl ConfigParser {
                         .parse::<u16>()
                         .map_err(|_| self.make_parse_error(format!("Invalid port: {port_str}")))?;
                     (ip, port)
+                } else if let Some(colon_pos) = server_str.rfind(':') {
+                    // Support IP:port format (use rfind to handle IPv6 addresses)
+                    let ip = &server_str[..colon_pos];
+                    let port_str = &server_str[colon_pos + 1..];
+                    // Only treat as port if the part after : is numeric
+                    if let Ok(port) = port_str.parse::<u16>() {
+                        (ip, port)
+                    } else {
+                        (server_str, 53)
+                    }
                 } else {
                     (server_str, 53)
                 };
@@ -1138,19 +1188,50 @@ impl ConfigParser {
             value.ok_or_else(|| self.make_parse_error("Missing DHCP range".to_string()))?;
 
         let parts: Vec<&str> = range_str.split(',').collect();
-        if parts.len() < 2 {
+        if parts.is_empty() {
             return Err(self.make_parse_error(format!("Invalid DHCP range format: {range_str}")));
         }
 
-        // Parse start and end IPs
-        let start: IpAddr = parts[0]
-            .trim()
-            .parse()
-            .map_err(|_| self.make_parse_error(format!("Invalid start IP: {}", parts[0])))?;
-        let end: IpAddr = parts[1]
-            .trim()
-            .parse()
-            .map_err(|_| self.make_parse_error(format!("Invalid end IP: {}", parts[1])))?;
+        // Check if this is a prefix delegation range (contains CIDR notation)
+        let is_prefix_delegation = parts[0].contains('/');
+        
+        let (start, end, prefix_len) = if is_prefix_delegation {
+            // Parse prefix delegation format: prefix/len,lease_time
+            // Example: 2001:db8:1::/48,12h
+            let prefix_parts: Vec<&str> = parts[0].trim().split('/').collect();
+            if prefix_parts.len() != 2 {
+                return Err(self.make_parse_error(format!("Invalid prefix notation: {}", parts[0])));
+            }
+            
+            let prefix_addr: IpAddr = prefix_parts[0]
+                .trim()
+                .parse()
+                .map_err(|_| self.make_parse_error(format!("Invalid prefix address: {}", prefix_parts[0])))?;
+            
+            let prefix_length: u8 = prefix_parts[1]
+                .trim()
+                .parse()
+                .map_err(|_| self.make_parse_error(format!("Invalid prefix length: {}", prefix_parts[1])))?;
+            
+            // For prefix delegation, start and end are the same (the prefix base address)
+            (prefix_addr, prefix_addr, prefix_length)
+        } else {
+            // Parse regular address range format: start,end,...
+            if parts.len() < 2 {
+                return Err(self.make_parse_error(format!("Invalid DHCP range format: {range_str}")));
+            }
+            
+            let start_addr: IpAddr = parts[0]
+                .trim()
+                .parse()
+                .map_err(|_| self.make_parse_error(format!("Invalid start IP: {}", parts[0])))?;
+            let end_addr: IpAddr = parts[1]
+                .trim()
+                .parse()
+                .map_err(|_| self.make_parse_error(format!("Invalid end IP: {}", parts[1])))?;
+            
+            (start_addr, end_addr, 0)
+        };
 
         // Parse optional parameters (netmask, constructor, flags, lease time)
         // IPv4 formats:
@@ -1159,13 +1240,16 @@ impl ConfigParser {
         // IPv6 formats:
         // - start,end,constructor:interface,flags,lease_time
         // - start,end,lease_time
+        // Prefix delegation format:
+        // - prefix/len,lease_time
         let mut netmask = None;
         let mut lease_time_override = None;
         let mut lease_time = None;
         let mut interface = None;
 
-        // Process remaining parameters
-        for part in parts.iter().skip(2) {
+        // Process remaining parameters (skip first 2 for regular range, skip first 1 for prefix delegation)
+        let skip_count = if is_prefix_delegation { 1 } else { 2 };
+        for part in parts.iter().skip(skip_count) {
             let param = part.trim();
 
             // Skip IPv6-specific flags
@@ -1195,7 +1279,7 @@ impl ConfigParser {
         }
 
         // Log before moving interface
-        info!(start = %start, end = %end, netmask = ?netmask, lease_time = ?lease_time, interface = ?interface, "Added DHCP range");
+        info!(start = %start, end = %end, netmask = ?netmask, lease_time = ?lease_time, interface = ?interface, prefix_len = prefix_len, "Added DHCP range");
 
         let is_ipv6 = start.is_ipv6();
         let range = crate::config::types::DhcpRange {
@@ -1206,7 +1290,7 @@ impl ConfigParser {
             interface,
             lease_time,
             is_ipv6,
-            prefix_len: 0, // Not a prefix delegation pool (regular address range)
+            prefix_len, // Set from parsed CIDR notation if prefix delegation, else 0
         };
 
         // Push to correct vector based on IP version
@@ -1594,6 +1678,71 @@ impl ConfigParser {
             }
         } else {
             return Err(self.make_parse_error("Missing PTR record".to_string()));
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "auth")]
+    fn parse_auth_zone(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(zone_str) = value {
+            use crate::dns::auth::{AuthoritativeZone, SoaParams};
+            use crate::dns::protocol::name::DomainName;
+            
+            // Parse auth-zone=domain format
+            let domain = DomainName::new(zone_str)
+                .map_err(|e| self.make_parse_error(format!("Invalid zone domain: {e}")))?;
+            
+            // Create a new zone with default SOA parameters
+            // SoaParams only contains the numeric fields, mname/rname are derived from zone domain
+            let soa_params = SoaParams::default();
+            
+            let zone = AuthoritativeZone {
+                domain,
+                soa_params,
+                ns_records: Vec::new(),
+            };
+            
+            self.config.dns.authoritative_zones.push(zone);
+        } else {
+            return Err(self.make_parse_error("Missing zone domain".to_string()));
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "auth")]
+    fn parse_auth_server(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
+        if let Some(server_str) = value {
+            use crate::dns::protocol::name::DomainName;
+            
+            // Parse auth-server=domain,interface format
+            // Note: interface parameter is mostly informational in the original C code
+            let parts: Vec<&str> = server_str.split(',').collect();
+            if parts.is_empty() {
+                return Err(self.make_parse_error("Missing server domain".to_string()));
+            }
+            
+            let domain_str = parts[0];
+            
+            // Find the matching zone
+            let zone_index = self.config.dns.authoritative_zones
+                .iter()
+                .position(|z| z.domain.to_string() == domain_str);
+            
+            if let Some(idx) = zone_index {
+                // Get the hostname for the NS record
+                // In a real implementation, this would be the system's fully qualified hostname
+                // For now, we'll use a placeholder that combines "ns" with the zone domain
+                let ns_name = DomainName::new(&format!("ns.{domain_str}"))
+                    .map_err(|e| self.make_parse_error(format!("Invalid NS name: {e}")))?;
+                
+                self.config.dns.authoritative_zones[idx].ns_records.push(ns_name);
+            } else {
+                return Err(self.make_parse_error(
+                    format!("auth-server specified for undefined zone: {domain_str}")
+                ));
+            }
+        } else {
+            return Err(self.make_parse_error("Missing server specification".to_string()));
         }
         Ok(())
     }

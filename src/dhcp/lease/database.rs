@@ -223,6 +223,7 @@ fn parse_standard_lease(
     _current_duid: Option<&Vec<u8>>,
     now: SystemTime,
 ) -> Result<(), String> {
+    debug!("parse_standard_lease called with {} parts", parts.len());
     // Parse expiration time
     let expires_timestamp: u64 =
         parts[0].parse().map_err(|e| format!("Invalid expiration time: {e}"))?;
@@ -230,34 +231,24 @@ fn parse_standard_lease(
     let expires = UNIX_EPOCH + std::time::Duration::from_secs(expires_timestamp);
 
     // Check if lease has already expired
+    debug!("Expiration check: expires_timestamp={}, now_timestamp={:?}, IP={}", 
+           expires_timestamp, 
+           now.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
+           parts[2]);
     if expires < now {
         debug!("Skipping expired lease with IP {}", parts[2]);
         return Ok(()); // Skip expired leases during load
     }
 
-    // Try to parse as DHCPv4 format first: <expiry> <mac> <ip> <hostname> <client_id>
+    // Try to parse IP address first to determine format
     if let Ok(ip) = parts[2].parse::<IpAddr>() {
-        let mac_str = parts[1];
-        let mac = if mac_str == "*" {
-            None
-        } else {
-            Some(MacAddress::parse(mac_str).map_err(|e| format!("Invalid MAC address: {e}"))?)
-        };
-
-        let hostname =
-            if parts.len() > 3 && parts[3] != "*" { Some(parts[3].to_string()) } else { None };
-
-        let client_id = if parts.len() > 4 && parts[4] != "*" {
-            Some(parse_hex_string(parts[4])?)
-        } else {
-            None
-        };
-
-        // Determine if this is DHCPv6 based on IP type and IAID prefix
-        let (iaid, flags) = if ip.is_ipv6() {
-            // Check if MAC field has IAID prefix (T<number> for TA, or just <number> for NA)
+        // For DHCPv6, parts[1] is IAID, not MAC
+        // For DHCPv4, parts[1] is MAC
+        let (mac, iaid, flags) = if ip.is_ipv6() {
+            // DHCPv6 format: <expiry> <iaid> <ip> <hostname> <client_id>
             let iaid_str = parts[1];
-            if let Some(stripped) = iaid_str.strip_prefix('T') {
+            
+            let (iaid_num, flags) = if let Some(stripped) = iaid_str.strip_prefix('T') {
                 // Temporary Address (TA)
                 let iaid_num: u32 =
                     stripped.parse().map_err(|e| format!("Invalid IAID in TA lease: {e}"))?;
@@ -267,9 +258,30 @@ fn parse_standard_lease(
                 let iaid_num: u32 =
                     iaid_str.parse().map_err(|e| format!("Invalid IAID in NA lease: {e}"))?;
                 (Some(iaid_num), LeaseFlags::NA)
-            }
+            };
+            
+            // DHCPv6 leases don't have MAC addresses in the lease file
+            (None, iaid_num, flags)
         } else {
-            (None, LeaseFlags::empty())
+            // DHCPv4 format: <expiry> <mac> <ip> <hostname> <client_id>
+            let mac_str = parts[1];
+            
+            let mac = if mac_str == "*" {
+                None
+            } else {
+                Some(MacAddress::parse(mac_str).map_err(|e| format!("Invalid MAC address: {e}"))?)
+            };
+            
+            (mac, None, LeaseFlags::empty())
+        };
+
+        let hostname =
+            if parts.len() > 3 && parts[3] != "*" { Some(parts[3].to_string()) } else { None };
+
+        let client_id = if parts.len() > 4 && parts[4] != "*" {
+            Some(parse_hex_string(parts[4])?)
+        } else {
+            None
         };
 
         let lease = Lease {
@@ -287,7 +299,10 @@ fn parse_standard_lease(
             slaac_addresses: None,    // DHCPv6 SLAAC addresses loaded separately
         };
 
+        debug!("Parsed lease successfully: IP={}, MAC={:?}, v6={}, iaid={:?}", 
+               lease.ip, lease.mac, lease.ip.is_ipv6(), lease.iaid);
         leases.push(lease);
+        debug!("Lease added to vector, total leases = {}", leases.len());
         Ok(())
     } else {
         Err(format!("Invalid IP address: {}", parts[2]))

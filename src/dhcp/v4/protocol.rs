@@ -91,7 +91,7 @@ use super::message::DhcpMessage;
 use super::options::{DhcpOption, MessageType};
 
 use crate::config::types::{DhcpConfig, DhcpRange, StaticLease};
-use crate::dhcp::lease::LeaseManager;
+use crate::dhcp::lease::{LeaseFlags, LeaseManager};
 use crate::error::DhcpError;
 use crate::types::MacAddress;
 
@@ -202,7 +202,15 @@ impl DhcpProtocol {
             if let Some(existing_lease) =
                 self.lease_manager.read().await.find_by_mac(&client_mac).await
             {
-                if existing_lease.is_expired() {
+                // Don't reoffer declined leases - allocate new IP instead
+                if existing_lease.flags.contains(LeaseFlags::DECLINED) {
+                    debug!(
+                        client_mac = %client_mac,
+                        declined_ip = %existing_lease.ip,
+                        "Client has DECLINED lease, allocating new IP"
+                    );
+                    self.allocate_address_from_range(context, request, &client_mac).await?
+                } else if existing_lease.is_expired() {
                     // Try to allocate requested IP or find new one
                     self.allocate_address_from_range(context, request, &client_mac).await?
                 } else {
@@ -452,31 +460,58 @@ impl DhcpProtocol {
 
         // Mark address as declined in lease database
         // The address will be unavailable for allocation until manually cleared or timeout expires
-        // Note: Full implementation would mark the address with DECLINED flag and set timeout
-        // For now, we release any existing lease for this address
-        if let Some(existing_lease) =
-            self.lease_manager.read().await.find_by_ip(&std::net::IpAddr::V4(*declined_ip)).await
-        {
-            info!(
-                declined_ip = %declined_ip,
-                previous_mac = ?existing_lease.mac,
-                "Releasing declined lease"
-            );
-
-            // Release the lease (marks it available again)
-            if let Err(e) = self
+        
+        // Check if lease exists; if not, create a declined lease entry
+        let declined_ip_addr = std::net::IpAddr::V4(*declined_ip);
+        if self.lease_manager.read().await.find_by_ip(&declined_ip_addr).await.is_none() {
+            // No existing lease - create a new declined lease
+            // Use a long decline time (1 hour) to prevent immediate reallocation
+            let decline_duration = Duration::from_secs(3600);
+            
+            match self
                 .lease_manager
                 .read()
                 .await
-                .release_lease(&std::net::IpAddr::V4(*declined_ip))
+                .allocate_lease(
+                    declined_ip_addr,
+                    Some(client_mac),
+                    None,      // no hostname
+                    None,      // no client_id
+                    "unknown", // interface
+                    decline_duration,
+                )
                 .await
             {
-                error!(
-                    declined_ip = %declined_ip,
-                    error = %e,
-                    "Failed to release declined lease"
-                );
+                Ok(_lease) => {
+                    info!(
+                        declined_ip = %declined_ip,
+                        client_mac = %client_mac,
+                        "Created lease entry for declined IP"
+                    );
+                }
+                Err(e) => {
+                    error!(
+                        declined_ip = %declined_ip,
+                        error = %e,
+                        "Failed to create lease for declined IP"
+                    );
+                }
             }
+        }
+        
+        // Now mark the lease as declined
+        if let Err(e) = self
+            .lease_manager
+            .write()
+            .await
+            .mark_lease_declined(&declined_ip_addr)
+            .await
+        {
+            error!(
+                declined_ip = %declined_ip,
+                error = %e,
+                "Failed to mark lease as DECLINED"
+            );
         }
 
         // No response is sent per RFC 2131 Section 4.3.3
@@ -947,15 +982,19 @@ impl DhcpProtocol {
             if let std::net::IpAddr::V4(start_ipv4) = context.start {
                 if let std::net::IpAddr::V4(end_ipv4) = context.end {
                     if Self::ip_in_range(*req_ip, start_ipv4, end_ipv4) {
-                        // Check if IP is available
-                        if self
-                            .lease_manager
-                            .read()
-                            .await
-                            .find_by_ip(&std::net::IpAddr::V4(*req_ip))
-                            .await
-                            .is_none()
+                        // Check if IP is available (not leased or declined)
+                        let req_ip_addr = std::net::IpAddr::V4(*req_ip);
+                        let is_available = if let Some(existing_lease) =
+                            self.lease_manager.read().await.find_by_ip(&req_ip_addr).await
                         {
+                            // IP is available if lease is expired or not declined
+                            existing_lease.is_expired() && !existing_lease.flags.contains(LeaseFlags::DECLINED)
+                        } else {
+                            // No lease exists, IP is available
+                            true
+                        };
+
+                        if is_available {
                             debug!(
                                 client_mac = %client_mac,
                                 requested_ip = %req_ip,
@@ -979,8 +1018,18 @@ impl DhcpProtocol {
                 let candidate_ip = Ipv4Addr::from(ip_u32);
                 let candidate_addr = std::net::IpAddr::V4(candidate_ip);
 
-                // Check if this IP is available
-                if self.lease_manager.read().await.find_by_ip(&candidate_addr).await.is_none() {
+                // Check if this IP is available (not leased or declined)
+                let is_available = if let Some(existing_lease) =
+                    self.lease_manager.read().await.find_by_ip(&candidate_addr).await
+                {
+                    // IP is available only if lease is expired AND not declined
+                    existing_lease.is_expired() && !existing_lease.flags.contains(LeaseFlags::DECLINED)
+                } else {
+                    // No lease exists, IP is available
+                    true
+                };
+
+                if is_available {
                     debug!(
                         client_mac = %client_mac,
                         allocated_ip = %candidate_ip,
