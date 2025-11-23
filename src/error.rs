@@ -163,6 +163,10 @@ pub enum DnsmasqError {
     #[error("TFTP error: {0}")]
     Tftp(#[from] TftpError),
 
+    /// Router Advertisement error.
+    #[error("Router Advertisement error: {0}")]
+    RadV(#[from] crate::radv::RadVError),
+
     /// Platform-specific system integration error.
     #[error("Platform error: {0}")]
     Platform(#[from] PlatformError),

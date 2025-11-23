@@ -503,11 +503,8 @@ impl TestServer {
 
         // Start dnsmasq process
         // Use debug binary for tests (release binary is used in production)
-        let binary_path = if cfg!(debug_assertions) {
-            "target/debug/dnsmasq"
-        } else {
-            "target/release/dnsmasq"
-        };
+        let binary_path =
+            if cfg!(debug_assertions) { "target/debug/dnsmasq" } else { "target/release/dnsmasq" };
         let mut cmd = Command::new(binary_path);
         cmd.arg("--conf-file").arg(&self.config_path);
         cmd.arg("--no-daemon");
@@ -653,7 +650,7 @@ impl MockDnsServer {
     #[allow(dead_code)]
     pub fn new() -> Self {
         // Use port 0 to let the OS assign an available port when start() is called
-        // This avoids the TOCTOU race condition of finding a port, releasing it, 
+        // This avoids the TOCTOU race condition of finding a port, releasing it,
         // then trying to bind to it later
         let address = SocketAddr::new("127.0.0.1".parse().unwrap(), 0);
 
@@ -769,7 +766,7 @@ impl MockDnsServer {
         let socket = UdpSocket::bind(self.address).await?;
         let actual_addr = socket.local_addr()?;
         self.address = actual_addr; // Update to actual bound address (important for port 0)
-        
+
         *self.running.lock().await = true;
 
         info!("Mock DNS server started on {}", actual_addr);
@@ -783,7 +780,7 @@ impl MockDnsServer {
         let delay = self.delay; // Clone the delay for use in the spawned task
         let failure_rate = self.failure_rate; // Clone the failure rate
         let edns0_enabled = self.edns0_enabled; // Clone the EDNS0 flag
-        
+
         // Wrap socket in Arc to share across concurrent tasks
         let socket = Arc::new(socket);
 
@@ -802,7 +799,7 @@ impl MockDnsServer {
                         let responses_clone = responses.clone();
                         let delay_clone = delay;
                         let edns0_enabled_clone = edns0_enabled;
-                        
+
                         // Spawn a task to handle this query concurrently
                         tokio::spawn(async move {
                             // Simulate packet drop based on failure rate
@@ -815,28 +812,31 @@ impl MockDnsServer {
                                     return;
                                 }
                             }
-                            
+
                             // Parse query and send response
                             if let Ok(query) = DnsMessage::from_bytes(&data) {
                                 eprintln!("[MockDnsServer] Received query: ID={}, questions={}, additional={}", 
                                     query.id(), query.questions.len(), query.additional.len());
-                                
+
                                 // Record the query
                                 if let Some(question) = query.questions.first() {
                                     // Extract just the domain name from the question
                                     let query_name = question.qname.to_string();
-                                    eprintln!("[MockDnsServer] Query for: {}, type={:?}", query_name, question.qtype);
+                                    eprintln!(
+                                        "[MockDnsServer] Query for: {}, type={:?}",
+                                        query_name, question.qtype
+                                    );
                                     received_queries_clone.lock().await.push(query_name);
                                 }
 
                                 // Build a proper DNS response with valid wire format
                                 if let Some(question) = query.questions.first() {
-                                    use dnsmasq::dns::protocol::record::{ResourceRecord, RData};
+                                    use dnsmasq::dns::protocol::record::{RData, ResourceRecord};
                                     use dnsmasq::types::RecordType;
                                     use std::net::Ipv4Addr;
-                                    
+
                                     let query_name = question.qname.to_string();
-                                    
+
                                     // Check for NXDOMAIN
                                     if nxdomain_names_clone.lock().await.contains(&query_name) {
                                         let mut response_builder = DnsMessage::builder()
@@ -845,76 +845,100 @@ impl MockDnsServer {
                                             .set_recursion_available()
                                             .rcode(3) // NXDOMAIN
                                             .add_question(question.clone());
-                                        
+
                                         // If EDNS0 is enabled and query has OPT record, add OPT to response
-                                        if edns0_enabled_clone && query.additional.iter().any(|rr| rr.rtype() == RecordType::OPT) {
+                                        if edns0_enabled_clone
+                                            && query
+                                                .additional
+                                                .iter()
+                                                .any(|rr| rr.rtype() == RecordType::OPT)
+                                        {
                                             let opt_record = ResourceRecord::new(
-                                                dnsmasq::dns::protocol::DomainName::new(".").unwrap(),
+                                                dnsmasq::dns::protocol::DomainName::new(".")
+                                                    .unwrap(),
                                                 RecordType::OPT,
                                                 4096, // UDP payload size in class field
-                                                0, // TTL encodes extended RCODE and flags
+                                                0,    // TTL encodes extended RCODE and flags
                                                 RData::Opt(Vec::new()),
                                             );
-                                            response_builder = response_builder.add_additional(opt_record);
+                                            response_builder =
+                                                response_builder.add_additional(opt_record);
                                         }
-                                        
+
                                         let response = response_builder.build();
-                                        
+
                                         if let Ok(response_bytes) = response.to_bytes() {
                                             // Apply delay if configured
                                             if let Some(delay) = delay_clone {
                                                 tokio::time::sleep(delay).await;
                                             }
-                                            let _ = socket_clone.send_to(&response_bytes, peer).await;
+                                            let _ =
+                                                socket_clone.send_to(&response_bytes, peer).await;
                                         }
                                         return;
                                     }
-                                    
+
                                     // Check for NODATA
-                                    if nodata_entries_clone.lock().await.contains(&(query_name.clone(), question.qtype)) {
+                                    if nodata_entries_clone
+                                        .lock()
+                                        .await
+                                        .contains(&(query_name.clone(), question.qtype))
+                                    {
                                         let mut response_builder = DnsMessage::builder()
                                             .id(query.id())
                                             .set_response()
                                             .set_recursion_available()
                                             .add_question(question.clone());
-                                        
+
                                         // If EDNS0 is enabled and query has OPT record, add OPT to response
-                                        if edns0_enabled_clone && query.additional.iter().any(|rr| rr.rtype() == RecordType::OPT) {
+                                        if edns0_enabled_clone
+                                            && query
+                                                .additional
+                                                .iter()
+                                                .any(|rr| rr.rtype() == RecordType::OPT)
+                                        {
                                             let opt_record = ResourceRecord::new(
-                                                dnsmasq::dns::protocol::DomainName::new(".").unwrap(),
+                                                dnsmasq::dns::protocol::DomainName::new(".")
+                                                    .unwrap(),
                                                 RecordType::OPT,
                                                 4096, // UDP payload size in class field
-                                                0, // TTL encodes extended RCODE and flags
+                                                0,    // TTL encodes extended RCODE and flags
                                                 RData::Opt(Vec::new()),
                                             );
-                                            response_builder = response_builder.add_additional(opt_record);
+                                            response_builder =
+                                                response_builder.add_additional(opt_record);
                                         }
-                                        
+
                                         let response = response_builder.build();
-                                        
+
                                         if let Ok(response_bytes) = response.to_bytes() {
                                             // Apply delay if configured
                                             if let Some(delay) = delay_clone {
                                                 tokio::time::sleep(delay).await;
                                             }
-                                            let _ = socket_clone.send_to(&response_bytes, peer).await;
+                                            let _ =
+                                                socket_clone.send_to(&response_bytes, peer).await;
                                         }
                                         return;
                                     }
-                                    
+
                                     // Look up configured response or use default
-                                    let ip_str = responses_clone.lock().await
+                                    let ip_str = responses_clone
+                                        .lock()
+                                        .await
                                         .get(&query_name)
                                         .cloned()
                                         .unwrap_or_else(|| {
                                             // Default responses if not configured
                                             match question.qtype {
                                                 RecordType::A => "93.184.216.34".to_string(),
-                                                RecordType::AAAA => "2606:2800:220:1:248:1893:25c8:1946".to_string(),
+                                                RecordType::AAAA => {
+                                                    "2606:2800:220:1:248:1893:25c8:1946".to_string()
+                                                }
                                                 _ => String::new(),
                                             }
                                         });
-                                    
+
                                     // Parse the IP string and create appropriate RData
                                     let rdata = match question.qtype {
                                         RecordType::A => {
@@ -930,7 +954,10 @@ impl MockDnsServer {
                                                 RData::AAAA(ipv6)
                                             } else {
                                                 // Invalid IP, return default
-                                                RData::AAAA(std::net::Ipv6Addr::new(0x2606, 0x2800, 0x220, 0x1, 0x248, 0x1893, 0x25c8, 0x1946))
+                                                RData::AAAA(std::net::Ipv6Addr::new(
+                                                    0x2606, 0x2800, 0x220, 0x1, 0x248, 0x1893,
+                                                    0x25c8, 0x1946,
+                                                ))
                                             }
                                         }
                                         _ => {
@@ -940,71 +967,92 @@ impl MockDnsServer {
                                                 .set_response()
                                                 .set_recursion_available()
                                                 .add_question(question.clone());
-                                            
+
                                             // If EDNS0 is enabled and query has OPT record, add OPT to response
-                                            if edns0_enabled_clone && query.additional.iter().any(|rr| rr.rtype() == RecordType::OPT) {
+                                            if edns0_enabled_clone
+                                                && query
+                                                    .additional
+                                                    .iter()
+                                                    .any(|rr| rr.rtype() == RecordType::OPT)
+                                            {
                                                 let opt_record = ResourceRecord::new(
-                                                    dnsmasq::dns::protocol::DomainName::new(".").unwrap(),
+                                                    dnsmasq::dns::protocol::DomainName::new(".")
+                                                        .unwrap(),
                                                     RecordType::OPT,
                                                     4096, // UDP payload size in class field
-                                                    0, // TTL encodes extended RCODE and flags
+                                                    0,    // TTL encodes extended RCODE and flags
                                                     RData::Opt(Vec::new()),
                                                 );
-                                                response_builder = response_builder.add_additional(opt_record);
+                                                response_builder =
+                                                    response_builder.add_additional(opt_record);
                                             }
-                                            
+
                                             let response = response_builder.build();
-                                            
+
                                             if let Ok(response_bytes) = response.to_bytes() {
                                                 // Apply delay if configured
                                                 if let Some(delay) = delay_clone {
                                                     tokio::time::sleep(delay).await;
                                                 }
-                                                let _ = socket_clone.send_to(&response_bytes, peer).await;
+                                                let _ = socket_clone
+                                                    .send_to(&response_bytes, peer)
+                                                    .await;
                                             }
                                             return;
                                         }
                                     };
-                                    
+
                                     let answer = ResourceRecord::new(
                                         question.qname.clone(),
                                         question.qtype,
-                                        1, // IN class
+                                        1,   // IN class
                                         300, // TTL
-                                        rdata
+                                        rdata,
                                     );
-                                    
+
                                     let mut response_builder = DnsMessage::builder()
                                         .id(query.id())
                                         .set_response()
                                         .set_recursion_available()
                                         .add_question(question.clone())
                                         .add_answer(answer);
-                                    
+
                                     // If EDNS0 is enabled and query has OPT record, add OPT to response
-                                    if edns0_enabled_clone && query.additional.iter().any(|rr| rr.rtype() == RecordType::OPT) {
+                                    if edns0_enabled_clone
+                                        && query
+                                            .additional
+                                            .iter()
+                                            .any(|rr| rr.rtype() == RecordType::OPT)
+                                    {
                                         eprintln!("[MockDnsServer] Adding OPT record to response");
                                         let opt_record = ResourceRecord::new(
                                             dnsmasq::dns::protocol::DomainName::new(".").unwrap(),
                                             RecordType::OPT,
                                             4096, // UDP payload size in class field
-                                            0, // TTL encodes extended RCODE and flags
+                                            0,    // TTL encodes extended RCODE and flags
                                             RData::Opt(Vec::new()),
                                         );
-                                        response_builder = response_builder.add_additional(opt_record);
+                                        response_builder =
+                                            response_builder.add_additional(opt_record);
                                     }
-                                    
+
                                     let response = response_builder.build();
-                                    
+
                                     if let Ok(response_bytes) = response.to_bytes() {
-                                        eprintln!("[MockDnsServer] Sending response ({} bytes) to {}", response_bytes.len(), peer);
+                                        eprintln!(
+                                            "[MockDnsServer] Sending response ({} bytes) to {}",
+                                            response_bytes.len(),
+                                            peer
+                                        );
                                         // Apply delay if configured
                                         if let Some(delay) = delay_clone {
                                             tokio::time::sleep(delay).await;
                                         }
                                         let _ = socket_clone.send_to(&response_bytes, peer).await;
                                     } else {
-                                        eprintln!("[MockDnsServer] ERROR: Failed to serialize response");
+                                        eprintln!(
+                                            "[MockDnsServer] ERROR: Failed to serialize response"
+                                        );
                                     }
                                 }
                             } else {
@@ -1169,19 +1217,16 @@ impl DnsQueryBuilder {
     ///
     /// DNS query message
     pub fn build(self) -> DnsMessage {
-        use dnsmasq::dns::protocol::message::{DnsMessageBuilder, Question};
-        use dnsmasq::dns::protocol::record::{ResourceRecord, RData};
-        use dnsmasq::dns::protocol::constants::C_IN;
-        use dnsmasq::dns::protocol::DomainName;
         use dnsmasq::dns::edns0::Edns0Builder;
+        use dnsmasq::dns::protocol::constants::C_IN;
+        use dnsmasq::dns::protocol::message::{DnsMessageBuilder, Question};
+        use dnsmasq::dns::protocol::record::{RData, ResourceRecord};
+        use dnsmasq::dns::protocol::DomainName;
         use dnsmasq::types::RecordType;
         use std::net::IpAddr;
 
         // Create base query message
-        let mut builder = DnsMessageBuilder::new()
-            .id(self.id)
-            .set_query()
-            .set_recursion_desired();
+        let mut builder = DnsMessageBuilder::new().id(self.id).set_query().set_recursion_desired();
 
         // Add question
         if let Some(name) = self.name {
@@ -1192,8 +1237,7 @@ impl DnsQueryBuilder {
 
         // Add EDNS0 if requested
         if self.edns0 {
-            let mut edns_builder = Edns0Builder::new()
-                .udp_size(4096);
+            let mut edns_builder = Edns0Builder::new().udp_size(4096);
 
             // Set DO bit if requested
             if self.do_bit {
@@ -1212,8 +1256,8 @@ impl DnsQueryBuilder {
             // Construct TTL field from extended RCODE, version, and flags
             // TTL format: [extended_rcode:8][version:8][flags:16]
             let ttl = ((opt_record.extended_rcode as u32) << 24)
-                    | ((opt_record.version as u32) << 16)
-                    | (opt_record.flags as u32);
+                | ((opt_record.version as u32) << 16)
+                | (opt_record.flags as u32);
 
             // Convert to ResourceRecord with RData::Opt
             let opt_rr = ResourceRecord::new(

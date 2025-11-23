@@ -1066,9 +1066,9 @@ pub struct DhcpContext {
 
     /// Prefix length for IPv6 prefix delegation (0 for address allocation).
     ///
-    /// For prefix delegation ranges (IA_PD), specifies the prefix length
+    /// For prefix delegation ranges (`IA_PD`), specifies the prefix length
     /// to delegate to requesting routers (e.g., 48 for /48, 56 for /56).
-    /// For regular address allocation ranges (IA_NA), this is 0.
+    /// For regular address allocation ranges (`IA_NA`), this is 0.
     pub prefix_len: u8,
 }
 

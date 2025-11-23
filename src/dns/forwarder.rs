@@ -187,9 +187,9 @@ const TCP_PREFIX_LEN: usize = 2;
 /// This is used for DNS rebinding protection when `stop-dns-rebind` or `bogus-priv` is enabled.
 /// Returns true for:
 /// - Private IPv4 ranges: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
-/// - Link-local: 169.254.0.0/16 (IPv4), fe80::/10 (IPv6)
-/// - Loopback: 127.0.0.0/8 (IPv4), ::1/128 (IPv6)
-/// - Unique local: fc00::/7 (IPv6)
+/// - Link-local: 169.254.0.0/16 (IPv4), `fe80::/10` (IPv6)
+/// - Loopback: 127.0.0.0/8 (IPv4), `::1/128` (IPv6)
+/// - Unique local: `fc00::/7` (IPv6)
 /// - Documentation/TEST-NET ranges: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24
 ///
 /// # Arguments
@@ -203,7 +203,7 @@ fn is_private_or_reserved_ip(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(addr) => {
             let octets = addr.octets();
-            
+
             // RFC 1918 private ranges
             if octets[0] == 10 {
                 return true; // 10.0.0.0/8
@@ -214,42 +214,42 @@ fn is_private_or_reserved_ip(ip: &IpAddr) -> bool {
             if octets[0] == 192 && octets[1] == 168 {
                 return true; // 192.168.0.0/16
             }
-            
+
             // Loopback
             if octets[0] == 127 {
                 return true; // 127.0.0.0/8
             }
-            
+
             // Link-local
             if octets[0] == 169 && octets[1] == 254 {
                 return true; // 169.254.0.0/16
             }
-            
+
             // Note: TEST-NET documentation ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24)
             // are NOT blocked here. While reserved for documentation, they don't pose the same
             // DNS rebinding security risk as truly private addresses, and blocking them would
             // interfere with testing environments that use these ranges as stand-ins for public IPs.
-            
+
             false
         }
         IpAddr::V6(addr) => {
             let segments = addr.segments();
-            
+
             // Loopback: ::1
             if addr.is_loopback() {
                 return true;
             }
-            
+
             // Link-local: fe80::/10
             if (segments[0] & 0xffc0) == 0xfe80 {
                 return true;
             }
-            
+
             // Unique local addresses: fc00::/7
             if (segments[0] & 0xfe00) == 0xfc00 {
                 return true;
             }
-            
+
             false
         }
     }
@@ -1007,7 +1007,8 @@ impl DnsForwarder {
         }
 
         // Debug: Check if EDNS0 is in the forward bytes
-        if let Ok(check_msg) = ProtocolMessage::from_bytes(&Bytes::copy_from_slice(&forward_bytes)) {
+        if let Ok(check_msg) = ProtocolMessage::from_bytes(&Bytes::copy_from_slice(&forward_bytes))
+        {
             tracing::info!(
                 "forward_query: Forwarding query with {} questions, {} additional records",
                 check_msg.questions.len(),
@@ -1201,7 +1202,7 @@ impl DnsForwarder {
         let rcode = response_message.header.flags.rcode();
         let is_nxdomain = rcode == 3; // NXDOMAIN
         let is_nodata = rcode == 0 && response_message.answers.is_empty();
-        
+
         if is_nxdomain || is_nodata {
             // Negative caching: cache NXDOMAIN and NODATA responses
             // Use SOA minimum field if available, otherwise default to 5 minutes
@@ -1218,8 +1219,10 @@ impl DnsForwarder {
                 .unwrap_or(300); // Default 5 minutes for negative caching
 
             let received_at = Timestamp::now();
-            eprintln!("[FORWARDER DEBUG] Creating negative cache entry for {} (NXDOMAIN={})", 
-                outstanding.query.name, is_nxdomain);
+            eprintln!(
+                "[FORWARDER DEBUG] Creating negative cache entry for {} (NXDOMAIN={})",
+                outstanding.query.name, is_nxdomain
+            );
             let cache_entry = Self::create_negative_cache_entry(
                 &outstanding.query,
                 is_nxdomain,
@@ -1282,27 +1285,31 @@ impl DnsForwarder {
         if outstanding.edns0_options.is_some() {
             tracing::debug!("Adding EDNS0 OPT record to response");
             // Check if response already has an OPT record
-            let has_opt = final_response.additional.iter().any(|rr| {
-                matches!(rr.rtype(), crate::types::RecordType::OPT)
-            });
+            let has_opt = final_response
+                .additional
+                .iter()
+                .any(|rr| matches!(rr.rtype(), crate::types::RecordType::OPT));
 
-            if !has_opt {
+            if has_opt {
+                tracing::debug!("Response already has OPT record");
+            } else {
                 tracing::debug!("Response doesn't have OPT, adding one");
                 // Add OPT record with server's UDP payload size
-                use crate::dns::protocol::name::DomainName;
-                use crate::dns::protocol::record::{RData, ResourceRecord};
-                use crate::types::RecordType;
+                #[allow(clippy::items_after_statements)] // Imports specific to this block
+                {
+                    use crate::dns::protocol::name::DomainName;
+                    use crate::dns::protocol::record::{RData, ResourceRecord};
+                    use crate::types::RecordType;
 
-                let opt_rr = ResourceRecord::new(
-                    DomainName::new(".").unwrap_or_else(|_| DomainName::new("").unwrap()),
-                    RecordType::OPT,
-                    self.config.edns_packet_max,  // UDP payload size
-                    0,                             // Extended RCODE and flags
-                    RData::Opt(Vec::new()),        // No additional options
-                );
-                final_response.additional.push(opt_rr);
-            } else {
-                tracing::debug!("Response already has OPT record");
+                    let opt_rr = ResourceRecord::new(
+                        DomainName::new(".").unwrap_or_else(|_| DomainName::new("").unwrap()),
+                        RecordType::OPT,
+                        self.config.edns_packet_max, // UDP payload size
+                        0,                           // Extended RCODE and flags
+                        RData::Opt(Vec::new()),      // No additional options
+                    );
+                    final_response.additional.push(opt_rr);
+                }
             }
         } else {
             tracing::debug!("Client did not send EDNS0, not adding OPT record");
@@ -1500,7 +1507,7 @@ impl DnsForwarder {
     /// Handle query timeout by marking server failed and notifying client.
     async fn handle_query_timeout(&self, query_id: u16) {
         info!(query_id, "=== handle_query_timeout CALLED ===");
-        
+
         // Remove the query and start retry loop
         let query = {
             let mut queries = self.outstanding_queries.write().await;
@@ -1535,11 +1542,13 @@ impl DnsForwarder {
         info!(retry_count, max_retries = MAX_RETRY_ATTEMPTS, "Starting retry loop");
         while retry_count < MAX_RETRY_ATTEMPTS {
             info!(retry_count, "Retry loop iteration {}", retry_count);
-            
+
             // Try to select another upstream server
             let next_server = {
                 let mut pool = self.upstream_pool.write().await;
-                if let Ok(domain_name) = crate::types::DomainName::new(current_query.query.name.as_str()) {
+                if let Ok(domain_name) =
+                    crate::types::DomainName::new(current_query.query.name.as_str())
+                {
                     let server = pool.select_server(&domain_name, false).map(|server| server.addr);
                     info!("Selected upstream server: {:?}", server);
                     server
@@ -1593,7 +1602,7 @@ impl DnsForwarder {
 
             // Clone client socket for await
             let client_socket = Arc::clone(&current_query.client_socket);
-            
+
             // Update query state with incremented retry count
             current_query.query_id = new_query_id;
             current_query.upstream_server = Some(upstream_server);
@@ -1613,17 +1622,16 @@ impl DnsForwarder {
             info!(new_query_id, "Waiting for upstream response (timeout: {:?})", QUERY_TIMEOUT);
             match timeout(
                 QUERY_TIMEOUT,
-                self.wait_for_upstream_response(
-                    new_query_id,
-                    upstream_socket,
-                    client_socket,
-                ),
+                self.wait_for_upstream_response(new_query_id, upstream_socket, client_socket),
             )
             .await
             {
                 Ok(Ok(())) => {
                     // Success - query completed
-                    info!(query_id = new_query_id, "=== Upstream response processed successfully - EXITING ===");
+                    info!(
+                        query_id = new_query_id,
+                        "=== Upstream response processed successfully - EXITING ==="
+                    );
                     return;
                 }
                 Ok(Err(e)) => {
@@ -1681,7 +1689,7 @@ impl DnsForwarder {
 
     /// Forward a query to an upstream server and wait for the response.
     ///
-    /// This is a synchronous-style helper method for the DnsService layer that handles
+    /// This is a synchronous-style helper method for the `DnsService` layer that handles
     /// the complete query-response cycle and returns the parsed response. Unlike the
     /// event-driven `forward_query` method, this method waits for the response before
     /// returning.
@@ -1701,8 +1709,9 @@ impl DnsForwarder {
     /// Returns `DnsError` if:
     /// - No upstream servers are available
     /// - Network send/receive fails
-    /// - Query times out (QUERY_TIMEOUT)
+    /// - Query times out (`QUERY_TIMEOUT`)
     /// - Response parsing fails
+    #[allow(clippy::too_many_lines)] // Complex retry logic with multiple error paths
     #[instrument(skip(self, query_bytes), fields(name = %query.name, qtype = ?query.qtype))]
     pub async fn forward_query_and_wait(
         &self,
@@ -1710,18 +1719,16 @@ impl DnsForwarder {
         query_bytes: &[u8],
     ) -> Result<ProtocolMessage> {
         use crate::types::DomainName as TypesDomainName;
-        
+
         // Convert protocol::name::DomainName to types::DomainName for upstream pool
-        let query_name_types = TypesDomainName::new(query.name.as_str())
-            .map_err(|e| DnsError::InvalidName { 
-                name: query.name.as_str().to_string(), 
-                reason: format!("{e}")
-            })?;
-        
+        let query_name_types = TypesDomainName::new(query.name.as_str()).map_err(|e| {
+            DnsError::InvalidName { name: query.name.as_str().to_string(), reason: format!("{e}") }
+        })?;
+
         // Retry loop - try up to MAX_RETRY_ATTEMPTS different upstream servers
         let mut retry_count = 0;
         let mut tried_servers = Vec::new();
-        
+
         while retry_count < MAX_RETRY_ATTEMPTS {
             // Select upstream server (excluding previously failed servers)
             let upstream = {
@@ -1730,7 +1737,7 @@ impl DnsForwarder {
                     .filter(|srv| !tried_servers.contains(&srv.addr)) // Skip already-tried servers
                     .cloned()
             };
-            
+
             let Some(upstream) = upstream else {
                 warn!(
                     name = %query.name,
@@ -1739,7 +1746,7 @@ impl DnsForwarder {
                 );
                 break;
             };
-            
+
             tried_servers.push(upstream.addr);
 
             debug!(
@@ -1802,7 +1809,7 @@ impl DnsForwarder {
                                 retry_count = retry_count,
                                 "Successfully received and parsed upstream response"
                             );
-                            
+
                             // DNS rebinding protection: filter private IPs from responses
                             if self.config.stop_dns_rebind {
                                 for answer in &response_message.answers {
@@ -1850,7 +1857,7 @@ impl DnsForwarder {
                                     }
                                 }
                             }
-                            
+
                             return Ok(response_message);
                         }
                         Err(e) => {
@@ -1864,7 +1871,6 @@ impl DnsForwarder {
                                 pool.mark_failed(upstream.addr);
                             }
                             retry_count += 1;
-                            continue;
                         }
                     }
                 }
@@ -1879,7 +1885,6 @@ impl DnsForwarder {
                         pool.mark_failed(upstream.addr);
                     }
                     retry_count += 1;
-                    continue;
                 }
                 Err(_) => {
                     warn!(
@@ -1892,16 +1897,18 @@ impl DnsForwarder {
                         pool.mark_failed(upstream.addr);
                     }
                     retry_count += 1;
-                    continue;
                 }
             }
         }
-        
+
         // All retries exhausted
-        Err(DnsmasqError::Dns(DnsError::Timeout {
-            query: query.name.as_str().to_string(),
-            timeout_ms: (QUERY_TIMEOUT.as_millis() * MAX_RETRY_ATTEMPTS as u128) as u64,
-        }))
+        #[allow(clippy::cast_possible_truncation)] // u128 to u64 is safe for timeout values
+        {
+            Err(DnsmasqError::Dns(DnsError::Timeout {
+                query: query.name.as_str().to_string(),
+                timeout_ms: (QUERY_TIMEOUT.as_millis() * MAX_RETRY_ATTEMPTS as u128) as u64,
+            }))
+        }
     }
 }
 
@@ -1957,7 +1964,7 @@ mod tests {
         // Create a dummy socket for testing
         let udp_socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
         let dummy_socket = Arc::new(DnsSocket::new(udp_socket));
-        
+
         let outstanding = OutstandingQuery::new(
             12345,
             54321,

@@ -72,9 +72,9 @@
 //! RUST_LOG=debug cargo test --test dns_tests -- --nocapture
 //! ```
 
-use std::time::{Duration, Instant};
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
+use std::time::{Duration, Instant};
 use tokio::time::sleep;
 use tracing::info;
 use tracing_subscriber;
@@ -88,10 +88,8 @@ use dnsmasq::types::RecordType;
 #[path = "common/mod.rs"]
 mod common;
 use common::{
-    MockDnsServer, TestConfigOptions, DnsQueryBuilder,
-    create_test_dns_socket,
-    send_dns_query, recv_dns_response,
-    setup_test_server, teardown_test_server, with_timeout,
+    create_test_dns_socket, recv_dns_response, send_dns_query, setup_test_server,
+    teardown_test_server, with_timeout, DnsQueryBuilder, MockDnsServer, TestConfigOptions,
 };
 
 // ============================================================================
@@ -106,7 +104,7 @@ fn init_tracing() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive(tracing::Level::DEBUG.into())
+                .add_directive(tracing::Level::DEBUG.into()),
         )
         .with_test_writer()
         .try_init();
@@ -123,20 +121,12 @@ fn init_tracing() {
 ///
 /// Complete DNS query message ready to send
 fn build_simple_a_query(name: &str, id: u16) -> DnsMessage {
-    DnsQueryBuilder::new()
-        .with_id(id)
-        .with_name(name)
-        .with_record_type(RecordType::A)
-        .build()
+    DnsQueryBuilder::new().with_id(id).with_name(name).with_record_type(RecordType::A).build()
 }
 
 /// Build a simple AAAA record query for testing.
 fn build_simple_aaaa_query(name: &str, id: u16) -> DnsMessage {
-    DnsQueryBuilder::new()
-        .with_id(id)
-        .with_name(name)
-        .with_record_type(RecordType::AAAA)
-        .build()
+    DnsQueryBuilder::new().with_id(id).with_name(name).with_record_type(RecordType::AAAA).build()
 }
 
 /// Parse DNS response from raw bytes with error handling.
@@ -167,7 +157,7 @@ fn assert_dns_answer(
         expected_count,
         response.answers.len()
     );
-    
+
     if expected_count > 0 {
         let answer = &response.answers[0];
         assert_eq!(answer.name().to_string(), expected_name, "Answer name mismatch");
@@ -218,28 +208,24 @@ async fn test_simple_forward_query() {
         .with_log_queries();
 
     // Start test dnsmasq server
-    let server = setup_test_server(config)
-        .await
-        .expect("Failed to start test server");
+    let server = setup_test_server(config).await.expect("Failed to start test server");
 
     // Create client socket for sending queries
-    let client_socket = create_test_dns_socket()
-        .await
-        .expect("Failed to create client socket");
+    let client_socket = create_test_dns_socket().await.expect("Failed to create client socket");
 
     // Test A record query
     info!("Testing A record query for example.com");
     let query_a = build_simple_a_query("example.com", 1234);
     let start = Instant::now();
-    
+
     send_dns_query(&client_socket, &query_a, server.address())
         .await
         .expect("Failed to send A query");
-    
+
     let response_bytes = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive A response");
-    
+
     let elapsed = start.elapsed();
     info!("A query completed in {:?}", elapsed);
     assert!(elapsed < Duration::from_millis(50), "A query took too long: {:?}", elapsed);
@@ -252,15 +238,15 @@ async fn test_simple_forward_query() {
     info!("Testing AAAA record query for example.com");
     let query_aaaa = build_simple_aaaa_query("example.com", 1235);
     let start = Instant::now();
-    
+
     send_dns_query(&client_socket, &query_aaaa, server.address())
         .await
         .expect("Failed to send AAAA query");
-    
+
     let response_bytes = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive AAAA response");
-    
+
     let elapsed = start.elapsed();
     info!("AAAA query completed in {:?}", elapsed);
     assert!(elapsed < Duration::from_millis(50), "AAAA query took too long: {:?}", elapsed);
@@ -272,7 +258,7 @@ async fn test_simple_forward_query() {
     // Cleanup
     teardown_test_server(server).await.expect("Failed to teardown server");
     mock.stop().await;
-    
+
     info!("test_simple_forward_query completed successfully");
 }
 
@@ -317,13 +303,9 @@ async fn test_upstream_server_selection() {
         .with_upstream_server(default_server.address().to_string())
         .with_upstream_server(format!("/internal.corp/{}", internal_server.address()));
 
-    let server = setup_test_server(config)
-        .await
-        .expect("Failed to start test server");
+    let server = setup_test_server(config).await.expect("Failed to start test server");
 
-    let client_socket = create_test_dns_socket()
-        .await
-        .expect("Failed to create client socket");
+    let client_socket = create_test_dns_socket().await.expect("Failed to create client socket");
 
     // Test default routing
     info!("Testing default server routing for example.com");
@@ -331,7 +313,7 @@ async fn test_upstream_server_selection() {
     send_dns_query(&client_socket, &query_default, server.address())
         .await
         .expect("Failed to send query");
-    
+
     let response_bytes = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive response");
@@ -344,7 +326,7 @@ async fn test_upstream_server_selection() {
     send_dns_query(&client_socket, &query_internal, server.address())
         .await
         .expect("Failed to send query");
-    
+
     let response_bytes = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive response");
@@ -352,14 +334,20 @@ async fn test_upstream_server_selection() {
     assert_dns_answer(&response, "internal.corp", RecordType::A, 1);
 
     // Verify correct servers received queries
-    assert!(default_server.received_query("example.com").await, "Default server should have received query");
-    assert!(internal_server.received_query("internal.corp").await, "Internal server should have received query");
+    assert!(
+        default_server.received_query("example.com").await,
+        "Default server should have received query"
+    );
+    assert!(
+        internal_server.received_query("internal.corp").await,
+        "Internal server should have received query"
+    );
 
     // Cleanup
     teardown_test_server(server).await.expect("Failed to teardown");
     default_server.stop().await;
     internal_server.stop().await;
-    
+
     info!("test_upstream_server_selection completed successfully");
 }
 
@@ -391,7 +379,7 @@ async fn test_cache_insert_and_lookup() {
 
     let mut mock = MockDnsServer::new()
         .with_response("cached.example.com", RecordType::A, "192.0.2.100")
-        .with_delay(Duration::from_millis(20))  // Simulate network delay
+        .with_delay(Duration::from_millis(20)) // Simulate network delay
         .start()
         .await
         .expect("Failed to start mock server");
@@ -401,33 +389,29 @@ async fn test_cache_insert_and_lookup() {
         .with_cache_size(1000)
         .with_upstream_server(mock.address().to_string());
 
-    let server = setup_test_server(config)
-        .await
-        .expect("Failed to start test server");
+    let server = setup_test_server(config).await.expect("Failed to start test server");
 
-    let client_socket = create_test_dns_socket()
-        .await
-        .expect("Failed to create client socket");
+    let client_socket = create_test_dns_socket().await.expect("Failed to create client socket");
 
     // First query: Should miss cache and forward to upstream
     info!("First query - expect cache miss");
     let query1 = build_simple_a_query("cached.example.com", 3001);
     let start1 = Instant::now();
-    
+
     send_dns_query(&client_socket, &query1, server.address())
         .await
         .expect("Failed to send first query");
-    
+
     let response1_bytes = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive first response");
-    
+
     let elapsed1 = start1.elapsed();
     info!("First query (cache miss) took {:?}", elapsed1);
-    
+
     let response1 = parse_dns_response(&response1_bytes).expect("Failed to parse first response");
     assert_dns_answer(&response1, "cached.example.com", RecordType::A, 1);
-    
+
     // Should take at least the mock delay (network-bound)
     assert!(elapsed1 >= Duration::from_millis(15), "First query should include network delay");
 
@@ -438,31 +422,35 @@ async fn test_cache_insert_and_lookup() {
     info!("Second query - expect cache hit");
     let query2 = build_simple_a_query("cached.example.com", 3002);
     let start2 = Instant::now();
-    
+
     send_dns_query(&client_socket, &query2, server.address())
         .await
         .expect("Failed to send second query");
-    
+
     let response2_bytes = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive second response");
-    
+
     let elapsed2 = start2.elapsed();
     info!("Second query (cache hit) took {:?}", elapsed2);
-    
+
     let response2 = parse_dns_response(&response2_bytes).expect("Failed to parse second response");
     assert_dns_answer(&response2, "cached.example.com", RecordType::A, 1);
-    
+
     // Cache hit should be MUCH faster than cache miss
     assert!(elapsed2 < Duration::from_millis(5), "Cache hit should be < 5ms, was {:?}", elapsed2);
     assert!(elapsed2 < elapsed1 / 3, "Cache hit should be significantly faster than miss");
-    
+
     // Verify mock only received one query (cache hit didn't forward)
-    assert_eq!(mock.query_count("cached.example.com").await, 1, "Upstream should only see one query");
+    assert_eq!(
+        mock.query_count("cached.example.com").await,
+        1,
+        "Upstream should only see one query"
+    );
 
     teardown_test_server(server).await.expect("Failed to teardown");
     mock.stop().await;
-    
+
     info!("test_cache_insert_and_lookup completed successfully");
 }
 
@@ -491,8 +479,8 @@ async fn test_cache_eviction() {
     info!("Starting test_cache_eviction");
 
     let mut mock = MockDnsServer::new()
-        .with_wildcard_response(RecordType::A, "192.0.2.1")  // Respond to any A query
-        .with_delay(Duration::from_millis(10))  // Add 10ms delay to distinguish cache hits from misses
+        .with_wildcard_response(RecordType::A, "192.0.2.1") // Respond to any A query
+        .with_delay(Duration::from_millis(10)) // Add 10ms delay to distinguish cache hits from misses
         .start()
         .await
         .expect("Failed to start mock server");
@@ -500,16 +488,12 @@ async fn test_cache_eviction() {
     // Use very small cache size to trigger eviction quickly
     let config = TestConfigOptions::new()
         .with_port(5356)
-        .with_cache_size(5)  // Only 5 entries
+        .with_cache_size(5) // Only 5 entries
         .with_upstream_server(mock.address().to_string());
 
-    let server = setup_test_server(config)
-        .await
-        .expect("Failed to start test server");
+    let server = setup_test_server(config).await.expect("Failed to start test server");
 
-    let client_socket = create_test_dns_socket()
-        .await
-        .expect("Failed to create client socket");
+    let client_socket = create_test_dns_socket().await.expect("Failed to create client socket");
 
     // Fill cache to capacity (5 entries)
     info!("Filling cache to capacity");
@@ -522,8 +506,8 @@ async fn test_cache_eviction() {
             .await
             .expect("Failed to receive response");
     }
-    
-    sleep(Duration::from_millis(50)).await;  // Allow cache to stabilize
+
+    sleep(Duration::from_millis(50)).await; // Allow cache to stabilize
 
     // Query host1 to make it "recently used" (move to end of LRU list)
     info!("Querying host1 to update LRU position");
@@ -534,7 +518,7 @@ async fn test_cache_eviction() {
     recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive response");
-    
+
     sleep(Duration::from_millis(50)).await;
 
     // Insert new entry (should evict host2, the LRU entry after host1 was accessed)
@@ -546,7 +530,7 @@ async fn test_cache_eviction() {
     recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive response");
-    
+
     sleep(Duration::from_millis(50)).await;
 
     // Verify host1 is still cached (was recently accessed)
@@ -560,7 +544,7 @@ async fn test_cache_eviction() {
         .await
         .expect("Failed to receive response");
     let elapsed = start.elapsed();
-    
+
     // Should be fast (cache hit)
     assert!(elapsed < Duration::from_millis(5), "host1 should still be cached (fast response)");
 
@@ -575,13 +559,16 @@ async fn test_cache_eviction() {
         .await
         .expect("Failed to receive response");
     let elapsed = start.elapsed();
-    
+
     // Should be slower (cache miss, upstream query with 10ms mock delay)
-    assert!(elapsed >= Duration::from_millis(8), "host2 should have been evicted (slow response, expected >=8ms due to mock delay)");
+    assert!(
+        elapsed >= Duration::from_millis(8),
+        "host2 should have been evicted (slow response, expected >=8ms due to mock delay)"
+    );
 
     teardown_test_server(server).await.expect("Failed to teardown");
     mock.stop().await;
-    
+
     info!("test_cache_eviction completed successfully");
 }
 
@@ -608,7 +595,7 @@ async fn test_negative_caching() {
 
     let mut mock = MockDnsServer::new()
         .with_nxdomain_response("nonexistent.example.com")
-        .with_nodata_response("exists.example.com", RecordType::AAAA)  // Exists but no AAAA
+        .with_nodata_response("exists.example.com", RecordType::AAAA) // Exists but no AAAA
         .with_response("exists.example.com", RecordType::A, "192.0.2.50")
         .start()
         .await
@@ -619,17 +606,13 @@ async fn test_negative_caching() {
         .with_cache_size(100)
         .with_upstream_server(mock.address().to_string());
 
-    let server = setup_test_server(config)
-        .await
-        .expect("Failed to start test server");
+    let server = setup_test_server(config).await.expect("Failed to start test server");
 
-    let client_socket = create_test_dns_socket()
-        .await
-        .expect("Failed to create client socket");
+    let client_socket = create_test_dns_socket().await.expect("Failed to create client socket");
 
     // Test NXDOMAIN caching
     info!("Testing NXDOMAIN response caching");
-    
+
     // First NXDOMAIN query
     let query_nx1 = build_simple_a_query("nonexistent.example.com", 5001);
     send_dns_query(&client_socket, &query_nx1, server.address())
@@ -638,8 +621,9 @@ async fn test_negative_caching() {
     let response1_bytes = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive NXDOMAIN response 1");
-    let response1 = parse_dns_response(&response1_bytes).expect("Failed to parse NXDOMAIN response 1");
-    
+    let response1 =
+        parse_dns_response(&response1_bytes).expect("Failed to parse NXDOMAIN response 1");
+
     assert_eq!(response1.get_rcode(), 3, "Should get NXDOMAIN (rcode 3)");
     assert_eq!(response1.answers.len(), 0, "NXDOMAIN should have no answers");
 
@@ -653,16 +637,21 @@ async fn test_negative_caching() {
     let response2_bytes = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive NXDOMAIN response 2");
-    let response2 = parse_dns_response(&response2_bytes).expect("Failed to parse NXDOMAIN response 2");
-    
+    let response2 =
+        parse_dns_response(&response2_bytes).expect("Failed to parse NXDOMAIN response 2");
+
     assert_eq!(response2.get_rcode(), 3, "Should still get NXDOMAIN");
-    
+
     // Verify only one upstream query (second was cached)
-    assert_eq!(mock.query_count("nonexistent.example.com").await, 1, "Should only query upstream once for NXDOMAIN");
+    assert_eq!(
+        mock.query_count("nonexistent.example.com").await,
+        1,
+        "Should only query upstream once for NXDOMAIN"
+    );
 
     // Test NODATA caching (domain exists but no AAAA record)
     info!("Testing NODATA response caching");
-    
+
     // First NODATA query
     let query_nodata1 = build_simple_aaaa_query("exists.example.com", 5003);
     send_dns_query(&client_socket, &query_nodata1, server.address())
@@ -671,8 +660,9 @@ async fn test_negative_caching() {
     let response3_bytes = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive NODATA response 1");
-    let response3 = parse_dns_response(&response3_bytes).expect("Failed to parse NODATA response 1");
-    
+    let response3 =
+        parse_dns_response(&response3_bytes).expect("Failed to parse NODATA response 1");
+
     assert_eq!(response3.get_rcode(), 0, "NODATA should have NOERROR rcode");
     assert_eq!(response3.answers.len(), 0, "NODATA should have no answers");
 
@@ -686,13 +676,17 @@ async fn test_negative_caching() {
     recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive NODATA response 2");
-    
+
     // Verify only one upstream AAAA query
-    assert_eq!(mock.query_count_by_type("exists.example.com", RecordType::AAAA).await, 1, "Should only query upstream once for NODATA");
+    assert_eq!(
+        mock.query_count_by_type("exists.example.com", RecordType::AAAA).await,
+        1,
+        "Should only query upstream once for NODATA"
+    );
 
     teardown_test_server(server).await.expect("Failed to teardown");
     mock.stop().await;
-    
+
     info!("test_negative_caching completed successfully");
 }
 
@@ -729,13 +723,9 @@ async fn test_cache_statistics() {
         .with_upstream_server(mock.address().to_string())
         .with_log_queries();
 
-    let server = setup_test_server(config)
-        .await
-        .expect("Failed to start test server");
+    let server = setup_test_server(config).await.expect("Failed to start test server");
 
-    let client_socket = create_test_dns_socket()
-        .await
-        .expect("Failed to create client socket");
+    let client_socket = create_test_dns_socket().await.expect("Failed to create client socket");
 
     // Populate cache with known queries
     info!("Populating cache with test data");
@@ -767,7 +757,7 @@ async fn test_cache_statistics() {
     let pid = Pid::from_raw(server.pid().unwrap() as i32);
     kill(pid, Signal::SIGUSR2).expect("Failed to send SIGUSR2");
 
-    sleep(Duration::from_millis(500)).await;  // Wait for statistics processing
+    sleep(Duration::from_millis(500)).await; // Wait for statistics processing
 
     // In integration tests, we verify statistics were logged/dumped
     // (actual validation would parse logs or check D-Bus metrics endpoint)
@@ -782,12 +772,12 @@ async fn test_cache_statistics() {
     let _test_response = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive verification response");
-    
+
     info!("Server still responding correctly after statistics dump");
 
     teardown_test_server(server).await.expect("Failed to teardown");
     mock.stop().await;
-    
+
     info!("test_cache_statistics completed successfully");
 }
 
@@ -815,7 +805,7 @@ async fn test_query_retry_logic() {
 
     // Create failing server (times out or drops packets)
     let mut failing_server = MockDnsServer::new()
-        .with_failure_rate(1.0)  // Always fail
+        .with_failure_rate(1.0) // Always fail
         .start()
         .await
         .expect("Failed to start failing server");
@@ -833,46 +823,46 @@ async fn test_query_retry_logic() {
         .with_upstream_server(failing_server.address().to_string())
         .with_upstream_server(backup_server.address().to_string());
 
-    let server = setup_test_server(config)
-        .await
-        .expect("Failed to start test server");
+    let server = setup_test_server(config).await.expect("Failed to start test server");
 
-    let client_socket = create_test_dns_socket()
-        .await
-        .expect("Failed to create client socket");
+    let client_socket = create_test_dns_socket().await.expect("Failed to create client socket");
 
     // Send query - should failover to backup server
     info!("Sending query expecting failover to backup");
     let query = build_simple_a_query("retry.example.com", 7001);
     let start = Instant::now();
-    
-    send_dns_query(&client_socket, &query, server.address())
-        .await
-        .expect("Failed to send query");
-    
-    let response_bytes = with_timeout(Duration::from_secs(25), recv_dns_response(&client_socket, Duration::from_secs(20)))
-        .await
-        .expect("Timeout waiting for response")
-        .expect("Failed to receive response");
-    
+
+    send_dns_query(&client_socket, &query, server.address()).await.expect("Failed to send query");
+
+    let response_bytes = with_timeout(
+        Duration::from_secs(25),
+        recv_dns_response(&client_socket, Duration::from_secs(20)),
+    )
+    .await
+    .expect("Timeout waiting for response")
+    .expect("Failed to receive response");
+
     let elapsed = start.elapsed();
     let response = parse_dns_response(&response_bytes).expect("Failed to parse response");
-    
+
     info!("Query with retry/failover took {:?}", elapsed);
-    
+
     // Should eventually succeed via backup server
     assert_dns_answer(&response, "retry.example.com", RecordType::A, 1);
-    
+
     // Should take longer due to timeout/retry (but eventually succeed)
     assert!(elapsed < Duration::from_secs(12), "Retry logic should complete within timeout");
-    
+
     // Verify backup server answered
-    assert!(backup_server.received_query("retry.example.com").await, "Backup server should have received query");
+    assert!(
+        backup_server.received_query("retry.example.com").await,
+        "Backup server should have received query"
+    );
 
     teardown_test_server(server).await.expect("Failed to teardown");
     failing_server.stop().await;
     backup_server.stop().await;
-    
+
     info!("test_query_retry_logic completed successfully");
 }
 
@@ -903,53 +893,43 @@ async fn test_authoritative_zone_answering() {
     init_tracing();
     info!("Starting test_authoritative_zone_answering");
 
-    let config = TestConfigOptions::new()
-        .with_port(5360)
-        .with_additional_config(vec![
-            "auth-zone=local.test".to_string(),
-            "auth-server=local.test,eth0".to_string(),
-            "host-record=test.local.test,192.0.2.200".to_string(),
-        ]);
+    let config = TestConfigOptions::new().with_port(5360).with_additional_config(vec![
+        "auth-zone=local.test".to_string(),
+        "auth-server=local.test,eth0".to_string(),
+        "host-record=test.local.test,192.0.2.200".to_string(),
+    ]);
 
-    let server = setup_test_server(config)
-        .await
-        .expect("Failed to start test server");
+    let server = setup_test_server(config).await.expect("Failed to start test server");
 
-    let client_socket = create_test_dns_socket()
-        .await
-        .expect("Failed to create client socket");
+    let client_socket = create_test_dns_socket().await.expect("Failed to create client socket");
 
     // Query authoritative zone
     info!("Querying authoritative zone");
     let query = build_simple_a_query("test.local.test", 8001);
-    send_dns_query(&client_socket, &query, server.address())
-        .await
-        .expect("Failed to send query");
-    
+    send_dns_query(&client_socket, &query, server.address()).await.expect("Failed to send query");
+
     let response_bytes = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive response");
-    
+
     let response = parse_dns_response(&response_bytes).expect("Failed to parse response");
-    
+
     // Verify authoritative answer
     assert!(response.header.flags.aa(), "AA flag should be set for authoritative answer");
     assert_dns_answer(&response, "test.local.test", RecordType::A, 1);
-    
+
     // Query should be very fast (no upstream query)
     let start = Instant::now();
-    send_dns_query(&client_socket, &query, server.address())
-        .await
-        .expect("Failed to send query");
+    send_dns_query(&client_socket, &query, server.address()).await.expect("Failed to send query");
     recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive response");
     let elapsed = start.elapsed();
-    
+
     assert!(elapsed < Duration::from_millis(5), "Authoritative answer should be very fast");
 
     teardown_test_server(server).await.expect("Failed to teardown");
-    
+
     info!("test_authoritative_zone_answering completed successfully");
 }
 
@@ -991,13 +971,9 @@ async fn test_edns0_client_subnet() {
         .with_upstream_server(mock.address().to_string())
         .with_additional_config(vec!["edns-packet-max=4096".to_string()]);
 
-    let server = setup_test_server(config)
-        .await
-        .expect("Failed to start test server");
+    let server = setup_test_server(config).await.expect("Failed to start test server");
 
-    let client_socket = create_test_dns_socket()
-        .await
-        .expect("Failed to create client socket");
+    let client_socket = create_test_dns_socket().await.expect("Failed to create client socket");
 
     // Build query with EDNS0 Client Subnet option
     info!("Sending query with EDNS0 Client Subnet option");
@@ -1005,32 +981,37 @@ async fn test_edns0_client_subnet() {
         .with_id(9001)
         .with_name("edns.example.com")
         .with_record_type(RecordType::A)
-        .with_edns0()  // Enable EDNS0
-        .with_client_subnet("203.0.113.0", 24)  // ECS option
+        .with_edns0() // Enable EDNS0
+        .with_client_subnet("203.0.113.0", 24) // ECS option
         .build();
-    
+
     eprintln!("[TEST] Sending query to server at {}", server.address());
-    eprintln!("[TEST] Query ID: {}, questions: {}, additional: {}", 
-        query.id(), query.questions.len(), query.additional.len());
-    send_dns_query(&client_socket, &query, server.address())
-        .await
-        .expect("Failed to send query");
-    
+    eprintln!(
+        "[TEST] Query ID: {}, questions: {}, additional: {}",
+        query.id(),
+        query.questions.len(),
+        query.additional.len()
+    );
+    send_dns_query(&client_socket, &query, server.address()).await.expect("Failed to send query");
+
     let response_bytes = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive response");
-    
+
     let response = parse_dns_response(&response_bytes).expect("Failed to parse response");
-    
+
     // Verify response has EDNS0 OPT record
-    assert!(response.additional.iter().any(|rr| rr.rtype() == RecordType::OPT), "Response should have OPT record");
-    
+    assert!(
+        response.additional.iter().any(|rr| rr.rtype() == RecordType::OPT),
+        "Response should have OPT record"
+    );
+
     // Verify answer
     assert_dns_answer(&response, "edns.example.com", RecordType::A, 1);
 
     teardown_test_server(server).await.expect("Failed to teardown");
     mock.stop().await;
-    
+
     info!("test_edns0_client_subnet completed successfully");
 }
 
@@ -1084,55 +1065,51 @@ async fn test_domain_matching() {
         .with_upstream_server(format!("/*.wildcard.com/{}", server2.address()))
         .with_upstream_server(default_server.address().to_string());
 
-    let server = setup_test_server(config)
-        .await
-        .expect("Failed to start test server");
+    let server = setup_test_server(config).await.expect("Failed to start test server");
 
-    let client_socket = create_test_dns_socket()
-        .await
-        .expect("Failed to create client socket");
+    let client_socket = create_test_dns_socket().await.expect("Failed to create client socket");
 
     // Test exact domain match
     info!("Testing exact domain match");
     let query1 = build_simple_a_query("exact.example.com", 10001);
-    send_dns_query(&client_socket, &query1, server.address())
-        .await
-        .expect("Failed to send query");
+    send_dns_query(&client_socket, &query1, server.address()).await.expect("Failed to send query");
     recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive response");
-    
+
     assert!(server1.received_query("exact.example.com").await, "Server1 should handle exact match");
 
     // Test wildcard subdomain match
     info!("Testing wildcard subdomain match");
     let query2 = build_simple_a_query("sub.wildcard.com", 10002);
-    send_dns_query(&client_socket, &query2, server.address())
-        .await
-        .expect("Failed to send query");
+    send_dns_query(&client_socket, &query2, server.address()).await.expect("Failed to send query");
     recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive response");
-    
-    assert!(server2.received_query("sub.wildcard.com").await, "Server2 should handle wildcard match");
+
+    assert!(
+        server2.received_query("sub.wildcard.com").await,
+        "Server2 should handle wildcard match"
+    );
 
     // Test default server fallback
     info!("Testing default server fallback");
     let query3 = build_simple_a_query("other.domain.com", 10003);
-    send_dns_query(&client_socket, &query3, server.address())
-        .await
-        .expect("Failed to send query");
+    send_dns_query(&client_socket, &query3, server.address()).await.expect("Failed to send query");
     recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive response");
-    
-    assert!(default_server.received_query("other.domain.com").await, "Default server should handle unmatched domains");
+
+    assert!(
+        default_server.received_query("other.domain.com").await,
+        "Default server should handle unmatched domains"
+    );
 
     teardown_test_server(server).await.expect("Failed to teardown");
     server1.stop().await;
     server2.stop().await;
     default_server.stop().await;
-    
+
     info!("test_domain_matching completed successfully");
 }
 
@@ -1164,18 +1141,18 @@ async fn test_dns_wire_format() {
     // Build query and verify wire format
     let query = build_simple_a_query("compress.example.com", 11001);
     let query_bytes = query.to_bytes().expect("Failed to serialize query");
-    
+
     // Verify header format (first 12 bytes)
     assert_eq!(query_bytes.len() >= 12, true, "DNS message should have at least 12-byte header");
-    
+
     // Parse query ID from header (bytes 0-1, big-endian)
     let parsed_id = u16::from_be_bytes([query_bytes[0], query_bytes[1]]);
     assert_eq!(parsed_id, 11001, "Query ID should match");
-    
+
     // Parse question count (bytes 4-5, big-endian)
     let qd_count = u16::from_be_bytes([query_bytes[4], query_bytes[5]]);
     assert_eq!(qd_count, 1, "Should have 1 question");
-    
+
     // Verify answer/authority/additional counts are zero for query
     let an_count = u16::from_be_bytes([query_bytes[6], query_bytes[7]]);
     let ns_count = u16::from_be_bytes([query_bytes[8], query_bytes[9]]);
@@ -1191,30 +1168,23 @@ async fn test_dns_wire_format() {
         .await
         .expect("Failed to start mock server");
 
-    let config = TestConfigOptions::new()
-        .with_port(5363)
-        .with_upstream_server(mock.address().to_string());
+    let config =
+        TestConfigOptions::new().with_port(5363).with_upstream_server(mock.address().to_string());
 
-    let server = setup_test_server(config)
-        .await
-        .expect("Failed to start test server");
+    let server = setup_test_server(config).await.expect("Failed to start test server");
 
-    let client_socket = create_test_dns_socket()
-        .await
-        .expect("Failed to create client socket");
+    let client_socket = create_test_dns_socket().await.expect("Failed to create client socket");
 
     // Send query and get response
-    send_dns_query(&client_socket, &query, server.address())
-        .await
-        .expect("Failed to send query");
-    
+    send_dns_query(&client_socket, &query, server.address()).await.expect("Failed to send query");
+
     let response_bytes = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive response");
-    
+
     // Parse and verify response wire format
     let response = parse_dns_response(&response_bytes).expect("Failed to parse response");
-    
+
     // Verify response structure
     assert!(response.is_response(), "QR bit should be set");
     assert_eq!(response.header.id, 11001, "Response ID should match query");
@@ -1223,7 +1193,7 @@ async fn test_dns_wire_format() {
 
     teardown_test_server(server).await.expect("Failed to teardown");
     mock.stop().await;
-    
+
     info!("test_dns_wire_format completed successfully");
 }
 
@@ -1249,7 +1219,7 @@ async fn test_response_timing() {
 
     let mut mock = MockDnsServer::new()
         .with_response("timing.example.com", RecordType::A, "192.0.2.123")
-        .with_delay(Duration::from_millis(10))  // Simulate realistic network delay
+        .with_delay(Duration::from_millis(10)) // Simulate realistic network delay
         .start()
         .await
         .expect("Failed to start mock server");
@@ -1259,13 +1229,9 @@ async fn test_response_timing() {
         .with_cache_size(1000)
         .with_upstream_server(mock.address().to_string());
 
-    let server = setup_test_server(config)
-        .await
-        .expect("Failed to start test server");
+    let server = setup_test_server(config).await.expect("Failed to start test server");
 
-    let client_socket = create_test_dns_socket()
-        .await
-        .expect("Failed to create client socket");
+    let client_socket = create_test_dns_socket().await.expect("Failed to create client socket");
 
     // Warm up cache
     info!("Warming up cache");
@@ -1285,24 +1251,32 @@ async fn test_response_timing() {
     for i in 0..10 {
         let query = build_simple_a_query("timing.example.com", 12010 + i);
         let start = Instant::now();
-        
+
         send_dns_query(&client_socket, &query, server.address())
             .await
             .expect("Failed to send query");
         recv_dns_response(&client_socket, Duration::from_secs(5))
             .await
             .expect("Failed to receive response");
-        
+
         let elapsed = start.elapsed();
         cache_hit_times.push(elapsed);
     }
 
     let avg_cache_hit = cache_hit_times.iter().sum::<Duration>() / cache_hit_times.len() as u32;
     let max_cache_hit = cache_hit_times.iter().max().unwrap();
-    
+
     info!("Cache hit: avg={:?}, max={:?}", avg_cache_hit, max_cache_hit);
-    assert!(avg_cache_hit < Duration::from_millis(2), "Average cache hit should be <2ms, was {:?}", avg_cache_hit);
-    assert!(*max_cache_hit < Duration::from_millis(5), "Max cache hit should be <5ms, was {:?}", max_cache_hit);
+    assert!(
+        avg_cache_hit < Duration::from_millis(2),
+        "Average cache hit should be <2ms, was {:?}",
+        avg_cache_hit
+    );
+    assert!(
+        *max_cache_hit < Duration::from_millis(5),
+        "Max cache hit should be <5ms, was {:?}",
+        max_cache_hit
+    );
 
     // Measure cache miss performance (network-bound, should be <50ms with mock)
     info!("Measuring cache miss latency");
@@ -1310,25 +1284,29 @@ async fn test_response_timing() {
     for i in 0..5 {
         let query = build_simple_a_query(&format!("miss{}.timing.com", i), 12100 + i);
         let start = Instant::now();
-        
+
         send_dns_query(&client_socket, &query, server.address())
             .await
             .expect("Failed to send query");
         recv_dns_response(&client_socket, Duration::from_secs(5))
             .await
             .expect("Failed to receive response");
-        
+
         let elapsed = start.elapsed();
         cache_miss_times.push(elapsed);
     }
 
     let avg_cache_miss = cache_miss_times.iter().sum::<Duration>() / cache_miss_times.len() as u32;
     info!("Cache miss: avg={:?}", avg_cache_miss);
-    assert!(avg_cache_miss < Duration::from_millis(100), "Average cache miss should be <100ms, was {:?}", avg_cache_miss);
+    assert!(
+        avg_cache_miss < Duration::from_millis(100),
+        "Average cache miss should be <100ms, was {:?}",
+        avg_cache_miss
+    );
 
     teardown_test_server(server).await.expect("Failed to teardown");
     mock.stop().await;
-    
+
     info!("test_response_timing completed successfully");
 }
 
@@ -1350,7 +1328,7 @@ async fn test_concurrent_queries() {
 
     let mut mock = MockDnsServer::new()
         .with_wildcard_response(RecordType::A, "192.0.2.200")
-        .with_delay(Duration::from_millis(20))  // Simulate network delay
+        .with_delay(Duration::from_millis(20)) // Simulate network delay
         .start()
         .await
         .expect("Failed to start mock server");
@@ -1360,31 +1338,25 @@ async fn test_concurrent_queries() {
         .with_cache_size(1000)
         .with_upstream_server(mock.address().to_string());
 
-    let server = setup_test_server(config)
-        .await
-        .expect("Failed to start test server");
+    let server = setup_test_server(config).await.expect("Failed to start test server");
 
     // Launch concurrent queries
     info!("Launching 50 concurrent queries");
     let start = Instant::now();
-    
+
     let mut tasks = Vec::new();
     for i in 0..50 {
         let server_addr = server.address();
         let task = tokio::spawn(async move {
-            let socket = create_test_dns_socket()
-                .await
-                .expect("Failed to create socket");
-            
+            let socket = create_test_dns_socket().await.expect("Failed to create socket");
+
             let query = build_simple_a_query(&format!("concurrent{}.example.com", i), 13000 + i);
-            send_dns_query(&socket, &query, server_addr)
-                .await
-                .expect("Failed to send query");
-            
+            send_dns_query(&socket, &query, server_addr).await.expect("Failed to send query");
+
             let response_bytes = recv_dns_response(&socket, Duration::from_secs(5))
                 .await
                 .expect("Failed to receive response");
-            
+
             parse_dns_response(&response_bytes).expect("Failed to parse response")
         });
         tasks.push(task);
@@ -1393,7 +1365,7 @@ async fn test_concurrent_queries() {
     // Wait for all queries to complete
     let results = futures::future::join_all(tasks).await;
     let elapsed = start.elapsed();
-    
+
     info!("50 concurrent queries completed in {:?}", elapsed);
 
     // Verify all succeeded
@@ -1402,11 +1374,15 @@ async fn test_concurrent_queries() {
 
     // Concurrent execution should be much faster than sequential (50 * 20ms = 1000ms)
     // With concurrency, should complete in ~20-100ms depending on system
-    assert!(elapsed < Duration::from_millis(500), "Concurrent queries should complete faster than sequential, took {:?}", elapsed);
+    assert!(
+        elapsed < Duration::from_millis(500),
+        "Concurrent queries should complete faster than sequential, took {:?}",
+        elapsed
+    );
 
     teardown_test_server(server).await.expect("Failed to teardown");
     mock.stop().await;
-    
+
     info!("test_concurrent_queries completed successfully");
 }
 
@@ -1445,13 +1421,9 @@ async fn test_cache_dump() {
         .with_upstream_server(mock.address().to_string())
         .with_log_queries();
 
-    let server = setup_test_server(config)
-        .await
-        .expect("Failed to start test server");
+    let server = setup_test_server(config).await.expect("Failed to start test server");
 
-    let client_socket = create_test_dns_socket()
-        .await
-        .expect("Failed to create client socket");
+    let client_socket = create_test_dns_socket().await.expect("Failed to create client socket");
 
     // Populate cache
     info!("Populating cache for dump test");
@@ -1472,12 +1444,12 @@ async fn test_cache_dump() {
     let pid = Pid::from_raw(server.pid().unwrap() as i32);
     kill(pid, Signal::SIGUSR1).expect("Failed to send SIGUSR1");
 
-    sleep(Duration::from_millis(500)).await;  // Wait for dump processing
+    sleep(Duration::from_millis(500)).await; // Wait for dump processing
 
     // Retrieve cache dump (implementation-specific, may be via log or API)
     // For this test, we verify the cache still has the entries
     info!("Verifying cache contents after dump");
-    
+
     // Query cached entries - should all be fast (cache hits)
     for i in 1..=3 {
         let start = Instant::now();
@@ -1489,13 +1461,13 @@ async fn test_cache_dump() {
             .await
             .expect("Failed to receive response");
         let elapsed = start.elapsed();
-        
+
         assert!(elapsed < Duration::from_millis(5), "Entry should still be cached after dump");
     }
 
     teardown_test_server(server).await.expect("Failed to teardown");
     mock.stop().await;
-    
+
     info!("test_cache_dump completed successfully");
 }
 
@@ -1521,8 +1493,8 @@ async fn test_dns_rebinding_protection() {
     info!("Starting test_dns_rebinding_protection");
 
     let mut mock = MockDnsServer::new()
-        .with_response("malicious.example.com", RecordType::A, "192.168.1.1")  // Private IP
-        .with_response("legitimate.example.com", RecordType::A, "203.0.113.50")  // Public IP
+        .with_response("malicious.example.com", RecordType::A, "192.168.1.1") // Private IP
+        .with_response("legitimate.example.com", RecordType::A, "203.0.113.50") // Public IP
         .start()
         .await
         .expect("Failed to start mock server");
@@ -1530,18 +1502,11 @@ async fn test_dns_rebinding_protection() {
     let config = TestConfigOptions::new()
         .with_port(5367)
         .with_upstream_server(mock.address().to_string())
-        .with_additional_config(vec![
-            "bogus-priv".to_string(),
-            "stop-dns-rebind".to_string(),
-        ]);
+        .with_additional_config(vec!["bogus-priv".to_string(), "stop-dns-rebind".to_string()]);
 
-    let server = setup_test_server(config)
-        .await
-        .expect("Failed to start test server");
+    let server = setup_test_server(config).await.expect("Failed to start test server");
 
-    let client_socket = create_test_dns_socket()
-        .await
-        .expect("Failed to create client socket");
+    let client_socket = create_test_dns_socket().await.expect("Failed to create client socket");
 
     // Query that would return private IP (should be blocked)
     info!("Testing DNS rebinding protection for private IP response");
@@ -1549,12 +1514,12 @@ async fn test_dns_rebinding_protection() {
     send_dns_query(&client_socket, &query_malicious, server.address())
         .await
         .expect("Failed to send query");
-    
+
     let response_bytes = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive response");
     let response_mal = parse_dns_response(&response_bytes).expect("Failed to parse response");
-    
+
     // Should be blocked (REFUSED or NXDOMAIN)
     assert!(response_mal.get_rcode() != 0, "Private IP response should be blocked");
     info!("Malicious query blocked with rcode: {}", response_mal.get_rcode());
@@ -1565,18 +1530,18 @@ async fn test_dns_rebinding_protection() {
     send_dns_query(&client_socket, &query_legit, server.address())
         .await
         .expect("Failed to send query");
-    
+
     let response_bytes = recv_dns_response(&client_socket, Duration::from_secs(5))
         .await
         .expect("Failed to receive response");
     let response_legit = parse_dns_response(&response_bytes).expect("Failed to parse response");
-    
+
     // Should succeed
     assert_eq!(response_legit.get_rcode(), 0, "Legitimate query should succeed");
     assert_dns_answer(&response_legit, "legitimate.example.com", RecordType::A, 1);
 
     teardown_test_server(server).await.expect("Failed to teardown");
     mock.stop().await;
-    
+
     info!("test_dns_rebinding_protection completed successfully");
 }

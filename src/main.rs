@@ -121,21 +121,21 @@
 //! - Android: AOSP build support
 
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use std::process;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
-use tracing_subscriber::{fmt, EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 // Internal module imports (from depends_on_files)
+use dnsmasq::config::{validate_config, CliArgs, Config, ConfigBuilder};
 use dnsmasq::constants::VERSION;
-use dnsmasq::config::{load_config, validate_config, Config, CliArgs};
-use dnsmasq::error::{DnsmasqError, Result as DnsmasqResult};
-use dnsmasq::runtime::event_loop::EventLoop;
+use dnsmasq::error::ConfigError;
 use dnsmasq::platform::privileges::drop_privileges;
 use dnsmasq::platform::systemd;
-use dnsmasq::util::logging::init_logging;
+use dnsmasq::runtime::EventLoop;
+// use dnsmasq::util::log_init;
 
 /// Main entry point for dnsmasq daemon.
 ///
@@ -165,22 +165,34 @@ use dnsmasq::util::logging::init_logging;
 /// ```
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Parse command-line arguments using clap
-    let cli_args = CliArgs::parse();
-    
+    // Parse command-line arguments using clap derive
+    let cli_args = match CliArgs::try_parse() {
+        Ok(args) => args,
+        Err(e) => {
+            eprintln!("{}", e);
+            process::exit(1);
+        }
+    };
+
     // Handle --version flag immediately (exit without initialization)
     if cli_args.version_flag {
         print_version();
         process::exit(0);
     }
-    
+
+    // Handle --help flag immediately (exit without initialization)
+    if cli_args.help_flag {
+        CliArgs::command().print_help().unwrap();
+        process::exit(0);
+    }
+
     // Initialize logging system early to capture initialization errors
     // This sets up tracing subscriber with environment-based filtering
     init_logging_early(&cli_args);
-    
+
     info!("dnsmasq v{} (Rust implementation) starting", VERSION);
     info!("Command-line arguments parsed successfully");
-    
+
     // Load and merge configuration from file and CLI arguments
     // This replaces C's read_opts() function from option.c
     let config = match load_configuration(&cli_args).await {
@@ -191,9 +203,9 @@ async fn main() -> Result<()> {
             process::exit(1);
         }
     };
-    
+
     info!("Configuration loaded successfully");
-    
+
     // Validate configuration comprehensively
     // This performs --test mode checks on all configuration options
     if let Err(e) = validate_configuration(&config) {
@@ -201,23 +213,23 @@ async fn main() -> Result<()> {
         eprintln!("dnsmasq: configuration validation error: {}", e);
         process::exit(1);
     }
-    
+
     info!("Configuration validated successfully");
-    
+
     // If --test mode, exit successfully after validation
     if cli_args.test {
         println!("dnsmasq: syntax check OK");
         info!("Configuration test passed, exiting");
         process::exit(0);
     }
-    
+
     // Wrap configuration in Arc<RwLock<>> for shared mutable access
     // This enables SIGHUP-based configuration reload while services are running
     let config = Arc::new(RwLock::new(config));
-    
+
     // Log daemon startup information matching C version output
     log_startup_info(&config).await;
-    
+
     // Initialize the event loop with all services
     // This binds privileged ports (requires root or CAP_NET_BIND_SERVICE)
     // and creates DNS, DHCP, TFTP, and RA service instances
@@ -230,9 +242,9 @@ async fn main() -> Result<()> {
             process::exit(1);
         }
     };
-    
+
     info!("Event loop initialized successfully");
-    
+
     // Drop privileges to configured user after binding privileged ports
     // This matches C security model: start as root, bind ports, drop to nobody
     if let Err(e) = drop_privileges_safely(&config).await {
@@ -240,15 +252,15 @@ async fn main() -> Result<()> {
         eprintln!("dnsmasq: failed to drop privileges: {}", e);
         process::exit(1);
     }
-    
+
     info!("Privileges dropped successfully");
-    
+
     // Notify systemd that daemon is ready (Type=notify service)
     // This signals that initialization is complete and service is operational
     notify_systemd_ready();
-    
+
     info!("Entering main event loop");
-    
+
     // Enter main event loop - never returns until shutdown signal
     // This replaces C's while(1) poll() loop with tokio::select! multiplexing
     if let Err(e) = event_loop.run().await {
@@ -256,7 +268,7 @@ async fn main() -> Result<()> {
         eprintln!("dnsmasq: runtime error: {}", e);
         process::exit(1);
     }
-    
+
     // Graceful shutdown completed
     info!("dnsmasq shutdown complete");
     Ok(())
@@ -281,30 +293,29 @@ async fn main() -> Result<()> {
 fn init_logging_early(cli_args: &CliArgs) {
     // Determine log output destination based on CLI flags
     let log_to_stderr = cli_args.no_daemon;
-    
+
     // Build environment filter from RUST_LOG or default to INFO level
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
-    
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
     if log_to_stderr {
         // Foreground mode: human-readable logs to stderr
         tracing_subscriber::registry()
             .with(env_filter)
-            .with(fmt::layer()
-                .with_writer(std::io::stderr)
-                .with_target(false)
-                .with_thread_ids(false)
-                .with_thread_names(false)
-                .compact())
+            .with(
+                fmt::layer()
+                    .with_writer(std::io::stderr)
+                    .with_target(false)
+                    .with_thread_ids(false)
+                    .with_thread_names(false)
+                    .compact(),
+            )
             .init();
     } else {
         // Daemon mode: structured JSON logs to syslog
         // TODO: Integrate with actual syslog via tracing-syslog or journald
         tracing_subscriber::registry()
             .with(env_filter)
-            .with(fmt::layer()
-                .json()
-                .with_writer(std::io::stderr))
+            .with(fmt::layer().json().with_writer(std::io::stderr))
             .init();
     }
 }
@@ -320,41 +331,36 @@ fn init_logging_early(cli_args: &CliArgs) {
 fn print_version() {
     println!("dnsmasq version {}  Copyright (c) 2000-2025 Simon Kelley", VERSION);
     println!();
-    
+
     // Display enabled features matching C compile_opts string
     print!("Compile time options: ");
-    
-    let mut features = Vec::new();
-    
+
+    let mut features = vec!["DHCP", "DHCPv6", "IPv6"]; // Core features always present
+
     #[cfg(feature = "dnssec")]
     features.push("DNSSEC");
-    
+
     #[cfg(feature = "dbus")]
     features.push("DBus");
-    
+
     #[cfg(feature = "idn")]
     features.push("IDN");
-    
+
     #[cfg(feature = "lua-scripts")]
     features.push("Lua");
-    
+
     #[cfg(feature = "tftp")]
     features.push("TFTP");
-    
+
     #[cfg(feature = "conntrack")]
     features.push("conntrack");
-    
+
     #[cfg(feature = "ipset")]
     features.push("ipset");
-    
+
     #[cfg(feature = "nftset")]
     features.push("nftset");
-    
-    // Always include these core features
-    features.push("DHCP");
-    features.push("DHCPv6");
-    features.push("IPv6");
-    
+
     println!("{}", features.join(" "));
     println!();
     println!("This software comes with ABSOLUTELY NO WARRANTY.");
@@ -386,11 +392,38 @@ fn print_version() {
 /// - Include files contain cycles
 /// - Required options are missing or conflicting
 async fn load_configuration(cli_args: &CliArgs) -> Result<Config> {
-    // Call into config module's load_config function
-    // This handles file parsing, CLI merging, and include processing
-    load_config(cli_args)
-        .await
-        .context("Failed to load configuration")
+    // Start with builder using compile-time defaults
+    let mut builder = ConfigBuilder::new();
+
+    // Load configuration file unless --no-conf specified
+    if !cli_args.no_conf {
+        if let Some(ref config_path) = cli_args.conf_file {
+            // User specified a config file path
+            if config_path.exists() {
+                builder = builder
+                    .from_file(config_path)
+                    .await
+                    .context("Failed to load configuration file")?;
+            } else {
+                // Explicitly specified file doesn't exist - error
+                return Err(anyhow::anyhow!(
+                    "Configuration file not found: {}",
+                    config_path.display()
+                ));
+            }
+        }
+        // If no conf_file specified, ConfigBuilder will use defaults
+    }
+
+    // Apply command-line overrides (highest precedence)
+    builder = builder.from_args(cli_args).context("Failed to apply command-line arguments")?;
+
+    // Validate and build final configuration
+    builder = builder.validate().context("Configuration validation during build failed")?;
+
+    let config = builder.build().context("Failed to build configuration")?;
+
+    Ok(config)
 }
 
 /// Validate complete configuration for correctness and consistency.
@@ -412,7 +445,7 @@ async fn load_configuration(cli_args: &CliArgs) -> Result<Config> {
 /// # Returns
 ///
 /// * `Ok(())` - Configuration is valid
-/// * `Err(DnsmasqError)` - Validation failure with detailed error description
+/// * `Err(ConfigError)` - Validation failure with detailed error description
 ///
 /// # Examples
 ///
@@ -421,10 +454,13 @@ async fn load_configuration(cli_args: &CliArgs) -> Result<Config> {
 /// validate_configuration(&config)?;
 /// println!("Configuration is valid");
 /// ```
-fn validate_configuration(config: &Config) -> DnsmasqResult<()> {
-    validate_config(config)
-        .context("Configuration validation failed")
-        .map_err(|e| DnsmasqError::Config(format!("{:#}", e)))
+fn validate_configuration(config: &Config) -> Result<(), ConfigError> {
+    validate_config(config).context("Configuration validation failed").map_err(|e| {
+        ConfigError::InvalidValue {
+            directive: "configuration".to_string(),
+            reason: format!("{:#}", e),
+        }
+    })
 }
 
 /// Log startup information matching C version output format.
@@ -444,60 +480,53 @@ fn validate_configuration(config: &Config) -> DnsmasqResult<()> {
 /// * `config` - Daemon configuration (wrapped in Arc<RwLock> for shared access)
 async fn log_startup_info(config: &Arc<RwLock<Config>>) {
     let cfg = config.read().await;
-    
+
     // Log version and DNS configuration
     if cfg.network.port == 0 {
         info!("started, version {} DNS disabled", VERSION);
-    } else {
-        if cfg.dns.cache_size > 0 {
-            info!("started, version {} cachesize {}", VERSION, cfg.dns.cache_size);
-            
-            if cfg.dns.cache_size > 10000 {
-                warn!("cache size greater than 10000 may cause performance issues");
-            }
-        } else {
-            info!("started, version {} cache disabled", VERSION);
+    } else if cfg.dns.cache_size > 0 {
+        info!("started, version {} cachesize {}", VERSION, cfg.dns.cache_size);
+
+        if cfg.dns.cache_size > 10000 {
+            warn!("cache size greater than 10000 may cause performance issues");
         }
+    } else {
+        info!("started, version {} cache disabled", VERSION);
     }
-    
-    // Log DHCP configuration if enabled
-    if cfg.dhcp.enabled {
+
+    // Log DHCP configuration if enabled (determined by presence of ranges)
+    if !cfg.dhcp.v4_ranges.is_empty() {
         info!("DHCP service enabled");
         for range in &cfg.dhcp.v4_ranges {
             info!("DHCP range {} to {}", range.start, range.end);
         }
     }
-    
-    // Log DHCPv6 configuration if enabled
-    if cfg.dhcp.dhcp6_enabled {
+
+    // Log DHCPv6 configuration if enabled (determined by presence of ranges)
+    if !cfg.dhcp.v6_ranges.is_empty() {
         info!("DHCPv6 service enabled");
         for range in &cfg.dhcp.v6_ranges {
-            info!("DHCPv6 range {}", range);
+            info!("DHCPv6 range {} to {}", range.start, range.end);
         }
     }
-    
-    // Log Router Advertisement if enabled
-    #[cfg(feature = "ra")]
-    if cfg.radv.enabled {
+
+    // Log Router Advertisement if enabled (determined by presence of RA interfaces)
+    if !cfg.ra_interfaces.is_empty() {
         info!("IPv6 router advertisement enabled");
     }
-    
+
     // Log DNSSEC status
     #[cfg(feature = "dnssec")]
     if cfg.dns.dnssec_enabled {
         info!("DNSSEC validation enabled");
     }
-    
-    // Log TFTP status
+
+    // Log TFTP status (enabled if tftp_prefix is set)
     #[cfg(feature = "tftp")]
-    if cfg.tftp.enabled {
-        if let Some(ref root) = cfg.tftp.root {
-            info!("TFTP root is {}", root.display());
-        } else {
-            info!("TFTP enabled");
-        }
+    if let Some(ref root) = cfg.tftp.tftp_prefix {
+        info!("TFTP root is {}", root.display());
     }
-    
+
     // Log D-Bus status
     #[cfg(feature = "dbus")]
     if cfg.platform.dbus_enabled {
@@ -532,17 +561,35 @@ async fn log_startup_info(config: &Arc<RwLock<Config>>) {
 /// any untrusted network input. Failure to drop privileges is a fatal security error.
 async fn drop_privileges_safely(config: &Arc<RwLock<Config>>) -> Result<()> {
     let cfg = config.read().await;
-    
-    // Get configured user and group
-    let user = cfg.security.user.as_deref();
-    let group = cfg.security.group.as_deref();
-    
-    // Drop privileges using platform-specific implementation
-    drop_privileges(user, group)
-        .await
-        .context("Failed to drop privileges")?;
-    
-    info!("Privileges dropped to user: {:?}, group: {:?}", user, group);
+
+    // Check if we're running as root before attempting privilege drop
+    #[cfg(unix)]
+    {
+        use nix::unistd::Uid;
+        let current_uid = Uid::effective();
+
+        if current_uid.is_root() {
+            // Running as root - proceed with privilege drop
+            // Retain CAP_NET_ADMIN for DHCP and CAP_NET_RAW for ICMP (Router Advertisement)
+            drop_privileges(&cfg.security, true, true).context("Failed to drop privileges")?;
+
+            info!(
+                "Privileges dropped to user: {:?}, group: {:?}",
+                cfg.security.user.as_deref(),
+                cfg.security.group.as_deref()
+            );
+        } else {
+            // Already running as non-root user - skip privilege drop
+            info!("Running as non-root user (UID {}), skipping privilege drop", current_uid);
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        // Windows or other non-Unix platforms - no privilege dropping
+        info!("Privilege dropping not supported on this platform");
+    }
+
     Ok(())
 }
 
@@ -558,13 +605,14 @@ fn notify_systemd_ready() {
     #[cfg(target_os = "linux")]
     {
         // Send readiness notification to systemd
-        if let Err(e) = systemd::sd_notify("READY=1") {
+        // First parameter is whether to unset the environment variable
+        if let Err(e) = systemd::sd_notify(false, "READY=1") {
             warn!("Failed to notify systemd: {}", e);
         } else {
             info!("Systemd notified of daemon readiness");
         }
     }
-    
+
     #[cfg(not(target_os = "linux"))]
     {
         // No-op on non-Linux platforms

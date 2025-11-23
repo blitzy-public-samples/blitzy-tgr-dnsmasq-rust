@@ -99,11 +99,7 @@ use tracing_subscriber::fmt;
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // Initialize structured logging with tracing_subscriber
     // Configures log output format: timestamp, level, message
-    fmt()
-        .with_target(false)
-        .with_thread_ids(false)
-        .with_line_number(false)
-        .init();
+    fmt().with_target(false).with_thread_ids(false).with_line_number(false).init();
 
     info!("=== DHCPv4 Server Example ===");
     info!("This example demonstrates dnsmasq library usage patterns");
@@ -119,13 +115,9 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // Step 1: Create DHCP context configuration
     // This defines the address pool, netmask, gateway, and lease parameters
     let dhcp_context = create_dhcp_context();
-    
+
     info!("✓ DHCP context configured");
-    info!(
-        "  Range: {} - {}",
-        dhcp_context.start,
-        dhcp_context.end
-    );
+    info!("  Range: {} - {}", dhcp_context.start, dhcp_context.end);
 
     // Step 2: Demonstrate lease manager initialization pattern
     // In production, this would be: LeaseManager::new(config, dns_cache, max_leases)
@@ -136,7 +128,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // Step 3: Bind UDP socket to DHCP server port (67)
     // Demonstrates tokio async socket binding with error handling
     info!("Attempting to bind to 0.0.0.0:67...");
-    
+
     let socket = match UdpSocket::bind("0.0.0.0:67").await {
         Ok(sock) => {
             let addr = sock.local_addr()?;
@@ -232,10 +224,7 @@ fn create_dhcp_context() -> DhcpContextExample {
         interface: "eth0".to_string(),
         netmask: Ipv4Addr::new(255, 255, 255, 0),
         router: Ipv4Addr::new(192, 168, 1, 1),
-        dns_servers: vec![
-            Ipv4Addr::new(8, 8, 8, 8),
-            Ipv4Addr::new(8, 8, 4, 4),
-        ],
+        dns_servers: vec![Ipv4Addr::new(8, 8, 8, 8), Ipv4Addr::new(8, 8, 4, 4)],
         lease_time: 86400,
     }
 }
@@ -250,22 +239,22 @@ fn create_dhcp_context() -> DhcpContextExample {
 struct DhcpContextExample {
     /// Starting IP address of the range (inclusive)
     start: Ipv4Addr,
-    
+
     /// Ending IP address of the range (inclusive)
     end: Ipv4Addr,
-    
+
     /// Network interface name (e.g., "eth0", "br0")
     interface: String,
-    
+
     /// Subnet netmask (e.g., 255.255.255.0 for /24)
     netmask: Ipv4Addr,
-    
+
     /// Default gateway (router) IP address
     router: Ipv4Addr,
-    
+
     /// DNS servers to advertise to DHCP clients
     dns_servers: Vec<Ipv4Addr>,
-    
+
     /// Lease duration in seconds (86400 = 24 hours)
     lease_time: u32,
 }

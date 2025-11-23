@@ -1052,17 +1052,17 @@ impl ConfigParser {
 
     fn parse_edns_packet_max(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
         if let Some(size_str) = value {
-            let size = size_str
-                .parse::<u16>()
-                .map_err(|_| self.make_parse_error(format!("Invalid EDNS packet size: {size_str}")))?;
-            
+            let size = size_str.parse::<u16>().map_err(|_| {
+                self.make_parse_error(format!("Invalid EDNS packet size: {size_str}"))
+            })?;
+
             // Validate range: minimum is 512 (RFC 1035), maximum is 65535 (UDP max)
             if size < 512 {
                 return Err(self.make_parse_error(format!(
                     "EDNS packet size must be at least 512 bytes, got {size}"
                 )));
             }
-            
+
             self.config.dns.edns_packet_max = size;
         } else {
             return Err(self.make_parse_error("Missing EDNS packet size".to_string()));
@@ -1194,7 +1194,7 @@ impl ConfigParser {
 
         // Check if this is a prefix delegation range (contains CIDR notation)
         let is_prefix_delegation = parts[0].contains('/');
-        
+
         let (start, end, prefix_len) = if is_prefix_delegation {
             // Parse prefix delegation format: prefix/len,lease_time
             // Example: 2001:db8:1::/48,12h
@@ -1202,25 +1202,25 @@ impl ConfigParser {
             if prefix_parts.len() != 2 {
                 return Err(self.make_parse_error(format!("Invalid prefix notation: {}", parts[0])));
             }
-            
-            let prefix_addr: IpAddr = prefix_parts[0]
-                .trim()
-                .parse()
-                .map_err(|_| self.make_parse_error(format!("Invalid prefix address: {}", prefix_parts[0])))?;
-            
-            let prefix_length: u8 = prefix_parts[1]
-                .trim()
-                .parse()
-                .map_err(|_| self.make_parse_error(format!("Invalid prefix length: {}", prefix_parts[1])))?;
-            
+
+            let prefix_addr: IpAddr = prefix_parts[0].trim().parse().map_err(|_| {
+                self.make_parse_error(format!("Invalid prefix address: {}", prefix_parts[0]))
+            })?;
+
+            let prefix_length: u8 = prefix_parts[1].trim().parse().map_err(|_| {
+                self.make_parse_error(format!("Invalid prefix length: {}", prefix_parts[1]))
+            })?;
+
             // For prefix delegation, start and end are the same (the prefix base address)
             (prefix_addr, prefix_addr, prefix_length)
         } else {
             // Parse regular address range format: start,end,...
             if parts.len() < 2 {
-                return Err(self.make_parse_error(format!("Invalid DHCP range format: {range_str}")));
+                return Err(
+                    self.make_parse_error(format!("Invalid DHCP range format: {range_str}"))
+                );
             }
-            
+
             let start_addr: IpAddr = parts[0]
                 .trim()
                 .parse()
@@ -1229,7 +1229,7 @@ impl ConfigParser {
                 .trim()
                 .parse()
                 .map_err(|_| self.make_parse_error(format!("Invalid end IP: {}", parts[1])))?;
-            
+
             (start_addr, end_addr, 0)
         };
 
@@ -1687,21 +1687,17 @@ impl ConfigParser {
         if let Some(zone_str) = value {
             use crate::dns::auth::{AuthoritativeZone, SoaParams};
             use crate::dns::protocol::name::DomainName;
-            
+
             // Parse auth-zone=domain format
             let domain = DomainName::new(zone_str)
                 .map_err(|e| self.make_parse_error(format!("Invalid zone domain: {e}")))?;
-            
+
             // Create a new zone with default SOA parameters
             // SoaParams only contains the numeric fields, mname/rname are derived from zone domain
             let soa_params = SoaParams::default();
-            
-            let zone = AuthoritativeZone {
-                domain,
-                soa_params,
-                ns_records: Vec::new(),
-            };
-            
+
+            let zone = AuthoritativeZone { domain, soa_params, ns_records: Vec::new() };
+
             self.config.dns.authoritative_zones.push(zone);
         } else {
             return Err(self.make_parse_error("Missing zone domain".to_string()));
@@ -1713,33 +1709,36 @@ impl ConfigParser {
     fn parse_auth_server(&mut self, value: Option<&str>) -> Result<(), ConfigError> {
         if let Some(server_str) = value {
             use crate::dns::protocol::name::DomainName;
-            
+
             // Parse auth-server=domain,interface format
             // Note: interface parameter is mostly informational in the original C code
             let parts: Vec<&str> = server_str.split(',').collect();
             if parts.is_empty() {
                 return Err(self.make_parse_error("Missing server domain".to_string()));
             }
-            
+
             let domain_str = parts[0];
-            
+
             // Find the matching zone
-            let zone_index = self.config.dns.authoritative_zones
+            let zone_index = self
+                .config
+                .dns
+                .authoritative_zones
                 .iter()
                 .position(|z| z.domain.to_string() == domain_str);
-            
+
             if let Some(idx) = zone_index {
                 // Get the hostname for the NS record
                 // In a real implementation, this would be the system's fully qualified hostname
                 // For now, we'll use a placeholder that combines "ns" with the zone domain
                 let ns_name = DomainName::new(&format!("ns.{domain_str}"))
                     .map_err(|e| self.make_parse_error(format!("Invalid NS name: {e}")))?;
-                
+
                 self.config.dns.authoritative_zones[idx].ns_records.push(ns_name);
             } else {
-                return Err(self.make_parse_error(
-                    format!("auth-server specified for undefined zone: {domain_str}")
-                ));
+                return Err(self.make_parse_error(format!(
+                    "auth-server specified for undefined zone: {domain_str}"
+                )));
             }
         } else {
             return Err(self.make_parse_error("Missing server specification".to_string()));

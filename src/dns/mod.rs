@@ -473,8 +473,16 @@ impl DnsService {
     /// - `warn!` on validation failures
     /// - `error!` on unrecoverable errors
     #[instrument(skip(self), fields(domain = %query.name, qtype = ?query.qtype, client = %client_addr))]
-    pub async fn resolve_query(&self, query: DnsQuery, client_addr: IpAddr, original_query_bytes: Option<&[u8]>) -> Result<DnsResponse> {
-        eprintln!("[RESOLVE DEBUG] Starting query resolution for {} type {:?}", query.name, query.qtype);
+    pub async fn resolve_query(
+        &self,
+        query: DnsQuery,
+        client_addr: IpAddr,
+        original_query_bytes: Option<&[u8]>,
+    ) -> Result<DnsResponse> {
+        eprintln!(
+            "[RESOLVE DEBUG] Starting query resolution for {} type {:?}",
+            query.name, query.qtype
+        );
         debug!("Starting DNS query resolution");
 
         // Step 1: Cache lookup (fastest path)
@@ -516,7 +524,7 @@ impl DnsService {
 
         // Step 3: Upstream forwarding (network-bound)
         debug!("Forwarding query to upstream servers");
-        
+
         // Use original query bytes if available (preserves EDNS0), otherwise reconstruct
         let query_bytes = if let Some(original_bytes) = original_query_bytes {
             info!("Using original query bytes (preserves EDNS0)");
@@ -530,25 +538,24 @@ impl DnsService {
                 qtype: query.qtype,
                 qclass: query.qclass,
             });
-            
+
             // Serialize query to bytes
-            query_message.to_bytes()
+            query_message
+                .to_bytes()
                 .map_err(|e| DnsError::ParseError(format!("Failed to serialize query: {e}")))?
         };
-        
+
         // Forward to upstream and wait for response message
-        let response_message = self.forwarder
-            .forward_query_and_wait(&query, &query_bytes)
-            .await?;
-        
+        let response_message = self.forwarder.forward_query_and_wait(&query, &query_bytes).await?;
+
         // Step 4: Cache the response
         {
             use crate::dns::protocol::record::RData;
             use crate::types::CacheFlags;
             use std::net::IpAddr;
-            
+
             let mut cache = self.cache.write().await;
-            
+
             // Cache positive responses (those with answers)
             let has_answers = !response_message.answers.is_empty();
             for answer in &response_message.answers {
@@ -558,29 +565,30 @@ impl DnsService {
                     RData::AAAA(ipv6) => Some(IpAddr::V6(*ipv6)),
                     _ => None,
                 };
-                
+
                 let entry = CacheEntry::new(
                     answer.name().clone(),
                     answer.rtype(),
                     ip_addr,
                     answer.ttl(),
-                    CacheFlags::FORWARD | if ip_addr.map_or(false, |ip| ip.is_ipv4()) { 
-                        CacheFlags::IPV4 
-                    } else { 
-                        CacheFlags::IPV6 
-                    },
+                    CacheFlags::FORWARD
+                        | if ip_addr.is_some_and(|ip| ip.is_ipv4()) {
+                            CacheFlags::IPV4
+                        } else {
+                            CacheFlags::IPV6
+                        },
                 );
-                
+
                 if let Err(e) = cache.insert(entry) {
                     warn!("Failed to cache response: {}", e);
                 }
             }
-            
+
             // Cache negative responses (NXDOMAIN or NODATA)
             if !has_answers {
                 let rcode = response_message.get_rcode();
                 let is_nxdomain = rcode == 3; // NXDOMAIN
-                
+
                 if is_nxdomain || rcode == 0 {
                     // NXDOMAIN (rcode 3) or NODATA (rcode 0 with no answers)
                     let negative_flags = if is_nxdomain {
@@ -588,15 +596,14 @@ impl DnsService {
                     } else {
                         CacheFlags::NEG
                     };
-                    
+
                     // Use SOA TTL if available, otherwise default to 300 seconds
                     let ttl = response_message
                         .authority
                         .iter()
                         .find(|rr| rr.rtype() == crate::types::RecordType::SOA)
-                        .map(|soa| soa.ttl())
-                        .unwrap_or(300);
-                    
+                        .map_or(300, protocol::record::ResourceRecord::ttl);
+
                     let negative_entry = CacheEntry::new(
                         query.name.clone(),
                         query.qtype,
@@ -604,22 +611,25 @@ impl DnsService {
                         ttl,
                         negative_flags,
                     );
-                    
+
                     eprintln!("[CACHE DEBUG] Inserting negative cache entry for {} type {:?} (NXDOMAIN: {})", 
                         query.name, query.qtype, is_nxdomain);
-                    
+
                     if let Err(e) = cache.insert(negative_entry) {
                         warn!("Failed to cache negative response: {}", e);
                     } else {
-                        debug!("Cached negative response for {} type {:?}", query.name, query.qtype);
+                        debug!(
+                            "Cached negative response for {} type {:?}",
+                            query.name, query.qtype
+                        );
                     }
                 }
             }
         }
-        
+
         // Convert message to response for API consistency
         let response = DnsResponse::from_message(response_message);
-        
+
         Ok(response)
     }
 
@@ -640,12 +650,12 @@ impl DnsService {
         cached_entry: &CacheEntry,
     ) -> Result<DnsResponse> {
         use crate::types::CacheFlags;
-        
+
         // Check if this is a negative cache entry
         let flags = cached_entry.flags();
         let is_negative = flags.contains(CacheFlags::NEG);
         let is_nxdomain = flags.contains(CacheFlags::NXDOMAIN);
-        
+
         // Create a minimal query message to build response from
         let query_message = protocol::DnsMessage::builder()
             .id(0) // ID will be set by caller if needed
@@ -658,7 +668,7 @@ impl DnsService {
             .build();
 
         let mut response = DnsResponse::from_query(&query_message);
-        
+
         if is_negative {
             // For negative cache entries, set the RCODE appropriately
             if is_nxdomain {
@@ -674,12 +684,12 @@ impl DnsService {
             // Positive cache entry - add the record
             response.add_answer(cached_entry.record().clone());
         }
-        
+
         // Set the AA (Authoritative Answer) flag if this is from a host-record or authoritative zone
         // Host records (from config) and authoritative zones should have the AA flag set
         let is_authoritative = flags.contains(CacheFlags::HOSTS);
         response.set_authoritative(is_authoritative);
-        
+
         Ok(response)
     }
 
@@ -1108,14 +1118,14 @@ impl DnsServiceBuilder {
         // Populate cache with host records from configuration
         // This ensures that host-record entries are available for authoritative zone answering
         if !config.host_records.is_empty() {
-            use crate::dns::protocol::name::DomainName;
-            use crate::types::{RecordType, CacheFlags};
             use crate::dns::cache::CacheEntry;
+            use crate::dns::protocol::name::DomainName;
+            use crate::types::{CacheFlags, RecordType};
             use std::net::IpAddr;
-            
+
             let host_ttl = 600u32; // Default TTL for host records (matching C daemon)
             let mut cache_write = cache.write().await;
-            
+
             for (hostname, addrs) in &config.host_records {
                 // Parse the domain name
                 let domain_name = match DomainName::new(hostname) {
@@ -1125,14 +1135,14 @@ impl DnsServiceBuilder {
                         continue;
                     }
                 };
-                
+
                 // Create cache entries for each IP address
                 for addr in addrs {
                     let (record_type, flags) = match addr {
                         IpAddr::V4(_) => (RecordType::A, CacheFlags::HOSTS | CacheFlags::IPV4),
                         IpAddr::V6(_) => (RecordType::AAAA, CacheFlags::HOSTS | CacheFlags::IPV6),
                     };
-                    
+
                     let entry = CacheEntry::new(
                         domain_name.clone(),
                         record_type,
@@ -1140,30 +1150,27 @@ impl DnsServiceBuilder {
                         host_ttl,
                         flags,
                     );
-                    
+
                     if let Err(e) = cache_write.insert(entry) {
                         warn!("Failed to insert host-record into cache: {}: {}", hostname, e);
                     }
                 }
             }
-            
+
             drop(cache_write); // Release the write lock
         }
 
         // Create upstream pool
         let mut pool = UpstreamPool::new();
-        
+
         // Populate pool with servers from config
         for server_details in &config.upstream_servers {
             let flags = ServerFlags::from_bits_truncate(server_details.flags);
-            let server = UpstreamServer::new(
-                server_details.addr,
-                server_details.domain.clone(),
-                flags,
-            );
+            let server =
+                UpstreamServer::new(server_details.addr, server_details.domain.clone(), flags);
             pool.add_server(server);
         }
-        
+
         let upstream_pool = Arc::new(RwLock::new(pool));
 
         // Create forwarder with cache and upstream pool references
@@ -1191,7 +1198,7 @@ impl DnsServiceBuilder {
             } else {
                 None
             };
-            
+
             if let Some(zones) = zones_to_use {
                 // AuthService::new requires zones, cache, and auth_ttl
                 // Use default TTL of 600 seconds (matching C daemon->local_ttl default)

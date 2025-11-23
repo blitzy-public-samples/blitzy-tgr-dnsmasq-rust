@@ -842,7 +842,13 @@ impl DhcpV4Service {
         let lease_manager = self.lease_manager.read().await;
         if let Some(existing_lease) = lease_manager.find_by_mac(client_mac).await {
             // Don't reuse leases that have been marked as DECLINED
-            if !existing_lease.flags.contains(LeaseFlags::DECLINED) {
+            if existing_lease.flags.contains(LeaseFlags::DECLINED) {
+                debug!(
+                    mac = %client_mac,
+                    declined_ip = %existing_lease.ip,
+                    "Client has existing DECLINED lease, will allocate new IP"
+                );
+            } else {
                 // Extract IPv4 address from IpAddr enum
                 if let std::net::IpAddr::V4(ipv4) = existing_lease.ip {
                     // Check if existing lease is in this context's range
@@ -855,12 +861,6 @@ impl DhcpV4Service {
                         return Ok(ipv4);
                     }
                 }
-            } else {
-                debug!(
-                    mac = %client_mac,
-                    declined_ip = %existing_lease.ip,
-                    "Client has existing DECLINED lease, will allocate new IP"
-                );
             }
         }
         drop(lease_manager);
@@ -1329,7 +1329,7 @@ impl DhcpV4Service {
                 );
                 return Ok(false);
             }
-            
+
             if let Some(ref mac) = existing_lease.mac {
                 if mac != client_mac {
                     // Leased to different client

@@ -241,11 +241,9 @@ impl RadVServer {
     /// - Validates interval values are positive
     /// - Validates priority values are in valid range (0, 1, or 3)
     pub fn new(config: Arc<Config>, interface_manager: Arc<InterfaceManager>) -> Result<Self> {
-        // Validate that we have RA interfaces configured
+        // Log if no RA interfaces configured (valid for DNS-only mode)
         if config.ra_interfaces.is_empty() {
-            return Err(RadVError::Configuration(
-                "No Router Advertisement interfaces configured".to_string(),
-            ));
+            info!("Router Advertisement disabled - no interfaces configured (DNS-only mode)");
         }
 
         // Validate each RA interface configuration
@@ -1309,8 +1307,9 @@ mod tests {
         let platform = Arc::new(LinuxNetworkPlatform::new().await.unwrap());
         let interface_manager = Arc::new(InterfaceManager::new(platform));
 
+        // Empty interfaces list is valid - dnsmasq can run in DNS-only mode without RA
         let result = RadVServer::new(config, interface_manager);
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     /// Test calc_lifetime returns 3x interval

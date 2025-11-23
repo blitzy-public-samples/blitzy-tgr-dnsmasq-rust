@@ -460,14 +460,14 @@ impl DhcpProtocol {
 
         // Mark address as declined in lease database
         // The address will be unavailable for allocation until manually cleared or timeout expires
-        
+
         // Check if lease exists; if not, create a declined lease entry
         let declined_ip_addr = std::net::IpAddr::V4(*declined_ip);
         if self.lease_manager.read().await.find_by_ip(&declined_ip_addr).await.is_none() {
             // No existing lease - create a new declined lease
             // Use a long decline time (1 hour) to prevent immediate reallocation
             let decline_duration = Duration::from_secs(3600);
-            
+
             match self
                 .lease_manager
                 .read()
@@ -498,14 +498,10 @@ impl DhcpProtocol {
                 }
             }
         }
-        
+
         // Now mark the lease as declined
-        if let Err(e) = self
-            .lease_manager
-            .write()
-            .await
-            .mark_lease_declined(&declined_ip_addr)
-            .await
+        if let Err(e) =
+            self.lease_manager.write().await.mark_lease_declined(&declined_ip_addr).await
         {
             error!(
                 declined_ip = %declined_ip,
@@ -988,7 +984,8 @@ impl DhcpProtocol {
                             self.lease_manager.read().await.find_by_ip(&req_ip_addr).await
                         {
                             // IP is available if lease is expired or not declined
-                            existing_lease.is_expired() && !existing_lease.flags.contains(LeaseFlags::DECLINED)
+                            existing_lease.is_expired()
+                                && !existing_lease.flags.contains(LeaseFlags::DECLINED)
                         } else {
                             // No lease exists, IP is available
                             true
@@ -1023,7 +1020,8 @@ impl DhcpProtocol {
                     self.lease_manager.read().await.find_by_ip(&candidate_addr).await
                 {
                     // IP is available only if lease is expired AND not declined
-                    existing_lease.is_expired() && !existing_lease.flags.contains(LeaseFlags::DECLINED)
+                    existing_lease.is_expired()
+                        && !existing_lease.flags.contains(LeaseFlags::DECLINED)
                 } else {
                     // No lease exists, IP is available
                     true

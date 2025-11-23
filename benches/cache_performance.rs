@@ -77,7 +77,7 @@
 //! cargo bench --bench cache_performance -- --baseline main
 //! ```
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, black_box, BatchSize};
+use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use dnsmasq::dns::cache::{CacheEntry, DnsCache};
 use dnsmasq::dns::protocol::name::DomainName;
 use dnsmasq::types::{CacheFlags, IpAddr, RecordType};
@@ -107,47 +107,42 @@ use tokio::sync::RwLock;
 /// achieving 200-500ns per insertion on modern hardware.
 fn cache_insert_sequential(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_insert_sequential");
-    
+
     for cache_size in [10, 100, 1000, 10000].iter() {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(cache_size),
-            cache_size,
-            |b, &size| {
-                b.iter_batched(
-                    || {
-                        // Setup: Create empty cache
-                        DnsCache::with_capacity(size)
-                    },
-                    |mut cache| {
-                        // Benchmark: Insert entries sequentially
-                        for i in 0..size {
-                            let domain_str = format!("host{}.example.com", i);
-                            let domain = DomainName::new(&domain_str)
-                                .expect("Valid domain name");
-                            let ip = IpAddr::V4(Ipv4Addr::new(
-                                192,
-                                168,
-                                ((i / 256) % 256) as u8,
-                                (i % 256) as u8,
-                            ));
-                            let entry = CacheEntry::new(
-                                domain,
-                                RecordType::A,
-                                Some(ip),
-                                300, // TTL: 5 minutes
-                                CacheFlags::FORWARD | CacheFlags::IPV4,
-                            );
-                            
-                            black_box(cache.insert(entry).expect("Insert should succeed"));
-                        }
-                        black_box(cache)
-                    },
-                    BatchSize::SmallInput,
-                );
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(cache_size), cache_size, |b, &size| {
+            b.iter_batched(
+                || {
+                    // Setup: Create empty cache
+                    DnsCache::with_capacity(size)
+                },
+                |mut cache| {
+                    // Benchmark: Insert entries sequentially
+                    for i in 0..size {
+                        let domain_str = format!("host{}.example.com", i);
+                        let domain = DomainName::new(&domain_str).expect("Valid domain name");
+                        let ip = IpAddr::V4(Ipv4Addr::new(
+                            192,
+                            168,
+                            ((i / 256) % 256) as u8,
+                            (i % 256) as u8,
+                        ));
+                        let entry = CacheEntry::new(
+                            domain,
+                            RecordType::A,
+                            Some(ip),
+                            300, // TTL: 5 minutes
+                            CacheFlags::FORWARD | CacheFlags::IPV4,
+                        );
+
+                        black_box(cache.insert(entry).expect("Insert should succeed"));
+                    }
+                    black_box(cache)
+                },
+                BatchSize::SmallInput,
+            );
+        });
     }
-    
+
     group.finish();
 }
 
@@ -171,10 +166,10 @@ fn cache_insert_sequential(c: &mut Criterion) {
 /// (150-1000 entries) with low collision rates.
 fn cache_lookup_by_name(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_lookup_by_name");
-    
+
     let cache_capacity = 1000;
     let fill_ratios = [0.1, 0.5, 0.9, 1.0]; // 10%, 50%, 90%, 100%
-    
+
     for &fill_ratio in fill_ratios.iter() {
         group.bench_with_input(
             BenchmarkId::new("fill_ratio", format!("{:.0}%", fill_ratio * 100.0)),
@@ -185,12 +180,16 @@ fn cache_lookup_by_name(c: &mut Criterion) {
                         // Setup: Create and populate cache
                         let mut cache = DnsCache::with_capacity(cache_capacity);
                         let num_entries = (cache_capacity as f64 * ratio) as usize;
-                        
+
                         for i in 0..num_entries {
                             let domain_str = format!("host{}.example.com", i);
-                            let domain = DomainName::new(&domain_str)
-                                .expect("Valid domain name");
-                            let ip = IpAddr::V4(Ipv4Addr::new(192, 168, (i / 256) as u8, (i % 256) as u8));
+                            let domain = DomainName::new(&domain_str).expect("Valid domain name");
+                            let ip = IpAddr::V4(Ipv4Addr::new(
+                                192,
+                                168,
+                                (i / 256) as u8,
+                                (i % 256) as u8,
+                            ));
                             let entry = CacheEntry::new(
                                 domain,
                                 RecordType::A,
@@ -200,12 +199,12 @@ fn cache_lookup_by_name(c: &mut Criterion) {
                             );
                             cache.insert(entry).expect("Insert should succeed");
                         }
-                        
+
                         // Create lookup domain (50% hit rate - lookup middle entry)
                         let lookup_str = format!("host{}.example.com", num_entries / 2);
-                        let lookup_domain = DomainName::new(&lookup_str)
-                            .expect("Valid domain name");
-                        
+                        let lookup_domain =
+                            DomainName::new(&lookup_str).expect("Valid domain name");
+
                         (cache, lookup_domain)
                     },
                     |(mut cache, domain)| {
@@ -217,7 +216,7 @@ fn cache_lookup_by_name(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
@@ -241,52 +240,48 @@ fn cache_lookup_by_name(c: &mut Criterion) {
 /// O(n) complexity for infrequent PTR queries.
 fn cache_lookup_by_addr(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_lookup_by_addr");
-    
+
     for cache_size in [100, 500, 1000].iter() {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(cache_size),
-            cache_size,
-            |b, &size| {
-                b.iter_batched(
-                    || {
-                        // Setup: Create and populate cache
-                        let mut cache = DnsCache::with_capacity(size);
-                        
-                        for i in 0..size {
-                            let domain_str = format!("host{}.example.com", i);
-                            let domain = DomainName::new(&domain_str)
-                                .expect("Valid domain name");
-                            let ip = IpAddr::V4(Ipv4Addr::new(192, 168, (i / 256) as u8, (i % 256) as u8));
-                            let entry = CacheEntry::new(
-                                domain,
-                                RecordType::A,
-                                Some(ip),
-                                300,
-                                CacheFlags::FORWARD | CacheFlags::IPV4,
-                            );
-                            cache.insert(entry).expect("Insert should succeed");
-                        }
-                        
-                        // Lookup address in middle (worst case: scan half the cache)
-                        let lookup_addr = IpAddr::V4(Ipv4Addr::new(
-                            192,
-                            168,
-                            ((size / 2) / 256) as u8,
-                            ((size / 2) % 256) as u8,
-                        ));
-                        
-                        (cache, lookup_addr)
-                    },
-                    |(mut cache, addr)| {
-                        // Benchmark: Reverse lookup
-                        black_box(cache.find_by_addr(&addr))
-                    },
-                    BatchSize::SmallInput,
-                );
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(cache_size), cache_size, |b, &size| {
+            b.iter_batched(
+                || {
+                    // Setup: Create and populate cache
+                    let mut cache = DnsCache::with_capacity(size);
+
+                    for i in 0..size {
+                        let domain_str = format!("host{}.example.com", i);
+                        let domain = DomainName::new(&domain_str).expect("Valid domain name");
+                        let ip =
+                            IpAddr::V4(Ipv4Addr::new(192, 168, (i / 256) as u8, (i % 256) as u8));
+                        let entry = CacheEntry::new(
+                            domain,
+                            RecordType::A,
+                            Some(ip),
+                            300,
+                            CacheFlags::FORWARD | CacheFlags::IPV4,
+                        );
+                        cache.insert(entry).expect("Insert should succeed");
+                    }
+
+                    // Lookup address in middle (worst case: scan half the cache)
+                    let lookup_addr = IpAddr::V4(Ipv4Addr::new(
+                        192,
+                        168,
+                        ((size / 2) / 256) as u8,
+                        ((size / 2) % 256) as u8,
+                    ));
+
+                    (cache, lookup_addr)
+                },
+                |(mut cache, addr)| {
+                    // Benchmark: Reverse lookup
+                    black_box(cache.find_by_addr(&addr))
+                },
+                BatchSize::SmallInput,
+            );
+        });
     }
-    
+
     group.finish();
 }
 
@@ -309,19 +304,18 @@ fn cache_lookup_by_addr(c: &mut Criterion) {
 /// C eviction: Remove tail from doubly-linked list (3 pointer updates) + hash table removal
 fn cache_lru_eviction(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_lru_eviction");
-    
+
     let cache_capacity = 1000;
-    
+
     group.bench_function("evict_when_full", |b| {
         b.iter_batched(
             || {
                 // Setup: Fill cache to capacity
                 let mut cache = DnsCache::with_capacity(cache_capacity);
-                
+
                 for i in 0..cache_capacity {
                     let domain_str = format!("host{}.example.com", i);
-                    let domain = DomainName::new(&domain_str)
-                        .expect("Valid domain name");
+                    let domain = DomainName::new(&domain_str).expect("Valid domain name");
                     let ip = IpAddr::V4(Ipv4Addr::new(192, 168, (i / 256) as u8, (i % 256) as u8));
                     let entry = CacheEntry::new(
                         domain,
@@ -332,7 +326,7 @@ fn cache_lru_eviction(c: &mut Criterion) {
                     );
                     cache.insert(entry).expect("Insert should succeed");
                 }
-                
+
                 cache
             },
             |mut cache| {
@@ -342,7 +336,7 @@ fn cache_lru_eviction(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     group.finish();
 }
 
@@ -366,21 +360,20 @@ fn cache_lru_eviction(c: &mut Criterion) {
 /// pure lookup time × number of tasks.
 fn cache_concurrent_reads(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_concurrent_reads");
-    
+
     let cache_size = 1000;
     let num_readers = 8; // Simulate 8 concurrent readers
-    
+
     group.bench_function("8_concurrent_readers", |b| {
         b.iter_batched(
             || {
                 // Setup: Create runtime and populated cache
                 let rt = Runtime::new().expect("Failed to create runtime");
-                
+
                 let mut cache = DnsCache::with_capacity(cache_size);
                 for i in 0..cache_size {
                     let domain_str = format!("host{}.example.com", i);
-                    let domain = DomainName::new(&domain_str)
-                        .expect("Valid domain name");
+                    let domain = DomainName::new(&domain_str).expect("Valid domain name");
                     let ip = IpAddr::V4(Ipv4Addr::new(192, 168, (i / 256) as u8, (i % 256) as u8));
                     let entry = CacheEntry::new(
                         domain,
@@ -391,7 +384,7 @@ fn cache_concurrent_reads(c: &mut Criterion) {
                     );
                     cache.insert(entry).expect("Insert should succeed");
                 }
-                
+
                 let cache_arc = Arc::new(RwLock::new(cache));
                 (rt, cache_arc)
             },
@@ -399,13 +392,12 @@ fn cache_concurrent_reads(c: &mut Criterion) {
                 // Benchmark: Concurrent reads
                 rt.block_on(async {
                     let mut handles = Vec::new();
-                    
+
                     for i in 0..num_readers {
                         let cache_clone = Arc::clone(&cache_arc);
                         let handle = tokio::spawn(async move {
                             let domain_str = format!("host{}.example.com", i * 10);
-                            let _domain = DomainName::new(&domain_str)
-                                .expect("Valid domain name");
+                            let _domain = DomainName::new(&domain_str).expect("Valid domain name");
                             let cache_read = cache_clone.read().await;
                             // Need to clone cache to call mutable method
                             // For benchmark purposes, we'll just access length
@@ -413,7 +405,7 @@ fn cache_concurrent_reads(c: &mut Criterion) {
                         });
                         handles.push(handle);
                     }
-                    
+
                     for handle in handles {
                         black_box(handle.await.expect("Task should complete"));
                     }
@@ -422,7 +414,7 @@ fn cache_concurrent_reads(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     group.finish();
 }
 
@@ -445,10 +437,10 @@ fn cache_concurrent_reads(c: &mut Criterion) {
 /// C implementation is single-threaded, so baseline is sequential insert time.
 fn cache_concurrent_writes(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_concurrent_writes");
-    
+
     let cache_size = 1000;
     let num_writers = 8;
-    
+
     group.bench_function("8_concurrent_writers", |b| {
         b.iter_batched(
             || {
@@ -462,14 +454,14 @@ fn cache_concurrent_writes(c: &mut Criterion) {
                 // Benchmark: Concurrent writes
                 rt.block_on(async {
                     let mut handles = Vec::new();
-                    
+
                     for i in 0..num_writers {
                         let cache_clone = Arc::clone(&cache_arc);
                         let handle = tokio::spawn(async move {
                             for j in 0..10 {
                                 let domain_str = format!("host{}.example.com", i * 100 + j);
-                                let domain = DomainName::new(&domain_str)
-                                    .expect("Valid domain name");
+                                let domain =
+                                    DomainName::new(&domain_str).expect("Valid domain name");
                                 let ip = IpAddr::V4(Ipv4Addr::new(192, 168, i as u8, j as u8));
                                 let entry = CacheEntry::new(
                                     domain,
@@ -478,14 +470,16 @@ fn cache_concurrent_writes(c: &mut Criterion) {
                                     300,
                                     CacheFlags::FORWARD | CacheFlags::IPV4,
                                 );
-                                
+
                                 let mut cache_write = cache_clone.write().await;
-                                black_box(cache_write.insert(entry).expect("Insert should succeed"));
+                                black_box(
+                                    cache_write.insert(entry).expect("Insert should succeed"),
+                                );
                             }
                         });
                         handles.push(handle);
                     }
-                    
+
                     for handle in handles {
                         black_box(handle.await.expect("Task should complete"));
                     }
@@ -494,7 +488,7 @@ fn cache_concurrent_writes(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     group.finish();
 }
 
@@ -516,22 +510,21 @@ fn cache_concurrent_writes(c: &mut Criterion) {
 /// C single-threaded processing of 80% lookups + 20% inserts sequentially.
 fn cache_mixed_workload(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_mixed_workload");
-    
+
     let cache_size = 1000;
     let num_operations = 100;
     let read_ratio = 0.8; // 80% reads
-    
+
     group.bench_function("80_20_read_write", |b| {
         b.iter_batched(
             || {
                 // Setup: Pre-populate cache
                 let rt = Runtime::new().expect("Failed to create runtime");
                 let mut cache = DnsCache::with_capacity(cache_size);
-                
+
                 for i in 0..cache_size / 2 {
                     let domain_str = format!("host{}.example.com", i);
-                    let domain = DomainName::new(&domain_str)
-                        .expect("Valid domain name");
+                    let domain = DomainName::new(&domain_str).expect("Valid domain name");
                     let ip = IpAddr::V4(Ipv4Addr::new(192, 168, (i / 256) as u8, (i % 256) as u8));
                     let entry = CacheEntry::new(
                         domain,
@@ -542,7 +535,7 @@ fn cache_mixed_workload(c: &mut Criterion) {
                     );
                     cache.insert(entry).expect("Insert should succeed");
                 }
-                
+
                 let cache_arc = Arc::new(RwLock::new(cache));
                 (rt, cache_arc)
             },
@@ -551,7 +544,7 @@ fn cache_mixed_workload(c: &mut Criterion) {
                 rt.block_on(async {
                     for i in 0..num_operations {
                         let is_read = (i as f64 / num_operations as f64) < read_ratio;
-                        
+
                         if is_read {
                             // Read operation
                             let cache_read = cache_arc.read().await;
@@ -559,9 +552,9 @@ fn cache_mixed_workload(c: &mut Criterion) {
                         } else {
                             // Write operation
                             let domain_str = format!("newhost{}.example.com", i);
-                            let domain = DomainName::new(&domain_str)
-                                .expect("Valid domain name");
-                            let ip = IpAddr::V4(Ipv4Addr::new(10, 0, (i / 256) as u8, (i % 256) as u8));
+                            let domain = DomainName::new(&domain_str).expect("Valid domain name");
+                            let ip =
+                                IpAddr::V4(Ipv4Addr::new(10, 0, (i / 256) as u8, (i % 256) as u8));
                             let entry = CacheEntry::new(
                                 domain,
                                 RecordType::A,
@@ -569,7 +562,7 @@ fn cache_mixed_workload(c: &mut Criterion) {
                                 300,
                                 CacheFlags::FORWARD | CacheFlags::IPV4,
                             );
-                            
+
                             let mut cache_write = cache_arc.write().await;
                             black_box(cache_write.insert(entry).expect("Insert should succeed"));
                         }
@@ -579,7 +572,7 @@ fn cache_mixed_workload(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     group.finish();
 }
 
@@ -602,7 +595,7 @@ fn cache_mixed_workload(c: &mut Criterion) {
 /// O(n) time proportional to cache size.
 fn cache_invalidation(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_invalidation");
-    
+
     for cache_size in [100, 1000, 10000].iter() {
         group.bench_with_input(
             BenchmarkId::new("full_clear", cache_size),
@@ -612,11 +605,10 @@ fn cache_invalidation(c: &mut Criterion) {
                     || {
                         // Setup: Fill cache completely
                         let mut cache = DnsCache::with_capacity(size);
-                        
+
                         for i in 0..size {
                             let domain_str = format!("host{}.example.com", i);
-                            let domain = DomainName::new(&domain_str)
-                                .expect("Valid domain name");
+                            let domain = DomainName::new(&domain_str).expect("Valid domain name");
                             let ip = IpAddr::V4(Ipv4Addr::new(
                                 192,
                                 168,
@@ -632,7 +624,7 @@ fn cache_invalidation(c: &mut Criterion) {
                             );
                             cache.insert(entry).expect("Insert should succeed");
                         }
-                        
+
                         cache
                     },
                     |mut cache| {
@@ -645,7 +637,7 @@ fn cache_invalidation(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
@@ -659,7 +651,7 @@ criterion_group! {
         .sample_size(100)         // 100 samples for statistical significance
         .warm_up_time(Duration::from_secs(3))  // 3 second warmup
         .measurement_time(Duration::from_secs(10));  // 10 second measurement
-    targets = 
+    targets =
         cache_insert_sequential,
         cache_lookup_by_name,
         cache_lookup_by_addr,

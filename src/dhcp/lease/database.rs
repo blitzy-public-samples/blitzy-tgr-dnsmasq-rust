@@ -231,10 +231,12 @@ fn parse_standard_lease(
     let expires = UNIX_EPOCH + std::time::Duration::from_secs(expires_timestamp);
 
     // Check if lease has already expired
-    debug!("Expiration check: expires_timestamp={}, now_timestamp={:?}, IP={}", 
-           expires_timestamp, 
-           now.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
-           parts[2]);
+    debug!(
+        "Expiration check: expires_timestamp={}, now_timestamp={:?}, IP={}",
+        expires_timestamp,
+        now.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
+        parts[2]
+    );
     if expires < now {
         debug!("Skipping expired lease with IP {}", parts[2]);
         return Ok(()); // Skip expired leases during load
@@ -247,7 +249,7 @@ fn parse_standard_lease(
         let (mac, iaid, flags) = if ip.is_ipv6() {
             // DHCPv6 format: <expiry> <iaid> <ip> <hostname> <client_id>
             let iaid_str = parts[1];
-            
+
             let (iaid_num, flags) = if let Some(stripped) = iaid_str.strip_prefix('T') {
                 // Temporary Address (TA)
                 let iaid_num: u32 =
@@ -259,19 +261,19 @@ fn parse_standard_lease(
                     iaid_str.parse().map_err(|e| format!("Invalid IAID in NA lease: {e}"))?;
                 (Some(iaid_num), LeaseFlags::NA)
             };
-            
+
             // DHCPv6 leases don't have MAC addresses in the lease file
             (None, iaid_num, flags)
         } else {
             // DHCPv4 format: <expiry> <mac> <ip> <hostname> <client_id>
             let mac_str = parts[1];
-            
+
             let mac = if mac_str == "*" {
                 None
             } else {
                 Some(MacAddress::parse(mac_str).map_err(|e| format!("Invalid MAC address: {e}"))?)
             };
-            
+
             (mac, None, LeaseFlags::empty())
         };
 
@@ -299,8 +301,13 @@ fn parse_standard_lease(
             slaac_addresses: None,    // DHCPv6 SLAAC addresses loaded separately
         };
 
-        debug!("Parsed lease successfully: IP={}, MAC={:?}, v6={}, iaid={:?}", 
-               lease.ip, lease.mac, lease.ip.is_ipv6(), lease.iaid);
+        debug!(
+            "Parsed lease successfully: IP={}, MAC={:?}, v6={}, iaid={:?}",
+            lease.ip,
+            lease.mac,
+            lease.ip.is_ipv6(),
+            lease.iaid
+        );
         leases.push(lease);
         debug!("Lease added to vector, total leases = {}", leases.len());
         Ok(())

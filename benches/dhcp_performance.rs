@@ -104,8 +104,7 @@
 //! that memory safety transformations don't introduce unacceptable overhead.
 
 use criterion::{
-    criterion_group, criterion_main, BenchmarkId, Criterion, BatchSize, Throughput,
-    black_box,
+    black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput,
 };
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
@@ -150,7 +149,7 @@ fn dhcpv4_lease_allocation(c: &mut Criterion) {
                     // Simulate DISCOVER message from client
                     let discover_msg = create_dhcpv4_discover_message(
                         [0x00, 0x11, 0x22, 0x33, 0x44, 0x55], // MAC address
-                        0x12345678, // Transaction ID
+                        0x12345678,                           // Transaction ID
                     );
 
                     // Process DISCOVER and generate OFFER
@@ -223,13 +222,9 @@ fn dhcpv6_lease_allocation(c: &mut Criterion) {
                     );
 
                     // Process SOLICIT and generate ADVERTISE
-                    let advertise_result = process_dhcpv6_solicit(
-                        &config,
-                        &lease_manager,
-                        &prefix_pool,
-                        &solicit_msg,
-                    )
-                    .await;
+                    let advertise_result =
+                        process_dhcpv6_solicit(&config, &lease_manager, &prefix_pool, &solicit_msg)
+                            .await;
 
                     // Simulate REQUEST message
                     if let Ok(advertised_addr) = advertise_result {
@@ -283,16 +278,14 @@ fn address_pool_search(c: &mut Criterion) {
         // Test different fill ratios
         for fill_ratio in [10, 50, 90] {
             let param = format!("{}addr_{}fill", pool_size, fill_ratio);
-            
+
             group.throughput(Throughput::Elements(1));
             group.bench_with_input(
                 BenchmarkId::from_parameter(&param),
                 &(pool_size, fill_ratio),
                 |b, &(size, fill)| {
                     b.iter_batched(
-                        || {
-                            setup_address_pool(&rt, size, fill)
-                        },
+                        || setup_address_pool(&rt, size, fill),
                         |pool| {
                             rt.block_on(async {
                                 // Search for available address
@@ -338,7 +331,7 @@ fn lease_conflict_detection(c: &mut Criterion) {
                     // Test address that should timeout (not in use)
                     let test_addr = Ipv4Addr::new(192, 168, 1, 200);
                     let timeout = Duration::from_millis(100); // Fast timeout for benchmarking
-                    
+
                     // Perform ICMP ping check
                     let result = do_icmp_ping_check(&socket, test_addr, timeout).await;
                     black_box(result)
@@ -379,7 +372,7 @@ fn lease_persistence(c: &mut Criterion) {
             |(temp_dir, leases)| {
                 rt.block_on(async {
                     let lease_file = temp_dir.path().join("dnsmasq.leases");
-                    
+
                     // Write lease database to disk with fsync
                     let result = write_lease_database(&lease_file, &leases).await;
                     black_box(result)
@@ -398,12 +391,12 @@ fn lease_persistence(c: &mut Criterion) {
                     let temp_dir = TempDir::new().expect("Failed to create temp dir");
                     let lease_file = temp_dir.path().join("dnsmasq.leases");
                     let leases = create_test_lease_list(100);
-                    
+
                     // Pre-populate lease file
                     write_lease_database(&lease_file, &leases)
                         .await
                         .expect("Failed to write test leases");
-                    
+
                     (temp_dir, lease_file)
                 })
             },
@@ -450,23 +443,24 @@ fn concurrent_dhcp_requests(c: &mut Criterion) {
                         rt.block_on(async {
                             // Spawn concurrent DHCP requests
                             let mut handles = Vec::new();
-                            
+
                             for i in 0..clients {
                                 let cfg = config.clone();
                                 let lm = lease_manager.clone();
                                 let pool = address_pool.clone();
-                                
+
                                 let handle = tokio::spawn(async move {
                                     // Generate unique MAC address for each client
-                                    let mac = [0x00, 0x11, 0x22, 0x33, (i / 256) as u8, (i % 256) as u8];
+                                    let mac =
+                                        [0x00, 0x11, 0x22, 0x33, (i / 256) as u8, (i % 256) as u8];
                                     let msg = create_dhcpv4_discover_message(mac, i as u32);
-                                    
+
                                     process_dhcpv4_discover(&cfg, &lm, &pool, &msg).await
                                 });
-                                
+
                                 handles.push(handle);
                             }
-                            
+
                             // Wait for all requests to complete
                             let results = futures::future::join_all(handles).await;
                             black_box(results)
@@ -610,9 +604,7 @@ fn setup_dhcpv4_test_environment(
         dns_servers: vec![Ipv4Addr::new(8, 8, 8, 8)],
     };
 
-    let lease_manager = MockLeaseManager {
-        leases: Arc::new(std::sync::RwLock::new(Vec::new())),
-    };
+    let lease_manager = MockLeaseManager { leases: Arc::new(std::sync::RwLock::new(Vec::new())) };
 
     let mut available_ips = Vec::new();
     let start = u32::from(config.range_start);
@@ -640,9 +632,7 @@ fn setup_dhcpv6_test_environment(
         dns_servers: vec![Ipv6Addr::new(0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888)],
     };
 
-    let lease_manager = MockLeaseManager {
-        leases: Arc::new(std::sync::RwLock::new(Vec::new())),
-    };
+    let lease_manager = MockLeaseManager { leases: Arc::new(std::sync::RwLock::new(Vec::new())) };
 
     let prefix_pool = vec![config.prefix];
 
@@ -687,13 +677,13 @@ fn create_dhcpv4_discover_message(mac: [u8; 6], xid: u32) -> DhcpV4Message {
     chaddr[..6].copy_from_slice(&mac);
 
     DhcpV4Message {
-        op: 1, // BOOTREQUEST
+        op: 1,    // BOOTREQUEST
         htype: 1, // Ethernet
         hlen: 6,
         xid,
         chaddr,
         options: vec![
-            (53, vec![1]), // DHCP Message Type: DISCOVER
+            (53, vec![1]),           // DHCP Message Type: DISCOVER
             (55, vec![1, 3, 6, 15]), // Parameter Request List
         ],
     }
@@ -711,7 +701,7 @@ fn create_dhcpv4_request_message(mac: [u8; 6], xid: u32, requested_ip: Ipv4Addr)
         xid,
         chaddr,
         options: vec![
-            (53, vec![3]), // DHCP Message Type: REQUEST
+            (53, vec![3]),                        // DHCP Message Type: REQUEST
             (50, requested_ip.octets().to_vec()), // Requested IP Address
         ],
     }
@@ -719,17 +709,14 @@ fn create_dhcpv4_request_message(mac: [u8; 6], xid: u32, requested_ip: Ipv4Addr)
 
 /// Create DHCPv6 SOLICIT message
 fn create_dhcpv6_solicit_message(duid: &[u8], xid: u32) -> DhcpV6Message {
-    let transaction_id = [
-        ((xid >> 16) & 0xFF) as u8,
-        ((xid >> 8) & 0xFF) as u8,
-        (xid & 0xFF) as u8,
-    ];
+    let transaction_id =
+        [((xid >> 16) & 0xFF) as u8, ((xid >> 8) & 0xFF) as u8, (xid & 0xFF) as u8];
 
     DhcpV6Message {
         msg_type: 1, // SOLICIT
         transaction_id,
         options: vec![
-            (1, duid.to_vec()), // Client Identifier
+            (1, duid.to_vec()),    // Client Identifier
             (3, vec![0, 0, 0, 1]), // IA_NA
         ],
     }
@@ -737,17 +724,14 @@ fn create_dhcpv6_solicit_message(duid: &[u8], xid: u32) -> DhcpV6Message {
 
 /// Create DHCPv6 REQUEST message
 fn create_dhcpv6_request_message(duid: &[u8], xid: u32, _addr: Ipv6Addr) -> DhcpV6Message {
-    let transaction_id = [
-        ((xid >> 16) & 0xFF) as u8,
-        ((xid >> 8) & 0xFF) as u8,
-        (xid & 0xFF) as u8,
-    ];
+    let transaction_id =
+        [((xid >> 16) & 0xFF) as u8, ((xid >> 8) & 0xFF) as u8, (xid & 0xFF) as u8];
 
     DhcpV6Message {
         msg_type: 3, // REQUEST
         transaction_id,
         options: vec![
-            (1, duid.to_vec()), // Client Identifier
+            (1, duid.to_vec()),    // Client Identifier
             (3, vec![0, 0, 0, 1]), // IA_NA
         ],
     }
@@ -851,33 +835,27 @@ async fn write_lease_database(
     use tokio::io::AsyncWriteExt;
 
     let mut file = tokio::fs::File::create(path).await?;
-    
+
     for lease in leases {
-        let expires = lease.expires
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        
+        let expires = lease.expires.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
+
         let mac_str = format!(
             "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-            lease.mac[0], lease.mac[1], lease.mac[2],
-            lease.mac[3], lease.mac[4], lease.mac[5]
+            lease.mac[0], lease.mac[1], lease.mac[2], lease.mac[3], lease.mac[4], lease.mac[5]
         );
-        
+
         let hostname = lease.hostname.as_deref().unwrap_or("*");
         let line = format!("{} {} {} {}\n", expires, mac_str, lease.ip, hostname);
-        
+
         file.write_all(line.as_bytes()).await?;
     }
-    
+
     file.sync_all().await?;
     Ok(())
 }
 
 /// Read lease database from file
-async fn read_lease_database(
-    path: &std::path::Path,
-) -> Result<Vec<TestLease>, std::io::Error> {
+async fn read_lease_database(path: &std::path::Path) -> Result<Vec<TestLease>, std::io::Error> {
     use tokio::io::AsyncReadExt;
 
     let mut file = tokio::fs::File::open(path).await?;
@@ -885,13 +863,13 @@ async fn read_lease_database(
     file.read_to_string(&mut contents).await?;
 
     let mut leases = Vec::new();
-    
+
     for line in contents.lines() {
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() >= 4 {
             if let Ok(expires_secs) = parts[0].parse::<u64>() {
                 let expires = SystemTime::UNIX_EPOCH + Duration::from_secs(expires_secs);
-                
+
                 // Parse MAC address
                 let mac_parts: Vec<&str> = parts[1].split(':').collect();
                 let mut mac = [0u8; 6];
@@ -900,21 +878,12 @@ async fn read_lease_database(
                         mac[i] = byte;
                     }
                 }
-                
+
                 // Parse IP address
                 if let Ok(ip) = parts[2].parse::<std::net::IpAddr>() {
-                    let hostname = if parts[3] == "*" {
-                        None
-                    } else {
-                        Some(parts[3].to_string())
-                    };
-                    
-                    leases.push(TestLease {
-                        ip,
-                        mac,
-                        expires,
-                        hostname,
-                    });
+                    let hostname = if parts[3] == "*" { None } else { Some(parts[3].to_string()) };
+
+                    leases.push(TestLease { ip, mac, expires, hostname });
                 }
             }
         }
@@ -926,79 +895,79 @@ async fn read_lease_database(
 /// Create realistic DHCPv4 packet with common options
 fn create_realistic_dhcpv4_packet() -> Vec<u8> {
     let mut packet = Vec::with_capacity(300);
-    
+
     // BOOTP header (236 bytes)
     packet.push(1); // op: BOOTREQUEST
     packet.push(1); // htype: Ethernet
     packet.push(6); // hlen: 6
     packet.push(0); // hops: 0
-    
+
     // Transaction ID (4 bytes)
     packet.extend_from_slice(&[0x12, 0x34, 0x56, 0x78]);
-    
+
     // Seconds elapsed (2 bytes)
     packet.extend_from_slice(&[0x00, 0x00]);
-    
+
     // Flags (2 bytes)
     packet.extend_from_slice(&[0x00, 0x00]);
-    
+
     // Client IP, Your IP, Server IP, Gateway IP (16 bytes)
     packet.extend_from_slice(&[0; 16]);
-    
+
     // Client hardware address (16 bytes)
     packet.extend_from_slice(&[0x00, 0x11, 0x22, 0x33, 0x44, 0x55]);
     packet.extend_from_slice(&[0; 10]);
-    
+
     // Server host name (64 bytes)
     packet.extend_from_slice(&[0; 64]);
-    
+
     // Boot file name (128 bytes)
     packet.extend_from_slice(&[0; 128]);
-    
+
     // DHCP magic cookie (4 bytes)
     packet.extend_from_slice(&[99, 130, 83, 99]);
-    
+
     // DHCP options
     // Option 53: DHCP Message Type (DISCOVER)
     packet.extend_from_slice(&[53, 1, 1]);
-    
+
     // Option 55: Parameter Request List
     packet.extend_from_slice(&[55, 4, 1, 3, 6, 15]);
-    
+
     // Option 255: End
     packet.push(255);
-    
+
     packet
 }
 
 /// Create realistic DHCPv6 packet with common options
 fn create_realistic_dhcpv6_packet() -> Vec<u8> {
     let mut packet = Vec::with_capacity(300);
-    
+
     // Message type: SOLICIT (1)
     packet.push(1);
-    
+
     // Transaction ID (3 bytes)
     packet.extend_from_slice(&[0x12, 0x34, 0x56]);
-    
+
     // Option 1: Client Identifier
     packet.extend_from_slice(&[0x00, 0x01]); // Option code
     packet.extend_from_slice(&[0x00, 0x0a]); // Option length: 10
     packet.extend_from_slice(&[0x00, 0x01, 0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]); // DUID
-    
+
     // Option 3: IA_NA (Identity Association for Non-temporary Addresses)
     packet.extend_from_slice(&[0x00, 0x03]); // Option code
     packet.extend_from_slice(&[0x00, 0x0c]); // Option length: 12
     packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]); // IAID
     packet.extend_from_slice(&[0x00, 0x00, 0x0e, 0x10]); // T1: 3600s
     packet.extend_from_slice(&[0x00, 0x00, 0x15, 0x18]); // T2: 5400s
-    
+
     // Option 6: Option Request
     packet.extend_from_slice(&[0x00, 0x06]); // Option code
     packet.extend_from_slice(&[0x00, 0x04]); // Option length: 4
     packet.extend_from_slice(&[0x00, 0x17]); // DNS Recursive Name Server
     packet.extend_from_slice(&[0x00, 0x18]); // Domain Search List
-    
+
     packet
 }
 
@@ -1007,26 +976,19 @@ fn parse_dhcpv4_message(packet: &[u8]) -> Result<DhcpV4Message, &'static str> {
     if packet.len() < 240 {
         return Err("Packet too short");
     }
-    
+
     let op = packet[0];
     let htype = packet[1];
     let hlen = packet[2];
     let xid = u32::from_be_bytes([packet[4], packet[5], packet[6], packet[7]]);
-    
+
     let mut chaddr = [0u8; 16];
     chaddr.copy_from_slice(&packet[28..44]);
-    
+
     // Parse options (simplified for benchmarking)
     let options = vec![];
-    
-    Ok(DhcpV4Message {
-        op,
-        htype,
-        hlen,
-        xid,
-        chaddr,
-        options,
-    })
+
+    Ok(DhcpV4Message { op, htype, hlen, xid, chaddr, options })
 }
 
 /// Parse DHCPv6 message
@@ -1034,18 +996,14 @@ fn parse_dhcpv6_message(packet: &[u8]) -> Result<DhcpV6Message, &'static str> {
     if packet.len() < 4 {
         return Err("Packet too short");
     }
-    
+
     let msg_type = packet[0];
     let transaction_id = [packet[1], packet[2], packet[3]];
-    
+
     // Parse options (simplified for benchmarking)
     let options = vec![];
-    
-    Ok(DhcpV6Message {
-        msg_type,
-        transaction_id,
-        options,
-    })
+
+    Ok(DhcpV6Message { msg_type, transaction_id, options })
 }
 
 // ================================================================================================

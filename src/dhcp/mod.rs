@@ -486,21 +486,15 @@ impl DhcpService {
             Some(service)
         };
 
-        // Verify at least one DHCP service is enabled
-        #[cfg(not(feature = "dhcp6"))]
+        // Log DHCP service status (both services being disabled is valid for DNS-only configurations)
         if v4_service.is_none() {
-            return Err(DhcpError::V4ProtocolError {
-                reason:
-                    "No DHCP services enabled - DHCPv4 disabled and DHCPv6 feature not compiled"
-                        .to_string(),
-            });
-        }
+            #[cfg(not(feature = "dhcp6"))]
+            info!("DHCP services disabled - DHCPv4 disabled and DHCPv6 feature not compiled");
 
-        #[cfg(feature = "dhcp6")]
-        if v4_service.is_none() && v6_service.is_none() {
-            return Err(DhcpError::V4ProtocolError {
-                reason: "No DHCP services enabled - both DHCPv4 and DHCPv6 disabled".to_string(),
-            });
+            #[cfg(feature = "dhcp6")]
+            if v6_service.is_none() {
+                info!("DHCP services disabled - both DHCPv4 and DHCPv6 disabled (DNS-only mode)");
+            }
         }
 
         info!("DHCP service initialization complete");

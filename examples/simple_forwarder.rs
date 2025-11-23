@@ -124,10 +124,7 @@ async fn main() -> Result<()> {
         Err(e) => {
             error!("Failed to bind to {}: {}", bind_addr, e);
             return Err(dnsmasq::DnsmasqError::Network(
-                dnsmasq::error::NetworkError::PortBindFailed {
-                    port: 5353,
-                    reason: e.to_string(),
-                },
+                dnsmasq::error::NetworkError::PortBindFailed { port: 5353, reason: e.to_string() },
             ));
         }
     };

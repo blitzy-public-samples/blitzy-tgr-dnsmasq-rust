@@ -77,14 +77,13 @@
 //! ```
 
 use criterion::{
-    criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion,
-    Throughput, black_box,
+    black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput,
 };
 use dnsmasq::{
     config::Config,
     dns::{
+        protocol::{message::DnsMessage, message::DnsQuery, DomainName},
         DnsService,
-        protocol::{DomainName, message::DnsMessage, message::DnsQuery},
     },
     types::RecordType,
 };
@@ -109,7 +108,7 @@ const BENCHMARK_CLIENT_ADDR: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
 fn create_test_config() -> Config {
     use dnsmasq::config::ConfigBuilder;
     use dnsmasq::types::ServerDetails;
-    
+
     ConfigBuilder::new()
         .dns_port(53)
         .cache_size(1000)
@@ -136,7 +135,7 @@ fn create_test_config() -> Config {
 fn create_dnssec_test_config() -> Config {
     use dnsmasq::config::ConfigBuilder;
     use dnsmasq::types::ServerDetails;
-    
+
     ConfigBuilder::new()
         .dns_port(53)
         .cache_size(1000)
@@ -177,7 +176,7 @@ fn create_test_dns_messages() -> Vec<Vec<u8>> {
 /// Constructs a minimal DNS query packet in wire format
 fn create_dns_query_packet(domain: &str, rtype: RecordType) -> Vec<u8> {
     let mut packet = Vec::new();
-    
+
     // DNS Header (12 bytes)
     packet.extend_from_slice(&[
         0x12, 0x34, // Transaction ID
@@ -187,14 +186,14 @@ fn create_dns_query_packet(domain: &str, rtype: RecordType) -> Vec<u8> {
         0x00, 0x00, // NSCOUNT: 0 authority records
         0x00, 0x00, // ARCOUNT: 0 additional records
     ]);
-    
+
     // Question section: encode domain name
     for label in domain.split('.') {
         packet.push(label.len() as u8);
         packet.extend_from_slice(label.as_bytes());
     }
     packet.push(0); // Root label (null terminator)
-    
+
     // QTYPE (2 bytes)
     let qtype_code = match rtype {
         RecordType::A => 1u16,
@@ -203,27 +202,27 @@ fn create_dns_query_packet(domain: &str, rtype: RecordType) -> Vec<u8> {
         _ => 1u16,
     };
     packet.extend_from_slice(&qtype_code.to_be_bytes());
-    
+
     // QCLASS: IN (1)
     packet.extend_from_slice(&[0x00, 0x01]);
-    
+
     packet
 }
 
 /// Creates a DNS query packet with EDNS0 extension
 fn create_edns0_query_packet(domain: &str, rtype: RecordType) -> Vec<u8> {
     let mut packet = create_dns_query_packet(domain, rtype);
-    
+
     // Update ARCOUNT to 1 (for EDNS0 OPT record)
     packet[11] = 0x01;
-    
+
     // Add OPT pseudo-record
     packet.push(0); // Root domain for OPT
     packet.extend_from_slice(&[0x00, 0x29]); // TYPE: OPT (41)
     packet.extend_from_slice(&[0x10, 0x00]); // UDP payload size: 4096
     packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // Extended RCODE and flags
     packet.extend_from_slice(&[0x00, 0x00]); // RDLEN: 0 (no options)
-    
+
     packet
 }
 
@@ -247,9 +246,9 @@ fn benchmark_dns_query_latency(c: &mut Criterion) {
     group.sample_size(100);
     group.measurement_time(Duration::from_secs(10));
     group.warm_up_time(Duration::from_secs(3));
-    
+
     let rt = Runtime::new().unwrap();
-    
+
     // Benchmark cached query (optimal path)
     group.bench_function(BenchmarkId::new("cached", "example.com"), |b| {
         b.iter_batched(
@@ -258,21 +257,17 @@ fn benchmark_dns_query_latency(c: &mut Criterion) {
                 let config = create_test_config();
                 let dns_config = Arc::new(config.dns);
                 let dns_service = rt.block_on(async {
-                    DnsService::builder()
-                        .config(dns_config)
-                        .cache_size(1000)
-                        .build()
-                        .await
-                        .unwrap()
+                    DnsService::builder().config(dns_config).cache_size(1000).build().await.unwrap()
                 });
-                
+
                 let query = create_test_query("example.com", RecordType::A);
-                
+
                 // Pre-populate cache by resolving the query once (first call will cache it)
                 rt.block_on(async {
-                    let _ = dns_service.resolve_query(query.clone(), BENCHMARK_CLIENT_ADDR, None).await;
+                    let _ =
+                        dns_service.resolve_query(query.clone(), BENCHMARK_CLIENT_ADDR, None).await;
                 });
-                
+
                 (dns_service, query)
             },
             |(dns_service, query)| {
@@ -284,7 +279,7 @@ fn benchmark_dns_query_latency(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     // Benchmark cache miss with upstream forwarding
     group.bench_function(BenchmarkId::new("cache_miss", "upstream.example.com"), |b| {
         b.iter_batched(
@@ -292,12 +287,7 @@ fn benchmark_dns_query_latency(c: &mut Criterion) {
                 let config = create_test_config();
                 let dns_config = Arc::new(config.dns);
                 let dns_service = rt.block_on(async {
-                    DnsService::builder()
-                        .config(dns_config)
-                        .cache_size(1000)
-                        .build()
-                        .await
-                        .unwrap()
+                    DnsService::builder().config(dns_config).cache_size(1000).build().await.unwrap()
                 });
                 let query = create_test_query("upstream.example.com", RecordType::A);
                 (dns_service, query)
@@ -310,7 +300,7 @@ fn benchmark_dns_query_latency(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     // Benchmark IPv6 AAAA query
     group.bench_function(BenchmarkId::new("ipv6", "ipv6.example.com"), |b| {
         b.iter_batched(
@@ -318,21 +308,17 @@ fn benchmark_dns_query_latency(c: &mut Criterion) {
                 let config = create_test_config();
                 let dns_config = Arc::new(config.dns);
                 let dns_service = rt.block_on(async {
-                    DnsService::builder()
-                        .config(dns_config)
-                        .cache_size(1000)
-                        .build()
-                        .await
-                        .unwrap()
+                    DnsService::builder().config(dns_config).cache_size(1000).build().await.unwrap()
                 });
-                
+
                 let query = create_test_query("ipv6.example.com", RecordType::AAAA);
-                
+
                 // Pre-populate cache by resolving the query once (first call will cache it)
                 rt.block_on(async {
-                    let _ = dns_service.resolve_query(query.clone(), BENCHMARK_CLIENT_ADDR, None).await;
+                    let _ =
+                        dns_service.resolve_query(query.clone(), BENCHMARK_CLIENT_ADDR, None).await;
                 });
-                
+
                 (dns_service, query)
             },
             |(dns_service, query)| {
@@ -343,7 +329,7 @@ fn benchmark_dns_query_latency(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     group.finish();
 }
 
@@ -362,9 +348,9 @@ fn benchmark_cache_hit_performance(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_hit_performance");
     group.sample_size(100);
     group.throughput(Throughput::Elements(1));
-    
+
     let rt = Runtime::new().unwrap();
-    
+
     // Benchmark cached query resolution (small dataset)
     group.bench_function(BenchmarkId::new("cached_query", "frequently_accessed"), |b| {
         b.iter_batched(
@@ -372,21 +358,17 @@ fn benchmark_cache_hit_performance(c: &mut Criterion) {
                 let config = create_test_config();
                 let dns_config = Arc::new(config.dns);
                 let dns_service = rt.block_on(async {
-                    DnsService::builder()
-                        .config(dns_config)
-                        .cache_size(1000)
-                        .build()
-                        .await
-                        .unwrap()
+                    DnsService::builder().config(dns_config).cache_size(1000).build().await.unwrap()
                 });
-                
+
                 let query = create_test_query("cached.example.com", RecordType::A);
-                
+
                 // Pre-populate cache by resolving once
                 rt.block_on(async {
-                    let _ = dns_service.resolve_query(query.clone(), BENCHMARK_CLIENT_ADDR, None).await;
+                    let _ =
+                        dns_service.resolve_query(query.clone(), BENCHMARK_CLIENT_ADDR, None).await;
                 });
-                
+
                 (dns_service, query)
             },
             |(dns_service, query)| {
@@ -397,7 +379,7 @@ fn benchmark_cache_hit_performance(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     group.finish();
 }
 
@@ -421,9 +403,9 @@ fn benchmark_cache_miss_performance(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_miss_performance");
     group.sample_size(50); // Smaller sample size due to network I/O
     group.measurement_time(Duration::from_secs(15));
-    
+
     let rt = Runtime::new().unwrap();
-    
+
     // Benchmark upstream forwarding to primary server
     group.bench_function(BenchmarkId::new("upstream_forward", "primary_server"), |b| {
         b.iter_batched(
@@ -431,12 +413,7 @@ fn benchmark_cache_miss_performance(c: &mut Criterion) {
                 let config = create_test_config();
                 let dns_config = Arc::new(config.dns);
                 let dns_service = rt.block_on(async {
-                    DnsService::builder()
-                        .config(dns_config)
-                        .cache_size(1000)
-                        .build()
-                        .await
-                        .unwrap()
+                    DnsService::builder().config(dns_config).cache_size(1000).build().await.unwrap()
                 });
                 // Use a domain that won't be in cache
                 let query = create_test_query("uncached.example.com", RecordType::A);
@@ -450,7 +427,7 @@ fn benchmark_cache_miss_performance(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     // Benchmark with server failover
     group.bench_function(BenchmarkId::new("failover", "secondary_server"), |b| {
         b.iter_batched(
@@ -474,15 +451,10 @@ fn benchmark_cache_miss_performance(c: &mut Criterion) {
                     })
                     .build()
                     .unwrap();
-                
+
                 let dns_config = Arc::new(config.dns);
                 let dns_service = rt.block_on(async {
-                    DnsService::builder()
-                        .config(dns_config)
-                        .cache_size(1000)
-                        .build()
-                        .await
-                        .unwrap()
+                    DnsService::builder().config(dns_config).cache_size(1000).build().await.unwrap()
                 });
                 let query = create_test_query("failover-test.example.com", RecordType::A);
                 (dns_service, query)
@@ -495,7 +467,7 @@ fn benchmark_cache_miss_performance(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     // Benchmark TCP fallback for truncated responses
     group.bench_function(BenchmarkId::new("tcp_fallback", "truncated"), |b| {
         b.iter_batched(
@@ -503,12 +475,7 @@ fn benchmark_cache_miss_performance(c: &mut Criterion) {
                 let config = create_test_config();
                 let dns_config = Arc::new(config.dns);
                 let dns_service = rt.block_on(async {
-                    DnsService::builder()
-                        .config(dns_config)
-                        .cache_size(1000)
-                        .build()
-                        .await
-                        .unwrap()
+                    DnsService::builder().config(dns_config).cache_size(1000).build().await.unwrap()
                 });
                 // Query for record type that may result in large response
                 let query = create_test_query("large-response.example.com", RecordType::ANY);
@@ -522,7 +489,7 @@ fn benchmark_cache_miss_performance(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     group.finish();
 }
 
@@ -544,9 +511,9 @@ fn benchmark_dnssec_validation_overhead(c: &mut Criterion) {
     let mut group = c.benchmark_group("dnssec_validation_overhead");
     group.sample_size(100);
     group.measurement_time(Duration::from_secs(10));
-    
+
     let rt = Runtime::new().unwrap();
-    
+
     // Benchmark RSA 2048 signature verification
     // Note: This benchmark requires actual DNSSEC-signed responses from upstream servers.
     // It measures the overhead of DNSSEC validation in a complete resolution flow.
@@ -575,7 +542,7 @@ fn benchmark_dnssec_validation_overhead(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     // Benchmark ECDSA P-256 signature verification
     group.bench_function(BenchmarkId::new("ecdsa_p256", "signature_verify"), |b| {
         b.iter_batched(
@@ -602,7 +569,7 @@ fn benchmark_dnssec_validation_overhead(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     // Benchmark trust chain validation (multiple signatures)
     group.bench_function(BenchmarkId::new("trust_chain", "full_validation"), |b| {
         b.iter_batched(
@@ -630,7 +597,7 @@ fn benchmark_dnssec_validation_overhead(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     group.finish();
 }
 
@@ -658,9 +625,9 @@ fn benchmark_concurrent_query_throughput(c: &mut Criterion) {
     let mut group = c.benchmark_group("concurrent_query_throughput");
     group.sample_size(50);
     group.measurement_time(Duration::from_secs(15));
-    
+
     let rt = Runtime::new().unwrap();
-    
+
     // Benchmark with 10 concurrent queries
     group.bench_function(BenchmarkId::new("concurrent", "10_queries"), |b| {
         b.iter_batched(
@@ -668,14 +635,9 @@ fn benchmark_concurrent_query_throughput(c: &mut Criterion) {
                 let config = create_test_config();
                 let dns_config = Arc::new(config.dns);
                 let dns_service = Arc::new(rt.block_on(async {
-                    DnsService::builder()
-                        .config(dns_config)
-                        .cache_size(1000)
-                        .build()
-                        .await
-                        .unwrap()
+                    DnsService::builder().config(dns_config).cache_size(1000).build().await.unwrap()
                 }));
-                
+
                 // Pre-populate cache by resolving queries once
                 rt.block_on(async {
                     for i in 0..10 {
@@ -686,27 +648,27 @@ fn benchmark_concurrent_query_throughput(c: &mut Criterion) {
                         let _ = dns_service.resolve_query(query, BENCHMARK_CLIENT_ADDR, None).await;
                     }
                 });
-                
+
                 dns_service
             },
             |dns_service| {
                 rt.block_on(async {
                     let mut handles: Vec<JoinHandle<_>> = Vec::new();
-                    
+
                     for i in 0..10 {
                         let service = dns_service.clone();
                         let query = create_test_query(
                             &format!("concurrent{}.example.com", i),
                             RecordType::A,
                         );
-                        
+
                         let handle = spawn(async move {
                             service.resolve_query(query, BENCHMARK_CLIENT_ADDR, None).await
                         });
-                        
+
                         handles.push(handle);
                     }
-                    
+
                     // Wait for all queries to complete
                     let results: Vec<_> = futures::future::join_all(handles).await;
                     black_box(results)
@@ -715,7 +677,7 @@ fn benchmark_concurrent_query_throughput(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     // Benchmark with 50 concurrent queries
     group.bench_function(BenchmarkId::new("concurrent", "50_queries"), |b| {
         b.iter_batched(
@@ -723,45 +685,36 @@ fn benchmark_concurrent_query_throughput(c: &mut Criterion) {
                 let config = create_test_config();
                 let dns_config = Arc::new(config.dns);
                 let dns_service = Arc::new(rt.block_on(async {
-                    DnsService::builder()
-                        .config(dns_config)
-                        .cache_size(1000)
-                        .build()
-                        .await
-                        .unwrap()
+                    DnsService::builder().config(dns_config).cache_size(1000).build().await.unwrap()
                 }));
-                
+
                 // Pre-populate cache by resolving queries once
                 rt.block_on(async {
                     for i in 0..50 {
-                        let query = create_test_query(
-                            &format!("load{}.example.com", i),
-                            RecordType::A,
-                        );
+                        let query =
+                            create_test_query(&format!("load{}.example.com", i), RecordType::A);
                         let _ = dns_service.resolve_query(query, BENCHMARK_CLIENT_ADDR, None).await;
                     }
                 });
-                
+
                 dns_service
             },
             |dns_service| {
                 rt.block_on(async {
                     let mut handles: Vec<JoinHandle<_>> = Vec::new();
-                    
+
                     for i in 0..50 {
                         let service = dns_service.clone();
-                        let query = create_test_query(
-                            &format!("load{}.example.com", i),
-                            RecordType::A,
-                        );
-                        
+                        let query =
+                            create_test_query(&format!("load{}.example.com", i), RecordType::A);
+
                         let handle = spawn(async move {
                             service.resolve_query(query, BENCHMARK_CLIENT_ADDR, None).await
                         });
-                        
+
                         handles.push(handle);
                     }
-                    
+
                     let results: Vec<_> = futures::future::join_all(handles).await;
                     black_box(results)
                 })
@@ -769,7 +722,7 @@ fn benchmark_concurrent_query_throughput(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     // Benchmark with 100 concurrent queries (stress test)
     group.bench_function(BenchmarkId::new("concurrent", "100_queries"), |b| {
         b.iter_batched(
@@ -777,45 +730,36 @@ fn benchmark_concurrent_query_throughput(c: &mut Criterion) {
                 let config = create_test_config();
                 let dns_config = Arc::new(config.dns);
                 let dns_service = Arc::new(rt.block_on(async {
-                    DnsService::builder()
-                        .config(dns_config)
-                        .cache_size(1000)
-                        .build()
-                        .await
-                        .unwrap()
+                    DnsService::builder().config(dns_config).cache_size(1000).build().await.unwrap()
                 }));
-                
+
                 // Pre-populate cache by resolving queries once
                 rt.block_on(async {
                     for i in 0..100 {
-                        let query = create_test_query(
-                            &format!("stress{}.example.com", i),
-                            RecordType::A,
-                        );
+                        let query =
+                            create_test_query(&format!("stress{}.example.com", i), RecordType::A);
                         let _ = dns_service.resolve_query(query, BENCHMARK_CLIENT_ADDR, None).await;
                     }
                 });
-                
+
                 dns_service
             },
             |dns_service| {
                 rt.block_on(async {
                     let mut handles: Vec<JoinHandle<_>> = Vec::new();
-                    
+
                     for i in 0..100 {
                         let service = dns_service.clone();
-                        let query = create_test_query(
-                            &format!("stress{}.example.com", i),
-                            RecordType::A,
-                        );
-                        
+                        let query =
+                            create_test_query(&format!("stress{}.example.com", i), RecordType::A);
+
                         let handle = spawn(async move {
                             service.resolve_query(query, BENCHMARK_CLIENT_ADDR, None).await
                         });
-                        
+
                         handles.push(handle);
                     }
-                    
+
                     let results: Vec<_> = futures::future::join_all(handles).await;
                     black_box(results)
                 })
@@ -823,7 +767,7 @@ fn benchmark_concurrent_query_throughput(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    
+
     group.throughput(Throughput::Elements(100));
     group.finish();
 }
@@ -843,41 +787,33 @@ fn benchmark_query_parsing_performance(c: &mut Criterion) {
     let mut group = c.benchmark_group("query_parsing_performance");
     group.sample_size(100);
     group.throughput(Throughput::Bytes(512)); // Typical DNS packet size
-    
+
     let test_packets = create_test_dns_messages();
-    
+
     // Benchmark minimal A query parsing
     group.bench_function(BenchmarkId::new("parse", "minimal_a_query"), |b| {
         let packet = &test_packets[0];
-        b.iter(|| {
-            black_box(DnsMessage::from_bytes(packet).unwrap())
-        });
+        b.iter(|| black_box(DnsMessage::from_bytes(packet).unwrap()));
     });
-    
+
     // Benchmark AAAA query parsing
     group.bench_function(BenchmarkId::new("parse", "aaaa_query"), |b| {
         let packet = &test_packets[1];
-        b.iter(|| {
-            black_box(DnsMessage::from_bytes(packet).unwrap())
-        });
+        b.iter(|| black_box(DnsMessage::from_bytes(packet).unwrap()));
     });
-    
+
     // Benchmark CNAME query parsing
     group.bench_function(BenchmarkId::new("parse", "cname_query"), |b| {
         let packet = &test_packets[2];
-        b.iter(|| {
-            black_box(DnsMessage::from_bytes(packet).unwrap())
-        });
+        b.iter(|| black_box(DnsMessage::from_bytes(packet).unwrap()));
     });
-    
+
     // Benchmark EDNS0 query parsing (with options)
     group.bench_function(BenchmarkId::new("parse", "edns0_query"), |b| {
         let packet = &test_packets[3];
-        b.iter(|| {
-            black_box(DnsMessage::from_bytes(packet).unwrap())
-        });
+        b.iter(|| black_box(DnsMessage::from_bytes(packet).unwrap()));
     });
-    
+
     // Benchmark batch parsing (multiple queries)
     group.bench_function(BenchmarkId::new("parse_batch", "10_queries"), |b| {
         b.iter(|| {
@@ -886,7 +822,7 @@ fn benchmark_query_parsing_performance(c: &mut Criterion) {
             }
         });
     });
-    
+
     // Benchmark domain name extraction and validation
     group.bench_function(BenchmarkId::new("domain_parsing", "name_extraction"), |b| {
         let packet = &test_packets[0];
@@ -896,7 +832,7 @@ fn benchmark_query_parsing_performance(c: &mut Criterion) {
             black_box(message.questions.iter().map(|q| q.qname.clone()).collect::<Vec<_>>())
         });
     });
-    
+
     group.finish();
 }
 

@@ -10,7 +10,9 @@
 //! This module provides the async runtime components that replace C's poll()-based
 //! event loop with Rust's tokio async/await model.
 
-// Temporarily commented out until EventLoop implementation is fully compatible with current service APIs
-// pub mod event_loop;
+pub mod event_loop;
 pub mod reactor;
 pub mod tasks;
+
+// Re-export EventLoop for convenience
+pub use event_loop::EventLoop;

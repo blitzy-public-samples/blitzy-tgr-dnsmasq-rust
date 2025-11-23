@@ -576,7 +576,7 @@ impl DhcpV6StateMachine {
         if ctx.ia_type == OPTION_IA_PD {
             // Build IA_PD option for prefix delegation
             // IA_PD format: IAID (4) + T1 (4) + T2 (4) + IA_PD options
-            
+
             // Validate context has prefix delegation configured
             if context.prefix_len == 0 {
                 return Err(DhcpError::V6ProtocolError {
@@ -1496,9 +1496,7 @@ impl DhcpV6StateMachine {
             }
         }
 
-        Err(DhcpError::V6ProtocolError {
-            reason: "No addresses available in pool".to_string(),
-        })
+        Err(DhcpError::V6ProtocolError { reason: "No addresses available in pool".to_string() })
     }
 
     /// Find an available prefix for prefix delegation.
@@ -1516,22 +1514,19 @@ impl DhcpV6StateMachine {
         // For prefix delegation, the pool configuration specifies a larger prefix
         // from which smaller prefixes are delegated to clients.
         // Example: Pool is 2001:db8:1::/48, and we delegate /56 prefixes to clients.
-        // 
+        //
         // The pool's prefix_len is the length of prefixes we delegate (e.g., 56).
         // We need to calculate how many such prefixes fit in the pool's base prefix.
 
         let pool_prefix_len = context.prefix_len;
-        
+
         // The pool base address defines the start of the delegatable space
         let start_u128 = u128::from_be_bytes(start_v6.octets());
 
         // Calculate the size of one delegatable prefix
         // For a /56 prefix, the increment is 2^(128-56) = 2^72
-        let prefix_size = if pool_prefix_len < 128 {
-            1u128 << (128 - pool_prefix_len)
-        } else {
-            1u128
-        };
+        let prefix_size =
+            if pool_prefix_len < 128 { 1u128 << (128 - pool_prefix_len) } else { 1u128 };
 
         // Try up to 256 prefixes (reasonable limit for scanning)
         for i in 0..256 {
@@ -1760,7 +1755,7 @@ mod tests {
             flags: 0,
             if_index: 1,
             lease_time: 3600, // 1 hour lease time
-            prefix_len: 0, // Not a prefix delegation range
+            prefix_len: 0,    // Not a prefix delegation range
         };
 
         let ctx = RequestContext::new(clid, txid, "eth0", 0x9999, OPTION_IA_PD, true)

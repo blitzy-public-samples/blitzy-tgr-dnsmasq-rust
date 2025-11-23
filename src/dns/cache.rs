@@ -506,7 +506,7 @@ impl DnsCache {
             record_type,
             self.entries.len()
         );
-        for (cache_key, cache_entry) in self.entries.iter() {
+        for (cache_key, cache_entry) in &self.entries {
             eprintln!(
                 "[CACHE DEBUG]   Cache entry: domain={}, type={:?}, flags={:?}, expired={}",
                 cache_key.domain,
@@ -529,7 +529,7 @@ impl DnsCache {
                 return None;
             }
 
-            eprintln!("[CACHE DEBUG] Cache hit for domain={}, type={:?}", domain, record_type);
+            eprintln!("[CACHE DEBUG] Cache hit for domain={domain}, type={record_type:?}");
             info!(domain = %domain, record_type = ?record_type, "Cache HIT - entry promoted");
             self.stats.hits += 1;
             return Some(Arc::clone(entry));
@@ -629,8 +629,12 @@ impl DnsCache {
         );
 
         // Check if we need to evict before inserting
-        eprintln!("[INSERT] Checking eviction: len={}, capacity={}, contains_key={}", 
-                  self.entries.len(), self.capacity, self.entries.contains_key(&key));
+        eprintln!(
+            "[INSERT] Checking eviction: len={}, capacity={}, contains_key={}",
+            self.entries.len(),
+            self.capacity,
+            self.entries.contains_key(&key)
+        );
         if self.entries.len() >= self.capacity && !self.entries.contains_key(&key) {
             eprintln!("[INSERT] Cache at capacity, calling evict_lru()");
             info!(
@@ -663,7 +667,11 @@ impl DnsCache {
         self.stats.insertions += 1;
         self.stats.current_size = self.entries.len();
 
-        eprintln!("[EPRINTLN AFTER INSERT] Entry inserted: domain={}, cache_size={}", domain_name, self.entries.len());
+        eprintln!(
+            "[EPRINTLN AFTER INSERT] Entry inserted: domain={}, cache_size={}",
+            domain_name,
+            self.entries.len()
+        );
         info!(
             domain = %domain_name,
             cache_size = self.entries.len(),

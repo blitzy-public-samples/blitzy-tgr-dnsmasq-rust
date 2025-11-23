@@ -295,6 +295,7 @@ pub struct ShutdownHandle {
 
 impl ShutdownHandle {
     /// Create a new shutdown handle from a broadcast receiver.
+    #[must_use]
     pub fn new(rx: broadcast::Receiver<()>) -> Self {
         Self { rx: Arc::new(RwLock::new(rx)) }
     }
