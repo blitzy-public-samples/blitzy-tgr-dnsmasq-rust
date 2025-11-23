@@ -343,11 +343,7 @@ impl RuntimeConfig {
     /// ```
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            worker_threads: None,
-            stack_size: None,
-            thread_name_prefix: None,
-        }
+        Self { worker_threads: None, stack_size: None, thread_name_prefix: None }
     }
 
     /// Sets the number of worker threads for the tokio runtime.
