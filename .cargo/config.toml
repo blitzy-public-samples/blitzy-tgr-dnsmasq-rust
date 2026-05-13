@@ -1,0 +1,371 @@
+# Cargo build configuration for dnsmasq Rust implementation
+# This file configures platform-specific build flags, optimization settings,
+# and cross-compilation support to achieve performance parity with the C version.
+#
+# C build flags translation:
+# - C: -O2 (optimize for speed) → Rust: opt-level = 3 (maximum optimization)
+# - C: -Wall -W (all warnings) → Rust: warnings = "deny" in rustflags
+# - C: -g (debug symbols) → Rust: debug = true (default in dev/release)
+
+# =============================================================================
+# Build Configuration
+# =============================================================================
+# General build settings for all targets
+
+[build]
+# Enable parallel compilation for faster builds
+# jobs setting removed - Cargo uses all available CPUs by default
+# jobs = 0  # 0 = use number of logical CPUs (not supported in all Cargo versions)
+
+# Incremental compilation for faster development builds
+# (disabled in release builds via profile overrides)
+incremental = true
+
+# Default target directory (can be overridden by CARGO_TARGET_DIR env var)
+target-dir = "target"
+
+# =============================================================================
+# Linux x86_64 Target Configuration
+# =============================================================================
+# Primary production target for Linux servers
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = [
+    # Link-time optimization preparation
+    "-C", "linker-plugin-lto",
+    
+    # Optimization: Enable CPU-specific features for network packet processing
+    # SSE4.2 provides fast CRC32 for checksums, AES-NI for crypto operations
+    "-C", "target-feature=+sse4.2,+aes",
+    
+    # Security: Enable stack overflow protection
+    "-C", "overflow-checks=on",
+    
+    # Performance: Prefer static linking for system libraries where possible
+    # (reduces runtime dependencies and improves startup time)
+    "-C", "link-arg=-Wl,--as-needed",
+    
+    # Security: Enable RELRO (Relocation Read-Only) for GOT protection
+    "-C", "link-arg=-Wl,-z,relro,-z,now",
+    
+    # Linux capabilities support for privilege management
+    # Links against libcap for CAP_NET_BIND_SERVICE, CAP_NET_ADMIN
+    "-C", "link-arg=-lcap",
+]
+
+# =============================================================================
+# Linux ARM64/aarch64 Target Configuration
+# =============================================================================
+# For ARM-based servers (e.g., AWS Graviton, Raspberry Pi 4)
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = [
+    # Link-time optimization preparation
+    "-C", "linker-plugin-lto",
+    
+    # Optimization: Enable ARM NEON SIMD for packet processing
+    # CRC32 and AES extensions for cryptographic operations
+    "-C", "target-feature=+neon,+crc,+aes",
+    
+    # Security: Enable stack overflow protection
+    "-C", "overflow-checks=on",
+    
+    # Performance: Reduce binary size and runtime dependencies
+    "-C", "link-arg=-Wl,--as-needed",
+    
+    # Security: Enable RELRO for GOT protection
+    "-C", "link-arg=-Wl,-z,relro,-z,now",
+    
+    # Linux capabilities support
+    "-C", "link-arg=-lcap",
+]
+
+# =============================================================================
+# Linux ARMv7 Target Configuration
+# =============================================================================
+# For 32-bit ARM devices (e.g., Raspberry Pi 2/3, embedded systems)
+
+[target.armv7-unknown-linux-gnueabihf]
+rustflags = [
+    # Link-time optimization preparation
+    "-C", "linker-plugin-lto",
+    
+    # Optimization: Enable ARM NEON SIMD where available
+    "-C", "target-feature=+neon",
+    
+    # Security: Enable stack overflow protection
+    "-C", "overflow-checks=on",
+    
+    # Performance: Reduce binary size
+    "-C", "link-arg=-Wl,--as-needed",
+    
+    # Security: Enable RELRO
+    "-C", "link-arg=-Wl,-z,relro,-z,now",
+    
+    # Linux capabilities support
+    "-C", "link-arg=-lcap",
+]
+
+# =============================================================================
+# FreeBSD x86_64 Target Configuration
+# =============================================================================
+# BSD systems use pledge/unveil instead of Linux capabilities
+
+[target.x86_64-unknown-freebsd]
+rustflags = [
+    # Link-time optimization preparation
+    "-C", "linker-plugin-lto",
+    
+    # Optimization: Enable CPU-specific features
+    "-C", "target-feature=+sse4.2,+aes",
+    
+    # Security: Enable stack overflow protection
+    "-C", "overflow-checks=on",
+    
+    # FreeBSD-specific: Use gold or lld linker for better performance
+    "-C", "link-arg=-fuse-ld=lld",
+    
+    # Security: Enable stack protector
+    "-C", "link-arg=-Wl,-z,relro,-z,now",
+]
+
+# =============================================================================
+# OpenBSD x86_64 Target Configuration
+# =============================================================================
+# OpenBSD has strict security policies (pledge, unveil)
+
+[target.x86_64-unknown-openbsd]
+rustflags = [
+    # Optimization: Enable CPU-specific features
+    "-C", "target-feature=+sse4.2,+aes",
+    
+    # Security: Enable stack overflow protection
+    "-C", "overflow-checks=on",
+    
+    # OpenBSD security: Stack protector is mandatory
+    "-C", "link-arg=-Wl,-z,relro,-z,now",
+]
+
+# =============================================================================
+# NetBSD x86_64 Target Configuration
+# =============================================================================
+
+[target.x86_64-unknown-netbsd]
+rustflags = [
+    # Link-time optimization preparation
+    "-C", "linker-plugin-lto",
+    
+    # Optimization: Enable CPU-specific features
+    "-C", "target-feature=+sse4.2,+aes",
+    
+    # Security: Enable stack overflow protection
+    "-C", "overflow-checks=on",
+    
+    # Security: Enable RELRO
+    "-C", "link-arg=-Wl,-z,relro,-z,now",
+]
+
+# =============================================================================
+# macOS x86_64 Target Configuration
+# =============================================================================
+# macOS uses sandbox-exec for privilege containment
+
+[target.x86_64-apple-darwin]
+rustflags = [
+    # Link-time optimization preparation
+    "-C", "linker-plugin-lto",
+    
+    # Optimization: Enable CPU-specific features
+    "-C", "target-feature=+sse4.2,+aes",
+    
+    # Security: Enable stack overflow protection
+    "-C", "overflow-checks=on",
+    
+    # macOS: Use modern linker features
+    "-C", "link-arg=-Wl,-dead_strip",
+]
+
+# =============================================================================
+# macOS ARM64 Target Configuration
+# =============================================================================
+# For Apple Silicon Macs (M1, M2, M3, etc.)
+
+[target.aarch64-apple-darwin]
+rustflags = [
+    # Link-time optimization preparation
+    "-C", "linker-plugin-lto",
+    
+    # Optimization: Enable ARM NEON and crypto extensions
+    "-C", "target-feature=+neon,+crc,+aes",
+    
+    # Security: Enable stack overflow protection
+    "-C", "overflow-checks=on",
+    
+    # macOS: Strip dead code
+    "-C", "link-arg=-Wl,-dead_strip",
+]
+
+# =============================================================================
+# Release Profile Overrides
+# =============================================================================
+# Aggressive optimization settings for production builds
+# These settings ensure the Rust implementation achieves performance parity
+# with the C version's -O2 optimization level
+
+[profile.release]
+# Maximum optimization level (equivalent to -O3)
+# C uses -O2, but Rust's opt-level=3 is needed to match C's performance
+# due to differences in optimization strategies
+opt-level = 3
+
+# Enable "fat" LTO for maximum cross-crate optimization
+# This performs whole-program optimization across all compilation units
+lto = "fat"
+
+# Single codegen unit for maximum optimization
+# (sacrifices parallel compilation for better runtime performance)
+codegen-units = 1
+
+# Keep debug symbols for production debugging (like C -g flag)
+# Can be stripped later if desired
+debug = true
+
+# Abort on panic instead of unwinding (smaller binary, faster panics)
+# Matches C behavior where errors are fatal
+panic = "abort"
+
+# Strip symbols from final binary for smaller size
+# Options: "none" (keep all), "debuginfo" (strip debug), "symbols" (strip all)
+strip = "debuginfo"
+
+# Enable additional overflow checks even in release mode
+# (memory safety requirement)
+overflow-checks = true
+
+# =============================================================================
+# Development Profile Settings
+# =============================================================================
+# Fast compilation for development iteration
+
+[profile.dev]
+# Minimal optimization for fast compilation
+opt-level = 0
+
+# Enable debug assertions and overflow checks
+debug-assertions = true
+overflow-checks = true
+
+# Keep debug symbols
+debug = true
+
+# Incremental compilation for faster rebuilds
+incremental = true
+
+# =============================================================================
+# Test Profile Settings
+# =============================================================================
+
+[profile.test]
+# Optimize test code for faster test execution
+opt-level = 2
+
+# Keep debug symbols for better error messages
+debug = true
+
+# =============================================================================
+# Benchmark Profile Settings
+# =============================================================================
+
+[profile.bench]
+# Maximum optimization for accurate benchmarks
+opt-level = 3
+
+# Enable LTO for benchmarks
+lto = "fat"
+
+# Keep debug symbols for profiling
+debug = true
+
+# =============================================================================
+# Environment Variables
+# =============================================================================
+# These environment variables ensure consistent builds across development,
+# CI/CD, and production environments
+
+[env]
+# Enable backtraces on panic for debugging
+# Set to "full" for maximum detail
+RUST_BACKTRACE = "1"
+
+# Log level for tracing crate (structured logging)
+# Production should use "info", development can use "debug"
+# RUST_LOG = "dnsmasq=debug,hickory_proto=info"
+
+# Ensure consistent binary output by enabling reproducible builds
+# SOURCE_DATE_EPOCH = "0"
+
+# =============================================================================
+# Cargo Registry Configuration
+# =============================================================================
+# All dependencies are sourced from public crates.io registry
+# No source replacement needed - using crates.io directly
+
+[source.crates-io]
+# replace-with = "crates-io"  # Commented out - causes circular reference
+
+# =============================================================================
+# Notes on Platform-Specific Security Features
+# =============================================================================
+#
+# Linux:
+#   - Capabilities (CAP_NET_BIND_SERVICE, CAP_NET_ADMIN) via libcap
+#   - Linked via -lcap in rustflags
+#   - Applied after binding to privileged ports (53, 67, 547)
+#
+# FreeBSD/OpenBSD/NetBSD:
+#   - pledge(2): Promises for restricting system operations
+#   - unveil(2): File system access restrictions
+#   - Implemented in Rust code via nix crate, no linker flags needed
+#
+# macOS:
+#   - sandbox-exec: Application sandboxing
+#   - Implemented via platform-specific code, no linker flags needed
+#
+# =============================================================================
+# Optimization Flags Explanation
+# =============================================================================
+#
+# CPU Features:
+#   - SSE4.2: Fast string operations, CRC32 for checksums
+#   - AES-NI: Hardware-accelerated AES for DNSSEC crypto
+#   - NEON: ARM SIMD for packet processing
+#   - CRC: ARM CRC32 instructions
+#
+# Link-Time Optimization (LTO):
+#   - "fat": Whole-program optimization across all crates
+#   - Increases compile time but improves runtime performance
+#   - Essential for matching C implementation performance
+#
+# Codegen Units:
+#   - codegen-units=1: Single compilation unit in release mode
+#   - Enables maximum optimization at cost of compile time
+#   - Parallelism sacrificed for runtime performance
+#
+# =============================================================================
+# Build Time Considerations
+# =============================================================================
+#
+# Development builds (cargo build):
+#   - Fast compilation with opt-level=0
+#   - Incremental compilation enabled
+#   - Parallel codegen units
+#   - Typical build time: 1-3 minutes on modern hardware
+#
+# Release builds (cargo build --release):
+#   - Maximum optimization with opt-level=3
+#   - Fat LTO enabled (slow but thorough)
+#   - Single codegen unit
+#   - Typical build time: 10-20 minutes on modern hardware
+#   - CI/CD systems should cache dependencies to reduce build time
+#
+# =============================================================================

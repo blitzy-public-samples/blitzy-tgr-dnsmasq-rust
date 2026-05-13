@@ -1,0 +1,30 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo lock file (for libraries, but we're keeping it for binary)
+# Cargo.lock
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test and coverage artifacts
+*.profraw
+*.profdata
+/tarpaulin-report.html
+
+# Documentation build
+/doc/
+
+# Temporary files
+*.tmp
+*.temp
