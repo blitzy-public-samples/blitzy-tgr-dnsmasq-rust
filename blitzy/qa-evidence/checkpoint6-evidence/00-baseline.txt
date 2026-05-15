@@ -1,0 +1,11 @@
+=== Pre-test baseline (2026-05-15T08:20:44Z) ===
+--- branch ---
+blitzy-5e358023-afb8-4ba5-a896-aebda689d8a1
+--- git status --porcelain ---
+?? blitzy/qa-evidence/checkpoint3-evidence/
+?? blitzy/qa-evidence/checkpoint4-evidence.txt
+?? blitzy/qa-evidence/checkpoint5-evidence.txt
+?? blitzy/screenshots/
+--- git diff --stat ---
+--- git log -1 ---
+8a99ee5 Address QA checkpoint 4 findings: cross-artifact documentation consistency

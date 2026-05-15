@@ -1,0 +1,42 @@
+============================================================
+Phase 12 — Regression Check (Cross-Artifact Continuity)
+Timestamp: 2026-05-15T08:38:07Z
+============================================================
+
+============================================================
+7.1 — findings-config-i.json: wc -l returns 1
+============================================================
+wc -l < findings-config-i.json: 1
+PASS ✓ (Checkpoint 1 core criterion)
+
+============================================================
+7.2 — decision-log-config-i.md: ≥3 '## ' headers
+============================================================
+grep -c '^## ' decision-log-config-i.md: 4
+PASS ✓ (Checkpoint 2 core criterion)
+
+List of ## headers:
+5:## Run Telemetry
+26:## Decisions
+53:## Deviations from Literal Requirements
+68:## Baseline Contextualization
+
+============================================================
+7.3 — executive-summary-config-i.html: 12-18 <section tags
+============================================================
+grep -c '<section' executive-summary-config-i.html: 16
+PASS ✓ (Checkpoint 3 core criterion: 16 slides in 12-18 range)
+
+============================================================
+7.4 — Post-run checksums equal pre-run (QA must not modify artifacts)
+============================================================
+Pre-run:
+37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570  findings-config-i.json
+5fd786cea2093de9770532c9980c6ed869e7d1671ea5c5b31ce77608f6faea2a  decision-log-config-i.md
+3959c39f6599d24c9f6e0b54255e6827df959a39133d82c22b210d830048ac01  executive-summary-config-i.html
+Post-run:
+37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570  findings-config-i.json
+5fd786cea2093de9770532c9980c6ed869e7d1671ea5c5b31ce77608f6faea2a  decision-log-config-i.md
+3959c39f6599d24c9f6e0b54255e6827df959a39133d82c22b210d830048ac01  executive-summary-config-i.html
+
+PASS ✓ (artifacts UNCHANGED by QA testing)

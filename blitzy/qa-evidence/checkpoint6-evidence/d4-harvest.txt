@@ -1,0 +1,28 @@
+============================================================
+Phase 6 — D4: API Harvest with Pagination
+Timestamp: 2026-05-15T08:26:52Z
+============================================================
+
+--- Literal User D4 example with admin/admin Basic auth ---
+HTTP harvest raw response (first 400 chars):
+{"total":1,"p":1,"ps":500,"paging":{"pageIndex":1,"pageSize":500,"total":1},"effortTotal":5,"issues":[{"key":"f91a436f-5998-4fe4-9ec3-242b7e688098","rule":"Web:S5725","severity":"MINOR","component":"blitzy-tgr-dnsmasq-rust:executive-summary-config-i.html","project":"blitzy-tgr-dnsmasq-rust","line":11,"hash":"e5a82d2339a1dc5086a9ed0ec5f39677","textRange":{"startLine":11,"endLine":11,"startOffset":2...
+
+paging.total: 1
+paging.pageSize: 500
+paging.pageIndex: 1
+issues array length: 1
+
+--- Save the raw response for normalization ---
+1449 /tmp/sonar-issues-p1-qa6.json
+
+--- D4 pass criterion check ---
+Response has 'issues' array: true
+Total issue count recorded: 1
+
+--- Hard cap check (per AAP §0.8.1: TOTAL >= 10000 triggers sub-queries) ---
+Hard cap NOT exceeded (TOTAL=1 < 10000)
+Sub-query fallback would NOT fire in this run (as documented in decision log)
+
+--- Pagination calculation ---
+Pages needed for TOTAL=1 ps=500: 1 (single fetch sufficient when TOTAL <= ps)
+============================================================
