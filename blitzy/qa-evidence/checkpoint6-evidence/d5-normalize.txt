@@ -1,0 +1,52 @@
+============================================================
+Phase 7 — D5: Normalize + Write + Teardown
+Timestamp: 2026-05-15T08:27:58Z
+============================================================
+
+--- Use the production sonar_pipeline.py to normalize the live data ---
+--- Live-mode run (talks to localhost:9000) ---
+{"raw_issues_total":1,"normalized_records":0,"skipped_total":1,"skipped_by_reason":{"non-rust-path":1},"rule_lookups":0,"output_file":"/tmp/findings-test-rerun.json"}
+
+--- Resulting findings file ---
+0000000   [   ]  \n
+0000003
+Size in bytes: 3
+wc -l: 1
+
+--- Compare regenerated file against committed findings-config-i.json ---
+Committed:
+0000000   [   ]  \n
+0000003
+Regenerated:
+0000000   [   ]  \n
+0000003
+
+RESULT: BYTE-IDENTICAL ✓
+
+--- Verify ALL pass criteria on regenerated file ---
+1. wc -l returns 1:
+   1 PASS ✓
+2. Valid JSON:
+   PASS ✓
+3. All records have all 5 fields (will be vacuously true if records=0):
+   0 records; violations: 0
+   PASS ✓
+4. No description >200 chars:
+   0 records; violations: 0
+   PASS ✓
+============================================================
+
+--- D5 teardown (User-specified literal: docker stop sonarqube-test && docker rm sonarqube-test) ---
+Container BEFORE teardown:
+sonarqube-test Up 4 minutes
+
+Running: docker stop sonarqube-test && docker rm sonarqube-test
+sonarqube-test
+sonarqube-test
+Teardown exit: 0
+
+Container AFTER teardown:
+
+Port 9000 state:
+(unbound)
+============================================================

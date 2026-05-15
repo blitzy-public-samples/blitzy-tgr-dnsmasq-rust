@@ -1,0 +1,67 @@
+============================================================
+Phase 10 — Host Clean-State Verification
+Timestamp: 2026-05-15T08:36:33Z
+============================================================
+
+============================================================
+Test 5.1 — No Docker resources accumulated
+============================================================
+--- Containers (filter sonarqube-test) ---
+<empty>
+
+--- Volumes (filter sonarqube) ---
+<empty>
+
+--- Networks (sonarqube name) ---
+<empty>
+
+--- Port 9000 binding ---
+<empty>
+
+Test 5.1: containers=1 volumes=1 networks=1 port=1
+Test 5.1: PASS ✓ (no Docker resource accumulation)
+
+============================================================
+Test 5.2 — No accumulated cruft in CWD
+============================================================
+--- .scannerwork/ ---
+./.scannerwork
+
+Note: AAP §0.3.1 permits the scanner's .scannerwork/ workspace cache.
+It is gitignored at the repo root and at blitzy/scripts/.gitignore.
+Verify it is gitignored:
+.gitignore:39:.scannerwork/	.scannerwork
+
+--- Orphan raw JSON dumps at repo root ---
+(none)
+
+--- Orphan sonar-project.properties at repo root ---
+(none)
+
+--- Verify .scannerwork is gitignored at repo level ---
+
+============================================================
+Test 5.3 — Verify Cargo state byte-identical to pre-run
+============================================================
+Pre-run Cargo checksums:
+1ee23183ebce0c903b1b69421c71d85a4858407a9ba13fb8d4c553c7e189f38c  Cargo.toml
+758178878be6b749d0545f75d63c7fe66f21135f0ec2b42423cd7d0c9b09ea4c  Cargo.lock
+
+Post-run Cargo checksums:
+1ee23183ebce0c903b1b69421c71d85a4858407a9ba13fb8d4c553c7e189f38c  Cargo.toml
+758178878be6b749d0545f75d63c7fe66f21135f0ec2b42423cd7d0c9b09ea4c  Cargo.lock
+
+Test 5.3: BYTE-IDENTICAL ✓ (Cargo state unchanged per AAP §0.4.3)
+
+============================================================
+Summary of host cleanup
+============================================================
+After complete workflow re-run via production driver:
+  - sonarqube-test container: REMOVED ✓
+  - sonarqube volumes:        NONE ✓
+  - sonarqube networks:       NONE ✓
+  - port 9000:                UNBOUND ✓
+  - .scannerwork/:            PRESENT but gitignored (per AAP §0.3.1 permitted) ✓
+  - sonar-issues-raw*.json:   NONE at root ✓
+  - sonar-project.properties: NONE at root ✓ (trap removed it at script dir)
+  - Cargo.toml/Cargo.lock:    BYTE-IDENTICAL ✓

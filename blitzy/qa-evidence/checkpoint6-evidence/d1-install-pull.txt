@@ -1,0 +1,31 @@
+============================================================
+Phase 3 — D1: Install + Pull verification
+Timestamp: 2026-05-15T08:23:05Z
+============================================================
+
+--- sonar-scanner --version (User D1 pass criterion) ---
+08:23:05.576 INFO  Scanner configuration file: /opt/sonar-scanner/conf/sonar-scanner.properties
+08:23:05.579 INFO  Project root configuration file: NONE
+08:23:05.591 INFO  SonarScanner CLI 6.2.1.4610
+08:23:05.592 INFO  Java 17.0.12 Eclipse Adoptium (64-bit)
+08:23:05.592 INFO  Linux 6.6.122+ amd64
+sonar-scanner --version exit code: 0
+
+--- docker pull sonarqube:community (timed) ---
+community: Pulling from library/sonarqube
+Digest: sha256:35bedac3f40cda75969890da59b17d577770844fe6ef659206c678a8e00921c7
+Status: Image is up to date for sonarqube:community
+docker.io/library/sonarqube:community
+docker pull exit code: 0
+Pull time: 0s
+
+--- image digest cross-reference ---
+Captured digest: sonarqube@sha256:35bedac3f40cda75969890da59b17d577770844fe6ef659206c678a8e00921c7
+Decision-log digest: sha256:35bedac3f40cda75969890da59b17d577770844fe6ef659206c678a8e00921c7
+
+--- image metadata ---
+Id: sha256:61d0bce2238dbf55859bea90da63a7b4994585bad04f43d3b0f93e6b252941dc
+Created: 2026-05-11T22:13:40.873390969Z
+Architecture: amd64
+OS: linux
+============================================================

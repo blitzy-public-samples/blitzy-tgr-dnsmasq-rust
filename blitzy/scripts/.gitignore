@@ -1,0 +1,17 @@
+# Python build artifacts (sonar_pipeline.py is invoked directly; never commit caches)
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime artifacts produced by run_sonarqube_scan.sh that must never be committed.
+# The driver writes transient debug dumps and a regenerated properties file next
+# to itself; these are reproducible from a fresh run. AAP §0.6.2.4 mandates that
+# sonar-project.properties is "Not committed to the repository", and the QA
+# Checkpoint 1 MINOR finding (Issue #3) confirmed that committing this file
+# leaves the working tree dirty after every run. Keeping it gitignored here
+# preserves the run-time audit value of the file while satisfying AAP §0.3.2
+# ("source tree byte-identical pre- and post-run").
+sonar-issues-raw.json
+sonar-scanner-output.log
+sonar-project.properties
+.scannerwork/

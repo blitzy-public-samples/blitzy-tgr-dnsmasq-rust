@@ -1,0 +1,141 @@
+============================================================
+Phase 5 — D3: Scanner Execution
+Timestamp: 2026-05-15T08:24:37Z
+============================================================
+
+--- Cargo availability (per AAP §0.8.1) ---
+cargo 1.91.0 (ea2d97820 2025-10-10)
+
+--- Test User D3 literal example (admin/admin via sonar-scanner) ---
+Note: per the decision log, the live workflow falls back to token auth because
+SonarQube Community 26.5.0.122743 deprecated sonar.login/password for the scanner.
+First, try the literal User D3 example to verify the deprecation message exists:
+
+08:24:37.405 INFO  Scanner configuration file: /opt/sonar-scanner/conf/sonar-scanner.properties
+08:24:37.407 INFO  Project root configuration file: NONE
+08:24:37.419 INFO  SonarScanner CLI 6.2.1.4610
+08:24:37.420 INFO  Java 17.0.12 Eclipse Adoptium (64-bit)
+08:24:37.420 INFO  Linux 6.6.122+ amd64
+08:24:37.444 INFO  User cache: /root/.sonar/cache
+08:24:38.053 INFO  JRE provisioning: os[linux], arch[x86_64]
+08:24:38.466 INFO  Communicating with SonarQube Server 26.5.0.122743
+08:24:38.692 INFO  Starting SonarScanner Engine...
+08:24:38.692 INFO  Java 21.0.9 Eclipse Adoptium (64-bit)
+08:24:39.308 INFO  Load global settings
+08:24:39.375 ERROR Not authorized. Please check the user token in the property 'sonar.token' or 'sonar.login' (deprecated).
+08:24:39.388 INFO  EXECUTION FAILURE
+08:24:39.391 INFO  Total time: 1.987s
+literal-example exit code: 3
+literal-example time: 2s
+============================================================
+
+============================================================
+D3 token-auth fallback (live workflow path)
+============================================================
+Token response: {"login":"admin","name":"config-i-qa6-1778833496","token":"sqa_b633ca81cf94e2f9b9a9f45c202c1469c11377de","createdAt":"2026-05-15T08:24:56+0000","type":"GLOBAL_ANALYSIS_TOKEN"}
+Token captured (first 12 chars only for evidence): sqa_b633ca81...
+
+--- Run sonar-scanner with -Dsonar.token=... (matches the run script) ---
+08:25:22.829 INFO  There are no files to be analyzed for the Azure Resource Manager language
+08:25:22.829 INFO  Sensor IaC Azure Resource Manager Sensor [iac] (done) | time=0ms
+08:25:22.829 INFO  Sensor Java Config Sensor [iac]
+08:25:22.832 INFO  There are no files to be analyzed for the Java language
+08:25:22.832 INFO  Sensor Java Config Sensor [iac] (done) | time=3ms
+08:25:22.832 INFO  Sensor IaC Docker Sensor [iac]
+08:25:22.836 INFO  There are no files to be analyzed for the Docker language
+08:25:22.836 INFO  Sensor IaC Docker Sensor [iac] (done) | time=3ms
+08:25:22.836 INFO  Sensor JavaScript/TypeScript/CSS analysis [javascript]
+08:25:23.026 INFO  Detected os: Linux arch: amd64 alpine: false. Platform: LINUX_X64
+08:25:23.027 INFO  Deploy location /root/.sonar/js/node-runtime, tagetRuntime: /root/.sonar/js/node-runtime/node,  version: /root/.sonar/js/node-runtime/version.txt
+08:25:25.747 INFO  Using embedded Node.js runtime.
+08:25:25.748 INFO  Using Node.js executable: '/root/.sonar/js/node-runtime/node'.
+08:25:27.445 INFO  Memory configuration: OS (3935090 MB), Node.js (4288 MB).
+08:25:27.551 INFO  WebSocket client connected on /ws
+08:25:27.555 INFO  Plugin version: [12.3.0.39932]
+08:25:29.597 INFO  Found 0 tsconfig.json file(s): []
+08:25:29.858 INFO  1 source file to be analyzed
+08:25:29.859 INFO  1/1 source file has been analyzed
+08:25:29.892 INFO  Hit the cache for 0 out of 1
+08:25:29.892 INFO  Miss the cache for 1 out of 1: ANALYSIS_MODE_INELIGIBLE [1/1]
+08:25:29.893 INFO  Sensor JavaScript/TypeScript/CSS analysis [javascript] (done) | time=7056ms
+08:25:29.893 INFO  Sensor TextAndSecretsSensor [text]
+08:25:29.901 INFO  Available processors: 4
+08:25:29.901 INFO  Using 4 threads for analysis.
+08:25:30.102 INFO  The property "sonar.tests" is not set. To improve the analysis accuracy, we categorize a file as a test file if any of the following is true:
+  * The filename starts with "test"
+  * The filename contains "test." or "tests."
+  * Any directory in the file path is named: "doc", "docs", "test", "tests", "mock" or "mocks"
+  * Any directory in the file path has a name ending in "test" or "tests"
+
+08:25:30.121 INFO  Start fetching files for the text and secrets analysis
+08:25:30.125 INFO  Using Git CLI to retrieve dirty files
+08:25:30.131 INFO  Retrieving language associated files and files included via "sonar.text.inclusions" that are tracked by git
+08:25:30.137 INFO  Starting the text and secrets analysis
+08:25:30.138 INFO  106 source files to be analyzed for the text and secrets analysis
+08:25:30.601 INFO  106/106 source files have been analyzed for the text and secrets analysis
+08:25:30.603 INFO  Sensor TextAndSecretsSensor [text] (done) | time=710ms
+08:25:30.606 INFO  ------------- Run sensors on project
+08:25:30.700 INFO  Sensor Zero Coverage Sensor
+08:25:30.706 INFO  Sensor Zero Coverage Sensor (done) | time=6ms
+08:25:30.706 INFO  ------------- Gather SCA dependencies on project
+08:25:30.709 INFO  Dependency analysis skipped
+08:25:30.711 INFO  SCM Publisher SCM provider for this project is: git
+08:25:30.712 INFO  SCM Publisher 101 source files to be analyzed
+08:25:31.473 INFO  SCM Publisher 101/101 source files have been analyzed (done) | time=760ms
+08:25:31.522 INFO  CPD Executor 2 files had no CPD blocks
+08:25:31.523 INFO  CPD Executor Calculating CPD for 99 files
+08:25:31.592 INFO  CPD Executor CPD calculation finished (done) | time=68ms
+08:25:31.599 INFO  SCM revision ID '8a99ee5676419a433035bb6339b383315199e139'
+08:25:31.815 INFO  Analysis report generated in 215ms, dir size=5.2 MB
+08:25:32.015 INFO  Analysis report compressed in 199ms, zip size=1.5 MB
+08:25:32.255 INFO  Analysis report uploaded in 240ms
+08:25:32.256 INFO  ------------- Check Quality Gate status
+08:25:32.256 INFO  Waiting for the analysis report to be processed (max 300s)
+08:25:42.321 INFO  QUALITY GATE STATUS: PASSED - View details on http://localhost:9000/dashboard?id=blitzy-tgr-dnsmasq-rust
+08:25:42.485 INFO  Analysis total time: 44.205 s
+08:25:42.485 INFO  SonarScanner Engine completed successfully
+08:25:42.846 INFO  EXECUTION SUCCESS
+08:25:42.847 INFO  Total time: 46.116s
+scan exit code: 0
+scan duration: 46s
+
+--- Capture quality gate result from server ---
+CE Task ID: d9b757c6-a7bc-4123-9c87-e4be3ca4c35f
+{
+  "id": "d9b757c6-a7bc-4123-9c87-e4be3ca4c35f",
+  "status": "SUCCESS",
+  "type": "REPORT",
+  "analysisId": "114e2152-9d3c-4dd7-a7ef-3f5e479dce17"
+}
+Quality gate response: {"projectStatus":{"status":"OK","conditions":[],"ignoredConditions":false,"caycStatus":"compliant"}}
+Quality gate status: OK
+============================================================
+
+============================================================
+D3: Re-run with full output capture to verify Clippy sensor
+============================================================
+Scan exit: 0
+--- Rust-relevant sensor log lines ---
+08:26:03.282 INFO  Project key: blitzy-tgr-dnsmasq-rust
+08:26:03.283 INFO  Base dir: /tmp/blitzy/blitzy-tgr-dnsmasq-rust/blitzy-5e358023-afb8-4ba5-a896-aebda689d8a1_a14815
+08:26:03.283 INFO  Working dir: /tmp/blitzy/blitzy-tgr-dnsmasq-rust/blitzy-5e358023-afb8-4ba5-a896-aebda689d8a1_a14815/.scannerwork
+08:26:03.289 INFO  Load project settings for component key: 'blitzy-tgr-dnsmasq-rust'
+08:26:03.304 INFO  Load project settings for component key: 'blitzy-tgr-dnsmasq-rust' (done) | time=14ms
+08:26:04.465 INFO  Quality profile for rust: Sonar way
+08:26:04.465 INFO  ------------- Run sensors on module blitzy-tgr-dnsmasq-rust
+08:26:05.131 INFO  Sensor Clippy [rust]
+08:26:05.466 INFO  Sensor Clippy [rust] (done) | time=334ms
+08:26:05.466 INFO  Sensor Rust [rust]
+08:26:09.987 INFO  Sensor Rust [rust] (done) | time=4520ms
+08:26:22.633 INFO  QUALITY GATE STATUS: PASSED - View details on http://localhost:9000/dashboard?id=blitzy-tgr-dnsmasq-rust
+
+--- Quality gate result lines ---
+08:26:17.600 INFO  ------------- Check Quality Gate status
+08:26:22.633 INFO  QUALITY GATE STATUS: PASSED - View details on http://localhost:9000/dashboard?id=blitzy-tgr-dnsmasq-rust
+
+--- Total time / execution status ---
+08:26:10.531 INFO  Starting rules execution
+08:26:11.467 INFO  Finished step rules execution in 935ms
+08:26:22.764 INFO  Analysis total time: 19.728 s
+08:26:23.149 INFO  EXECUTION SUCCESS
+08:26:23.150 INFO  Total time: 21.696s

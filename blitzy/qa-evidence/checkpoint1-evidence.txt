@@ -1,0 +1,683 @@
+==========================================================================
+QA CHECKPOINT 1 EVIDENCE LOG
+Generated: 2026-05-15T04:12:41Z
+==========================================================================
+
+########## PHASE 3 — Environment Setup and Discovery (Checkpoint Phase 1) ##########
+
+----- pwd -----
+/tmp/blitzy/blitzy-tgr-dnsmasq-rust/blitzy-5e358023-afb8-4ba5-a896-aebda689d8a1_a14815
+
+----- ls -la findings-config-i.json -----
+-rw-r--r-- 1 root root 3 May 15 03:41 findings-config-i.json
+
+----- file size -----
+3
+
+----- docker --version -----
+Docker version 28.5.2, build ecc6942
+
+----- sonar-scanner --version (head 10) -----
+04:12:41.505 INFO  Scanner configuration file: /opt/sonar-scanner/conf/sonar-scanner.properties
+04:12:41.508 INFO  Project root configuration file: NONE
+04:12:41.518 INFO  SonarScanner CLI 6.2.1.4610
+04:12:41.520 INFO  Java 17.0.12 Eclipse Adoptium (64-bit)
+04:12:41.520 INFO  Linux 6.6.122+ amd64
+
+----- curl --version (head 1) -----
+curl 8.14.1 (x86_64-pc-linux-gnu) libcurl/8.14.1 OpenSSL/3.5.3 zlib/1.3.1 brotli/1.1.0 zstd/1.5.7 libidn2/2.3.8 libpsl/0.21.2 libssh2/1.11.1 nghttp2/1.64.0 librtmp/2.3 OpenLDAP/2.6.10
+
+----- jq --version -----
+jq-1.8.1
+
+----- python3 --version -----
+Python 3.13.7
+
+----- ls -la (repo root) -----
+total 172
+drwxr-sr-x 11 root root  4096 May 15 03:59 .
+drwxr-sr-x  4 root root  4096 May 15 03:04 ..
+drwxr-sr-x  2 root root  4096 May 15 03:04 .cargo
+drwxr-sr-x  8 root root  4096 May 15 04:09 .git
+-rw-r--r--  1 root root   342 May 15 03:04 .gitignore
+-rw-r--r--  1 root root 90264 May 15 03:04 Cargo.lock
+-rw-r--r--  1 root root  6153 May 15 03:04 Cargo.toml
+-rw-r--r--  1 root root    44 May 15 03:04 README.md
+drwxr-sr-x  2 root root  4096 May 15 03:04 benches
+drwxr-sr-x  6 root root  4096 May 15 04:11 blitzy
+-rw-r--r--  1 root root  2646 May 15 03:04 build.rs
+-rw-r--r--  1 root root  1535 May 15 03:04 clippy.toml
+drwxr-sr-x  2 root root  4096 May 15 03:04 docs
+drwxr-sr-x  2 root root  4096 May 15 03:04 examples
+-rw-r--r--  1 root root     3 May 15 03:41 findings-config-i.json
+-rw-r--r--  1 root root   134 May 15 03:04 rust-toolchain.toml
+-rw-r--r--  1 root root    62 May 15 03:04 rustfmt.toml
+drwxr-sr-x 11 root root  4096 May 15 03:04 src
+drwxr-sr-x  4 root root  4096 May 15 03:11 target
+drwxr-sr-x  3 root root  4096 May 15 03:04 tests
+
+----- git status --porcelain -----
+?? blitzy/qa-evidence/
+[END git status; empty above means clean]
+
+----- git diff --stat -----
+[END git diff; empty above means no tracked file diffs]
+
+----- git diff --stat HEAD -- Cargo.toml Cargo.lock rust-toolchain.toml rustfmt.toml clippy.toml .cargo/config.toml build.rs README.md -----
+[END diff; empty means byte-identical]
+
+----- docker ps -a --filter name=sonarqube-test -----
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+
+----- ls -la (search for transient artifacts) -----
+[no transient artifacts present]
+
+
+########## PHASE 4 — Artifact Validity (Checkpoint Phase 2) ##########
+
+##### 2.1 — Single-line constraint #####
+----- cat findings-config-i.json | wc -l -----
+1
+
+----- wc -c < findings-config-i.json -----
+3
+
+----- xxd findings-config-i.json -----
+/bin/bash: line 255: xxd: command not found
+
+----- xxd findings-config-i.json | tail -1 (last visible byte) -----
+/bin/bash: line 258: xxd: command not found
+
+##### 2.2 — JSON validity #####
+----- python3 -m json.tool -----
+OK
+
+----- jq -e . -----
+OK
+
+----- jq -e 'type == "array"' -----
+true
+
+##### 2.3 — UTF-8 encoding without BOM #####
+----- file findings-config-i.json -----
+findings-config-i.json: JSON text data
+
+----- head -c 3 (first 3 bytes hex) -----
+/bin/bash: line 275: xxd: command not found
+head: error writing 'standard output': Broken pipe (os error 32)
+
+----- iconv UTF-8 round trip -----
+OK
+
+##### 2.4 — Empty array sentinel (file is 3 bytes — sentinel + newline) #####
+----- cat findings-config-i.json -----
+[]
+[END cat]
+
+##### 2.5 — 5-field schema compliance #####
+Record count: 0
+SCHEMA OK
+
+##### 2.6 — Description length cap #####
+max desc len: 0
+over-200 records: []
+
+##### 2.7 — Severity value enumeration #####
+----- unique severities -----
+[END unique severities; empty for empty input]
+
+----- severity distribution -----
+[]
+
+##### 2.8 — CWE value format #####
+----- non-conforming CWE values -----
+[no non-conforming values]
+
+----- CWE-UNKNOWN count -----
+0
+
+##### 2.9 — File path constraint (.rs suffix) #####
+----- non-.rs file paths -----
+[no non-.rs paths]
+
+##### 2.10 — Line number positivity #####
+0
+
+
+##### Supplementary byte inspection (xxd not available; using od and python3) #####
+
+----- od -c findings-config-i.json -----
+0000000   [   ]  \n
+0000003
+
+----- od -An -tx1 findings-config-i.json -----
+ 5b 5d 0a
+
+----- python3 hex dump (every byte) -----
+total bytes: 3
+hex: 5b5d0a
+repr: b'[]\n'
+first 3 bytes (BOM check): 5b5d0a — BOM would be efbbbf
+last byte: 0xa
+last visible byte before any trailing newlines: 0x5d
+trailing newline present: True
+
+##### Supplementary — exercise write_findings on a non-empty fixture #####
+
+Goal: confirm the schema validator catches problems on synthetic data,
+and confirm the minified, no-whitespace-between-tokens, UTF-8-without-BOM
+format from write_findings would still pass every Phase 2 check.
+
+synthetic file size: 585 bytes
+first 60 bytes: b'[{"file":"src/dns/forwarder.rs","line":124,"severity":"high"'
+last byte: 0xa
+trailing newline: True
+contains BOM: False
+SYNTHETIC SCHEMA CHECK: OK (5 records, multi-byte unicode preserved)
+minified marker — has ', '?: False
+minified marker — has ': '?: False
+minified: True (no whitespace between tokens): True
+
+########## PHASE 5 — Docker Container Lifecycle (Checkpoint Phase 3) ##########
+
+##### 3.1 — Post-run host state #####
+----- docker ps -a --filter name=sonarqube-test -----
+[END containers; empty above = PASS]
+
+----- docker ps --filter publish=9000 -----
+[END port 9000 bindings; empty above = PASS]
+
+----- docker volume ls --filter name=sonarqube -----
+[END volumes; empty above = PASS]
+
+----- docker network ls (sonar grep) -----
+[no sonar networks]
+
+##### 3.2 — Image presence and digest #####
+----- docker images sonarqube:community -----
+sonarqube:community ID=61d0bce2238d Digest=<none> Size=1.42GB
+
+----- docker image inspect (digest) -----
+sonarqube@sha256:35bedac3f40cda75969890da59b17d577770844fe6ef659206c678a8e00921c7
+
+
+##### 3.4 — Exit-trap idempotency #####
+
+----- Test 3.4a: Trap fires on non-zero exit -----
+Trap registered
+Bash exit code: 1 (expect 1)
+
+----- Test 3.4a: post-trap container state -----
+[END; empty = trap left no orphan]
+
+----- Test 3.4b: Idempotent stop/rm (repeat twice) -----
+stop1 exit: 1
+stop2 exit: 1
+rm1 exit: 1
+rm2 exit: 1
+[All exits are 0 OR 1 — both acceptable per silenced trap pattern]
+
+----- Test 3.4c: Verify the actual scan script registers the trap at the top #####
+Line numbers of trap registration in run_sonarqube_scan.sh:
+46:trap '
+
+First non-comment, non-empty line that registers the trap:
+35: set -o errexit
+
+Trap registered BEFORE docker pull / docker run? grep 'docker pull|docker run -d|^trap':
+46:trap '
+114:docker pull "${IMAGE_TAG}"
+133:docker run -d \
+
+
+##### 3.3 — Live workflow re-run (Path A) #####
+
+----- Pre-run state -----
+Pre-run baseline md5: 58e0494c51d30eb3494f7c9198986bb9  findings-config-i.json
+
+----- Executing bash blitzy/scripts/run_sonarqube_scan.sh -----
+
+----- 3.3 LIVE WORKFLOW RE-RUN — FULL LOG -----
+==> Config I scan starting
+    REPO_ROOT       = /tmp/blitzy/blitzy-tgr-dnsmasq-rust/blitzy-5e358023-afb8-4ba5-a896-aebda689d8a1_a14815
+    OUTPUT_FILE     = /tmp/blitzy/blitzy-tgr-dnsmasq-rust/blitzy-5e358023-afb8-4ba5-a896-aebda689d8a1_a14815/findings-config-i.json
+    SONAR_HOST_URL  = http://localhost:9000
+    CONTAINER_NAME  = sonarqube-test
+    IMAGE_TAG       = sonarqube:community
+==> D1: Installing host tooling
+04:15:51.948 INFO  Scanner configuration file: /opt/sonar-scanner/conf/sonar-scanner.properties
+04:15:51.951 INFO  Project root configuration file: NONE
+04:15:51.961 INFO  SonarScanner CLI 6.2.1.4610
+04:15:51.962 INFO  Java 17.0.12 Eclipse Adoptium (64-bit)
+04:15:51.963 INFO  Linux 6.6.122+ amd64
+==> D1: docker pull sonarqube:community
+community: Pulling from library/sonarqube
+Digest: sha256:35bedac3f40cda75969890da59b17d577770844fe6ef659206c678a8e00921c7
+Status: Image is up to date for sonarqube:community
+docker.io/library/sonarqube:community
+    image digest    = sonarqube@sha256:35bedac3f40cda75969890da59b17d577770844fe6ef659206c678a8e00921c7
+    image pull time = 1s
+==> D2: Starting ephemeral SonarQube backend
+    SonarQube is UP after 38s
+==> D3: Running sonar-scanner
+04:16:30.412 INFO  Scanner configuration file: /opt/sonar-scanner/conf/sonar-scanner.properties
+04:16:30.415 INFO  Project root configuration file: NONE
+04:16:30.426 INFO  SonarScanner CLI 6.2.1.4610
+04:16:30.428 INFO  Java 17.0.12 Eclipse Adoptium (64-bit)
+04:16:30.428 INFO  Linux 6.6.122+ amd64
+04:16:30.451 INFO  User cache: /root/.sonar/cache
+04:16:31.018 INFO  JRE provisioning: os[linux], arch[x86_64]
+04:16:32.666 INFO  Communicating with SonarQube Server 26.5.0.122743
+04:16:32.892 INFO  Starting SonarScanner Engine...
+04:16:32.893 INFO  Java 21.0.9 Eclipse Adoptium (64-bit)
+04:16:33.515 INFO  Load global settings
+04:16:33.580 ERROR Not authorized. Please check the user token in the property 'sonar.token' or 'sonar.login' (deprecated).
+04:16:33.589 INFO  EXECUTION FAILURE
+04:16:33.591 INFO  Total time: 3.180s
+    sonar-scanner exit = 3
+    scan wall-clock    = 3s
+ERROR: sonar-scanner failed with exit code 3.
+
+----- 3.3 Re-run Outcome Analysis -----
+Script exit code: 4 (sonar-scanner failed)
+Total elapsed: ~60s (timed out by orchestrator after script failed)
+D1 image pull: 1s — PASS
+D2 cold start: 38s — PASS (UP within 120s limit)
+D3 sonar-scanner: FAIL — exit code 3, ERROR 'Not authorized. Please check the user token in property sonar.token or sonar.login (deprecated).'
+D4/D5: NOT REACHED (script exited code 4 after D3 failure)
+
+----- Post-failure state verification -----
+Container after failure: 
+findings-config-i.json md5: 58e0494c51d30eb3494f7c9198986bb9
+findings-config-i.json md5 vs baseline: BYTE-IDENTICAL — original artifact preserved
+git status findings-config-i.json: 
+
+----- ROOT CAUSE -----
+The 'sonarqube:community' rolling tag now resolves to v26.5.0.122743,
+which DEPRECATED 'sonar.login'/'sonar.password' username-password auth.
+The AAP §0.8.1 explicitly acknowledges this Docker-tag-drift risk:
+  > 'The user-specified Docker image tag sonarqube:community resolves at
+  >  pull time to whatever Community Build is current on Docker Hub. The
+  >  image digest observed at pull time MUST be captured in the decision
+  >  log so that any drift between runs is auditable.'
+
+However, the workflow does NOT pin a known-good image digest, so the live
+execution fails in the current environment even though the committed
+[]\n artifact was valid when produced (commit 140e2e9 per scripts/README.md).
+
+GRACEFUL FAILURE EVIDENCE:
+  - Teardown trap correctly removed the container
+  - Original artifact NOT overwritten (md5 unchanged)
+  - No orphan state on host
+  - bash exit code 4 (not 0) clearly signals failure to a CI consumer
+
+##### 3.3 — Diagnostic: WHY does the literal user invocation fail? #####
+
+Investigation result:
+  - Direct curl with admin:admin Basic auth → /api/issues/search returns HTTP 200
+  - Direct curl with admin:admin → POST /api/user_tokens/generate works
+  - sonar-scanner with -Dsonar.login=admin -Dsonar.password=admin → FAILS 'Not authorized'
+  - sonar-scanner with -Dsonar.token=<GENERATED_TOKEN> → SUCCEEDS
+
+CONCLUSION: SonarQube Community Build 26.5.0.122743 has DEPRECATED/REMOVED
+username-password auth in the SCANNER protocol while keeping it for the REST API.
+The error message itself confirms this: 'sonar.login (deprecated)'.
+
+##### 3.3 — Cargo prerequisite check #####
+
+Cargo location: lrwxrwxrwx 1 root root 6 May 15 03:08 /root/.cargo/bin/cargo -> rustup
+Cargo via login shell: /root/.cargo/bin/cargo
+Cargo via non-login shell (how run_sonarqube_scan.sh invokes scanner): NOT_ON_PATH
+
+Result: Cargo is installed but NOT on the script's PATH. The script does NOT
+source ~/.cargo/env or add /root/.cargo/bin to PATH before invoking sonar-scanner.
+Per AAP §0.8.1, this triggers the documented 'file-only analysis fallback'.
+
+##### 3.3 — END-TO-END verification with workarounds #####
+
+Steps executed to prove the pipeline produces a byte-identical artifact
+against the current SonarQube image:
+  1. Started fresh sonarqube-test container — UP in 33s
+  2. POST /api/user_tokens/generate with admin:admin Basic auth — OK (HTTP 200)
+  3. sonar-scanner with sonar.token=$TOKEN AND PATH=/root/.cargo/bin:$PATH AND qualitygate.wait=true:
+       - Sensor Clippy [rust] ran: 15452 ms
+       - Sensor Rust [rust] ran: 4366 ms
+       - Quality Gate: PASSED
+       - Total time: 31.246s
+       - Exit code: 0
+  4. python3 sonar_pipeline.py with the literal user creds (admin/admin Basic auth on REST API):
+       - raw_issues_total: 0
+       - normalized_records: 0
+       - skipped_total: 0
+       - rule_lookups: 0
+  5. Output md5: 58e0494c51d30eb3494f7c9198986bb9 — IDENTICAL to baseline
+  6. docker stop && docker rm — OK
+
+##### 3.3 — Conclusions #####
+
+ARTIFACT QUALITY: PASS
+  The committed findings-config-i.json is byte-identical to what a fresh successful
+  scan produces. It is a legitimate, correctly-formatted empty array sentinel.
+
+LIVE WORKFLOW RE-RUNNABILITY (as currently scripted): FAIL
+  The literal user D3 invocation in run_sonarqube_scan.sh fails against the
+  current SonarQube image due to (a) credential-method deprecation in the scanner
+  and (b) cargo PATH inheritance issue. Both issues are acknowledged in AAP §0.8.1
+  as known drift risks, but the workflow does not mitigate them (no digest pin,
+  no cargo PATH export, no token-auth fallback).
+
+TEARDOWN ROBUSTNESS: PASS
+  The exit trap correctly removes the container on script failure. The original
+  committed artifact is NOT corrupted (md5 unchanged) because the python pipeline
+  never runs when sonar-scanner fails.
+
+########## PHASE 6 — Security Integrity (Checkpoint Phase 4) ##########
+
+##### 4.1 — No credential leak in artifact #####
+
+----- grep -i -E '(password|secret|token|credential|api[-_]?key)' findings-config-i.json -----
+[no matches]
+
+----- grep -E 'admin' findings-config-i.json -----
+[no matches]
+
+----- Show full artifact contents (3 bytes — safe to display in full) -----
+Hex:  5b 5d 0a
+Text: []
+
+##### 4.2 — No host path or internal info leak #####
+
+----- grep -E '/home/|/root/|/Users/|C:\\\\' findings-config-i.json -----
+[no matches]
+
+##### 4.3 — Container ephemerality verification #####
+
+----- Post-run container/volume/network state -----
+[End containers]
+[End volumes]
+[no sonar networks]
+
+----- Persisted credentials check (no token files in repo) -----
+[no SonarQube tokens persisted in repo files]
+
+----- Verify scripts hardcode admin/admin only as documented ephemeral credentials -----
+blitzy/scripts/run_sonarqube_scan.sh:56:# credentials (admin/admin) are all taken verbatim from the user prompt and
+blitzy/scripts/run_sonarqube_scan.sh:64:SONAR_LOGIN='admin'
+blitzy/scripts/run_sonarqube_scan.sh:65:SONAR_PASSWORD='admin'
+blitzy/scripts/sonar_pipeline.py:29:      --login admin --password admin \\
+blitzy/scripts/sonar_pipeline.py:104:    The SonarQube Community Build accepts ``admin/admin`` Basic auth for
+blitzy/scripts/sonar_pipeline.py:568:    parser.add_argument("--login", default="admin")
+blitzy/scripts/sonar_pipeline.py:569:    parser.add_argument("--password", default="admin")
+blitzy/scripts/sonar-project.properties:5:sonar.login=admin
+blitzy/scripts/sonar-project.properties:6:sonar.password=admin
+
+##### 4.4 — JSON content security #####
+
+----- jq -r '.[].description' | grep for script injection patterns -----
+[no script-injection patterns]
+
+----- jq -r '.[].file' | grep for path traversal patterns -----
+[no path traversal patterns]
+
+
+########## PHASE 7 — User-Specified Rules Verification (Checkpoint Phase 5) ##########
+
+##### Cross-artifact existence #####
+
+----- ls -la for all three rule-mandated artifacts -----
+ls: cannot access 'decision-log-config-i.md': No such file or directory
+ls: cannot access 'executive-summary-config-i.html': No such file or directory
+-rw-r--r-- 1 root root 3 May 15 03:41 findings-config-i.json
+
+Analysis:
+  - findings-config-i.json: PRESENT (this checkpoint's named deliverable)
+  - decision-log-config-i.md: ABSENT (deferred to Checkpoint 2 per QA scope)
+  - executive-summary-config-i.html: ABSENT (deferred to Checkpoint 3 per QA scope)
+
+The QA scope explicitly states under 'Explicitly Out-of-Scope':
+  - 'Decision log content validation (deferred to Checkpoint 2 — documentation
+     specialty after decision-log-config-i.md)'
+  - 'Executive summary HTML rendering (deferred to Checkpoint 3 — frontend
+     specialty after executive-summary-config-i.html)'
+
+This is consistent with the implementation strategy: this checkpoint is paired
+with the code review for the findings JSON only. The other artifacts come later.
+
+----- Cross-artifact regeneration discipline #####
+
+Since only findings-config-i.json exists, the timestamp comparison is vacuous.
+Capture the single artifact's mtime for traceability across future checkpoints:
+1778816494 findings-config-i.json (mtime: 2026-05-15 03:41:34.694593330 +0000)
+
+When Checkpoints 2 and 3 produce their respective artifacts, the cross-artifact
+regeneration check (AAP §0.6.5) will become testable. For now, confirm:
+  - findings-config-i.json mtime: 2026-05-15 03:41:34.694593330 +0000
+  - Time elapsed since artifact created: 2519 seconds
+
+
+########## PHASE 8 — Supplementary and Adversarial Testing ##########
+
+##### Adversarial fixture pipeline test #####
+
+Fixture file: /tmp/qa-fixtures/adversarial-issues.json
+Fixture covers:
+  - All 5 severity levels (BLOCKER, CRITICAL, MAJOR, MINOR, INFO)
+  - CWE tag scan match (cwe-119, CWE-22)
+  - Tag-only with generic 'cwe' marker (no specific ID) → rule fallback
+  - Rule htmlDesc fallback (R002 → CWE-120 via rule-fixtures.json)
+  - Neither tag nor rule (R004 → CWE-UNKNOWN sentinel)
+  - Non-Rust file filter (Cargo.toml — should be DROPPED)
+  - Project-level component (no colon → DROPPED)
+  - Zero line (line=0 → DROPPED)
+  - Wrong project key prefix (other-project:... → DROPPED)
+  - 200-char truncation (i10 has a 270+ char description)
+  - Whitespace collapse (i11 has multiple internal spaces)
+  - XSS-shaped payload in description (i12 — escaped in JSON, not executed)
+  - UTF-8 multi-byte preservation (i5 has Japanese characters)
+
+----- Run pipeline with dry-run fixtures -----
+{"raw_issues_total":12,"normalized_records":8,"skipped_total":4,"skipped_by_reason":{"non-rust-path":1,"non-project-component":2,"non-positive-line":1},"rule_lookups":3,"output_file":"/tmp/qa-fixtures/findings-adversarial.json"}
+
+----- Output content (pretty-printed for analysis) -----
+[
+    {
+        "file": "src/dns/parser.rs",
+        "line": 12,
+        "severity": "critical",
+        "cwe": "CWE-119",
+        "description": "Critical unsafe block"
+    },
+    {
+        "file": "src/dhcp/lease.rs",
+        "line": 42,
+        "severity": "critical",
+        "cwe": "CWE-120",
+        "description": "Buffer overflow risk"
+    },
+    {
+        "file": "src/tftp/handler.rs",
+        "line": 7,
+        "severity": "high",
+        "cwe": "CWE-22",
+        "description": "Path traversal"
+    },
+    {
+        "file": "src/util/parse.rs",
+        "line": 1,
+        "severity": "medium",
+        "cwe": "CWE-UNKNOWN",
+        "description": "Untrusted input"
+    },
+    {
+        "file": "src/runtime/scheduler.rs",
+        "line": 300,
+        "severity": "low",
+        "cwe": "CWE-UNKNOWN",
+        "description": "\u65e5\u672c\u8a9e\u30c6\u30b9\u30c8 multi-byte for unicode round-trip verification works correctly"
+    },
+    {
+        "file": "src/dns/cache.rs",
+        "line": 99,
+        "severity": "high",
+        "cwe": "CWE-79",
+        "description": "Issue with a very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very long description that goes well "
+    },
+    {
+        "file": "src/network/firewall/nftables.rs",
+        "line": 222,
+        "severity": "high",
+        "cwe": "CWE-89",
+        "description": "leading and trailing whitespace collapse test"
+    },
+    {
+        "file": "src/platform/ubus.rs",
+        "line": 15,
+        "severity": "high",
+        "cwe": "CWE-79",
+        "description": "<script>alert(1)</script> XSS payload in description"
+    }
+]
+
+----- Schema validation on adversarial output -----
+Record count: 8
+ALL ADVERSARIAL RECORDS PASS SCHEMA
+
+Severity remap verification:
+  file='src/dns/parser.rs'                                severity='critical' cwe='CWE-119'       desc_len=21
+  file='src/dhcp/lease.rs'                                severity='critical' cwe='CWE-120'       desc_len=20
+  file='src/tftp/handler.rs'                              severity='high'     cwe='CWE-22'        desc_len=14
+  file='src/util/parse.rs'                                severity='medium'   cwe='CWE-UNKNOWN'   desc_len=15
+  file='src/runtime/scheduler.rs'                         severity='low'      cwe='CWE-UNKNOWN'   desc_len=69
+  file='src/dns/cache.rs'                                 severity='high'     cwe='CWE-79'        desc_len=200
+  file='src/network/firewall/nftables.rs'                 severity='high'     cwe='CWE-89'        desc_len=45
+  file='src/platform/ubus.rs'                             severity='high'     cwe='CWE-79'        desc_len=52
+
+
+##### UTF-8 raw bytes verification (multi-byte preservation) #####
+File size: 1209 bytes
+BOM check (first 3 bytes): 5b7b22 — should NOT be efbbbf
+Trailing newline: False
+Japanese marker found in raw bytes: True
+\u65e5 escape sequence in raw bytes (would indicate ensure_ascii=True): False
+Japanese bytes context (hex): e697a5e69cace8aa9ee38386e382b9e38388
+Japanese bytes context (repr): b'\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xb9\xe3\x83\x88'
+
+##### Single-line constraint on adversarial output #####
+wc -l: 1
+wc -c: 1209
+First 100 bytes: [{"file":"src/dns/parser.rs","line":12,"severity":"critical","cwe":"CWE-119","description":"Critical
+Last 50 chars: pt>alert(1)</script> XSS payload in description"}]
+
+Minification verification (no ', ' or ': ' whitespace between tokens):
+contains ', ': False
+contains ': ': False
+
+##### Severity hard-error verification — unknown severity input #####
+OK — ValueError raised on unknown severity: Unknown SonarQube severity 'NOVEL_SEVERITY'. Refusing to emit a record with an out-of-schema severity value.
+OK — ValueError raised on None severity: Issue severity must be a string; got NoneType
+OK — ValueError raised on int severity: Issue severity must be a string; got int
+
+##### Description boundary: exactly 200 chars vs 201 #####
+truncate('X'*200): len=200
+truncate('X'*201): len=200
+truncate(''): ''
+truncate(None): ''
+truncate('日'*250): code_points=200 bytes=600
+UTF-8 multi-byte truncation is safe (no broken codepoints)
+
+##### Memoization verification — multiple issues share a rule #####
+  issue 0: rule=rust:R002 -> CWE-120
+  issue 1: rule=rust:R002 -> CWE-120
+  issue 2: rule=rust:R002 -> CWE-120
+  issue 3: rule=rust:R999 -> CWE-UNKNOWN
+Memoized rule lookups: 2
+
+
+##### Pagination 10k fallback logic — code path verification #####
+ISSUES_PAGE_SIZE_DEFAULT = 500
+ISSUES_PAGE_SIZE_HARD_CAP = 10000
+ISSUE_TYPES = 'VULNERABILITY,BUG'
+
+harvest_issues body inspection:
+  Uses ISSUES_PAGE_SIZE_HARD_CAP: True
+  Uses subcomponents: True
+  Has total >= cap check: True
+  Calls _harvest_for_component for fallback: True
+
+##### componentKeys URL-encoding verification (special chars: colon, comma) #####
+Encoded query: componentKeys=blitzy-tgr-dnsmasq-rust%3Asrc%2Ffoo.rs%2Cblitzy-tgr-dnsmasq-rust%3Asrc%2Fbar.rs&types=VULNERABILITY%2CBUG&ps=500&p=1
+
+##### Verify file paths in adversarial output map to actual src/ files #####
+Verifying every path in the adversarial output points to an existing src file:
+  ✗ src/dns/parser.rs MISSING (synthetic fixture path)
+  ✗ src/dhcp/lease.rs MISSING (synthetic fixture path)
+  ✗ src/tftp/handler.rs MISSING (synthetic fixture path)
+  ✗ src/util/parse.rs MISSING (synthetic fixture path)
+  ✗ src/runtime/scheduler.rs MISSING (synthetic fixture path)
+  ✓ src/dns/cache.rs exists
+  ✓ src/network/firewall/nftables.rs exists
+  ✓ src/platform/ubus.rs exists
+
+##### Verify cargo presence is the ONLY scanner blocker (not a code defect) #####
+
+Per AAP §0.8.1, Cargo MUST be available on the host. The script does NOT
+currently extend PATH to include /root/.cargo/bin. This is a script-level gap
+that the AAP explicitly anticipated and documented as a decision-log-recorded
+fallback rather than a hard requirement.
+
+##### Verify no Rust source file references findings-config-i.json #####
+References to findings-config-i in Rust source: 0 (expect 0 — clean separation)
+
+##### FINAL Git status check — verify no source modifications #####
+ M blitzy/scripts/sonar-project.properties
+?? .scannerwork/
+?? blitzy/qa-evidence/
+[END status]
+
+Compare to baseline (Phase 1):
+  Baseline: zero tracked file modifications + only ?? blitzy/qa-evidence/
+  Current:   M blitzy/scripts/sonar-project.properties?? .scannerwork/?? blitzy/qa-evidence/
+
+ blitzy/scripts/sonar-project.properties | 21 ++-------------------
+ 1 file changed, 2 insertions(+), 19 deletions(-)
+[END diff]
+
+##### Workflow modifies a tracked file (run_sonarqube_scan.sh writes to sonar-project.properties) #####
+
+FINDING: The bash driver overwrites blitzy/scripts/sonar-project.properties at run time.
+  Code path: run_sonarqube_scan.sh line 209-216 (cat > ${PROPERTIES_FILE} heredoc)
+  Effect:    a tracked, committed file is modified during every workflow execution
+
+Diff between original and regenerated forms:
+  Original:  23 lines (rich comment header + sonar.sources=.)
+  Regenerated: 7 lines (single 'Auto-regenerated' comment + sonar.sources=<absolute>)
+
+AAP context (§0.6.1):
+  > sonar-project.properties — CREATE (transient) — OPTIONAL run-time config that
+  > mirrors the six -D properties; written next to the run script so the scanner
+  > can pick it up automatically. Removed (or not committed) at end of run.
+
+Conflict: AAP says 'transient, not committed' but the implementation committed it
+AND overwrites it at run time. Each workflow execution leaves a dirty git working
+tree until manually reverted.
+
+Severity: MEDIUM (NOT a critical defect; the artifact is unaffected, but the
+workflow is not idempotent with respect to the working tree and would cause
+noise in any CI integration that runs 'git diff' after the workflow.)
+
+Reproduction:
+  1. git diff --stat blitzy/scripts/sonar-project.properties → clean
+  2. bash blitzy/scripts/run_sonarqube_scan.sh (or token-equivalent)
+  3. git diff --stat blitzy/scripts/sonar-project.properties → 1 file changed
+
+Recovery: git checkout -- blitzy/scripts/sonar-project.properties
+
+Suggested fix: Either (a) write the regenerated copy to /tmp or a .gitignored
+path, OR (b) remove sonar-project.properties from version control and keep only
+the .sh as the source of truth.
+
+##### Final git state after revert #####
+?? blitzy/qa-evidence/
+
+##### Final Docker state #####
+[End containers]

@@ -1,0 +1,29 @@
+============================================================
+Phase 4 — D2: Container Start + Health Poll
+Timestamp: 2026-05-15T08:23:29Z
+============================================================
+
+--- Pre-cleanup any leftover state ---
+Pre-cleanup done
+
+--- Container start (literal D2 example) ---
+2f945a1064cd7109b0486e0ea419c257b63220328291271e1deb7f5ade69f052
+docker run exit code: 0
+
+--- Health poll with 120s timeout (per AAP §0.5.6.6) ---
+Elapsed=0s Status=POLLING
+Elapsed=5s Status=POLLING
+Elapsed=13s Status=STARTING
+Elapsed=18s Status=STARTING
+Elapsed=23s Status=STARTING
+Elapsed=28s Status=STARTING
+Elapsed=33s Status=STARTING
+Elapsed=38s Status=UP
+
+--- Result ---
+Cold-start time: 38s
+
+--- State assertion: only STARTING / DB_MIGRATION_NEEDED / DB_MIGRATION_RUNNING / UP allowed ---
+Allowed states encountered (POLLING = pre-server-ready connection refused, treated as STARTING)
+Observed states: Status=POLLING Status=STARTING Status=UP 
+============================================================

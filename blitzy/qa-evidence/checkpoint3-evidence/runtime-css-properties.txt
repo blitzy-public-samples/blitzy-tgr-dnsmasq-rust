@@ -1,0 +1,26 @@
+Runtime computed values of --blitzy-* and --gradient-* and --ff-* CSS custom properties on :root
+Captured via: getComputedStyle(document.documentElement).getPropertyValue('<name>')
+
+| Property | Expected (AAP §0.7.2) | Actual (runtime) | Status |
+|----------|----------------------|------------------|--------|
+| --blitzy-primary | #5B39F3 | #5B39F3 | PASS |
+| --blitzy-primary-dark | #2D1C77 | #2D1C77 | PASS |
+| --blitzy-primary-navy | #1A105F | #1A105F | PASS |
+| --blitzy-primary-light | #7A6DEC | #7A6DEC | PASS |
+| --blitzy-primary-deep | #4101DB | #4101DB | PASS |
+| --blitzy-accent-teal | #94FAD5 | #94FAD5 | PASS |
+| --blitzy-surface-0 | #FFFFFF | #FFFFFF | PASS |
+| --blitzy-surface-1 | #F4EFF6 | #F4EFF6 | PASS |
+| --blitzy-surface-2 | #F2F0FE | #F2F0FE | PASS |
+| --blitzy-surface-3 | #F5F5F5 | #F5F5F5 | PASS |
+| --blitzy-border | #D9D9D9 | #D9D9D9 | PASS |
+| --blitzy-border-soft | rgba(91, 57, 243, 0.18) | rgba(91, 57, 243, 0.18) | PASS |
+| --blitzy-text | #333333 | #333333 | PASS |
+| --blitzy-text-muted | #999999 | #595959 | FAIL |
+| --blitzy-text-invert | #FFFFFF | #FFFFFF | PASS |
+| --ff-body | 'Inter', system-ui, sans-serif | 'Inter', system-ui, sans-serif | PASS |
+| --ff-display | 'Space Grotesk', 'Inter', sans-serif | 'Space Grotesk', 'Inter', sans-serif | PASS |
+| --ff-mono | 'Fira Code', 'Courier New', monospace | 'Fira Code', 'Courier New', monospace | PASS |
+| --gradient-hero | linear-gradient(68deg, #7A6DEC 15.56%, #5B39F3 62.74%, #4101DB 84.44%) | identical | PASS |
+| --gradient-divider | linear-gradient(135deg, #2D1C77 0%, #5B39F3 100%) | identical | PASS |
+| --gradient-accent-bar | linear-gradient(90deg, #5B39F3 0%, #94FAD5 100%) | identical | PASS |

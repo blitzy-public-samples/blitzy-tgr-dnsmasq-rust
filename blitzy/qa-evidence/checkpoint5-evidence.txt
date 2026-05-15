@@ -1,0 +1,677 @@
+=== Checkpoint 5 Security QA Evidence ===
+Date: 2026-05-15T07:57:20Z
+Branch: blitzy-5e358023-afb8-4ba5-a896-aebda689d8a1
+HEAD: 8a99ee5676419a433035bb6339b383315199e139
+
+=== Phase 1: Baseline ===
+git status --porcelain:
+?? blitzy/qa-evidence/checkpoint3-evidence/
+?? blitzy/qa-evidence/checkpoint4-evidence.txt
+?? blitzy/qa-evidence/checkpoint5-evidence.txt
+?? blitzy/screenshots/
+
+git diff --stat:
+
+git log -5:
+8a99ee5 Address QA checkpoint 4 findings: cross-artifact documentation consistency
+11f7219 Address QA checkpoint 3 findings in executive-summary-config-i.html
+a4cc55f Address Checkpoint review findings for Config I deliverable bundle
+c85bbb8 Add Executive Presentation deliverable for Config I SonarQube scan
+33f890a Add Explainability-rule decision log for Config I SonarQube scan
+
+=== Phase 1: Artifacts existence ===
+-rw-r--r-- 1 root root 24681 May 15 07:53 decision-log-config-i.md
+-rw-r--r-- 1 root root 39940 May 15 07:53 executive-summary-config-i.html
+-rw-r--r-- 1 root root     3 May 15 07:53 findings-config-i.json
+=== Phase 1.1: Artifacts exist ===
+-rw-r--r-- 1 root root 24681 May 15 07:53 decision-log-config-i.md
+-rw-r--r-- 1 root root 39940 May 15 07:53 executive-summary-config-i.html
+-rw-r--r-- 1 root root     3 May 15 07:53 findings-config-i.json
+
+=== Phase 1.2: CDN dependencies in HTML ===
+https://cdn.jsdelivr.net/npm/lucide@0.460.0
+https://cdn.jsdelivr.net/npm/mermaid@11.4.0
+
+=== Phase 1.3: Google Fonts ===
+fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap
+
+=== Phase 1.4: Docker image in decision log ===
+| SonarQube image | `sonarqube:community` (Community Build rolling tag) |
+| SonarQube image digest | `sha256:35bedac3f40cda75969890da59b17d577770844fe6ef659206c678a8e00921c7` |
+| **Docker image tag `sonarqube:community` (rolling)** | A pinned `2026.1-community` tag, the LTA release stream, or a build from source. | Directive D1 in AAP §0.1.3 names the rolling Community Build literally. Pinning the observed digest `sha256:35bedac3f40cda75969890da59b17d577770844fe6ef659206c678a8e00921c7` in the telemetry table and in the executive summary preserves auditability without diverging from the directive. | Image drift between runs may produce non-comparable scans when the analyzer ruleset changes. The captured digest enables a future operator to compare results against the exact image in use here. |
+
+=== Phase 1.5: Sonar-scanner version ===
+/usr/local/bin/sonar-scanner
+07:58:25.146 INFO  Scanner configuration file: /opt/sonar-scanner/conf/sonar-scanner.properties
+07:58:25.149 INFO  Project root configuration file: NONE
+07:58:25.161 INFO  SonarScanner CLI 6.2.1.4610
+07:58:25.162 INFO  Java 17.0.12 Eclipse Adoptium (64-bit)
+07:58:25.162 INFO  Linux 6.6.122+ amd64
+
+=== Phase 1.6: Cargo deps UNCHANGED ===
+
+Cargo.toml first 30 lines:
+# dnsmasq is Copyright (c) 2000-2025 Simon Kelley
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; version 2 dated June, 1991, or
+#  (at your option) version 3 dated 29 June, 2007.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#    
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+[package]
+name = "dnsmasq"
+version = "2.92.0"
+edition = "2021"
+rust-version = "1.91.0"
+authors = ["Dnsmasq Contributors"]
+license = "GPL-2.0-or-later OR GPL-3.0"
+description = "Memory-safe DNS forwarder and DHCP server"
+repository = "https://github.com/dnsmasq/dnsmasq"
+readme = "README.md"
+keywords = ["dns", "dhcp", "network", "server", "forwarder"]
+categories = ["network-programming"]
+
+[dependencies]
+# Core async runtime - replaces C poll() event loop
+=== sonar-scanner version ===
+07:58:40.860 INFO  SonarScanner CLI 6.2.1.4610
+07:58:40.861 INFO  Java 17.0.12 Eclipse Adoptium (64-bit)
+07:58:40.861 INFO  Linux 6.6.122+ amd64
+
+=== docker version ===
+28.5.2
+Docker version 28.5.2, build ecc6942
+
+=== curl version ===
+curl 8.14.1 (x86_64-pc-linux-gnu) libcurl/8.14.1 OpenSSL/3.5.3 zlib/1.3.1 brotli/1.1.0 zstd/1.5.7 libidn2/2.3.8 libpsl/0.21.2 libssh2/1.11.1 nghttp2/1.64.0 librtmp/2.3 OpenLDAP/2.6.10
+
+=== jq version ===
+jq-1.8.1
+
+=== python3 version ===
+Python 3.13.7
+
+=== Docker image presence ===
+sonarqube:community digest=<none>
+
+=== Container check ===
+
+================================================================================
+PHASE 4 — CDN Dependency CVE Scanning (Checkpoint Phase 2)
+================================================================================
+
+### 4.1 reveal.js 5.1.0 CVE Research
+Web search query: "reveal.js 5.1.0 CVE security advisory vulnerability"
+Web search query: '"reveal.js" vulnerability XSS GHSA'
+
+Known reveal.js CVEs (historical):
+- CVE-2022-0776 (GHSA-hhqj-cfjx-vj25, CWE-79): XSS via postMessage in /plugin/notes/speaker-view.html.
+  Affected versions: < 4.3.0. Fixed in 4.3.0. **NOT applicable to 5.1.0.**
+- CVE-2020-8127 (GHSA-6vwx-mwp8-fh44, CWE-79): XSS via insufficient postMessage origin validation.
+  Affected versions: <= 3.9.1. **NOT applicable to 5.1.0.**
+- Older DOM-XSS via opener.location (versions prior to v2.6.0). **NOT applicable to 5.1.0.**
+
+Result: NO known CVEs affect reveal.js 5.1.0.
+Our usage: static deck (no user-supplied slides), no /plugin/notes/ usage, SRI sha384 attribute applied, crossorigin=anonymous, referrerpolicy=no-referrer.
+PASS
+
+### 4.2 Mermaid 11.4.0 CVE Research
+Web search query: "mermaid 11.4.0 CVE vulnerability advisory XSS"
+
+Known Mermaid CVEs that affect 11.4.0:
+- CVE-2025-54881 (GHSA-7rqq-prvp-x9jh): XSS via sequence diagram labels with KaTeX delimiters in
+  calculateMathMLDimensions. Affected: 10.9.0-rc.1 through 11.9.0. CWE-79.
+- CVE-2026-41149: classDef in state diagrams DOM injection. Affected: all 11.x <= 11.14.0. CWE-79.
+- CVE-2026-41150: Gantt chart infinite loop DoS via excludes attribute. Affected: all 11.x <= 11.14.0.
+  CWE-835 (Infinite Loop). Moderate severity (CVSS 5.3).
+- CVE-2026-41159: CSS injection via fontFamily/themeCSS/altFontFamily. Affected: all 11.x <= 11.14.0.
+  Moderate severity. Mitigation: securityLevel=strict or secure=true.
+
+Fixed in: Mermaid 11.15.0 (and 10.9.6 for v10 series).
+
+Applicability assessment for THIS DECK:
+- Deck renders ONE static `flowchart LR` diagram, hardcoded by the project (file content
+  fully controlled by the build pipeline).
+- No user-supplied diagrams. No KaTeX usage. No sequence diagrams. No state diagrams. No gantt charts.
+- securityLevel: 'strict' is set (decision log row 11 confirms this hardening).
+- fontFamily is hardcoded to 'Inter, system-ui, Arial, sans-serif' — no user-controlled CSS path.
+- classDef directives ARE used but on STATIC, project-authored content (lines 775-778 of HTML)
+  — host/api/out class names are safe identifiers; the input cannot be influenced by an attacker.
+
+Per CVE-2026-41159 advisory: "securityLevel: 'sandbox'" or "secure: true" blocks vulnerable options.
+Strict mode (currently set) provides strong protection but advisory mentions sandbox is stricter.
+
+Verdict: CVEs exist for 11.4.0 BUT NOT EXPLOITABLE in this deck because:
+  1. No attacker-controlled diagram input exists.
+  2. securityLevel='strict' blocks the moderate CSS-injection attack vectors.
+  3. Static project-authored input only.
+Recommended (defense-in-depth): upgrade to Mermaid 11.15.0+ at next maintenance cycle.
+FINDING: INFORMATIONAL (version contains known CVEs, but attack surface absent).
+
+### 4.3 Lucide 0.460.0 CVE Research
+Web search query: '"lucide" icons npm CVE security advisory vulnerability'
+Web search query: "github.com/advisories lucide GHSA security"
+
+Findings: Snyk vulnerability database lookup for npm packages lucide-icons-svelte, lucide-vue-next,
+lucide-svelte, lucide-angular all report: "No direct vulnerabilities have been found".
+No CVEs published against the core lucide npm package.
+
+Lucide's role: pure SVG icon library. The library reads `<i data-lucide="...">` markers, replaces
+them with hardcoded SVG markup. There is no user-supplied input handling. No XSS sink.
+The library does not render Markdown, KaTeX, HTML, or any user-controllable string.
+
+Our usage: hardcoded icon names from the Lucide catalog only (e.g., shield, package, search-check).
+crossorigin=anonymous, referrerpolicy=no-referrer, SRI sha384 applied.
+
+Result: NO known CVEs affect Lucide 0.460.0. PASS.
+
+### 4.4 Google Fonts Security Verification
+Google Fonts CDN URL: https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap
+Surface: HTTPS-only, served by Google over TLS, CSS bundling only (no JS code).
+preconnect to fonts.googleapis.com and fonts.gstatic.com (crossorigin)
+No SRI on font files (Google CDN policy: font filenames rotate as fonts update).
+No script execution surface — only @font-face declarations and font binary delivery.
+
+Result: Standard Google Fonts security posture. No CVEs apply.
+Compliance: HTTPS-only verified. PASS.
+=== Docker engine version verification ===
+28.5.2
+
+=== sonarqube:community image locally cached? ===
+Repository: sonarqube, Tag: community, Digest: <none>, Created: 3 days ago, Size: 1.42GB
+
+=== Digest captured in decision log ===
+| SonarQube image digest | `sha256:35bedac3f40cda75969890da59b17d577770844fe6ef659206c678a8e00921c7` |
+| **Docker image tag `sonarqube:community` (rolling)** | A pinned `2026.1-community` tag, the LTA release stream, or a build from source. | Directive D1 in AAP §0.1.3 names the rolling Community Build literally. Pinning the observed digest `sha256:35bedac3f40cda75969890da59b17d577770844fe6ef659206c678a8e00921c7` in the telemetry table and in the executive summary preserves auditability without diverging from the directive. | Image drift between runs may produce non-comparable scans when the analyzer ruleset changes. The captured digest enables a future operator to compare results against the exact image in use here. |
+| **Subresource Integrity (SRI) sha384 attributes on every CDN asset** | Load CDN resources without integrity attributes (matching the AAP §0.7.2 example), or self-host all assets. | The Checkpoint 2 review identified missing SRI as a security hardening gap. MDN documents SRI as the browser mechanism for verifying CDN bytes before evaluation. Adding `integrity="sha384-…"` and `crossorigin="anonymous"` to all five CDN tags (reveal.css, theme/white.css, reveal.js, mermaid.min.js, lucide.min.js) closes the supply-chain gap without changing the runtime behavior of any library. | A CDN-side rebuild of an unchanged pinned version would invalidate the SRI hash and fail to load. Because every CDN URL pins both `@<version>` and the SRI digest, the rebuild risk is bounded; the operator can re-derive the hash from the new bytes and update the deck. |
+
+=== Quality gate / version info in decision log ===
+3:The log records every non-trivial choice made during the Config I SonarQube static-analysis sweep, per the Explainability rule in AAP §0.7.1. The log is the single source of truth for "why" decisions in this run, and rationale does not live in code, HTML, or script comments anywhere in the deliverable bundle.
+14:| SonarQube image | `sonarqube:community` (Community Build rolling tag) |
+30:| **Docker image tag `sonarqube:community` (rolling)** | A pinned `2026.1-community` tag, the LTA release stream, or a build from source. | Directive D1 in AAP §0.1.3 names the rolling Community Build literally. Pinning the observed digest `sha256:35bedac3f40cda75969890da59b17d577770844fe6ef659206c678a8e00921c7` in the telemetry table and in the executive summary preserves auditability without diverging from the directive. | Image drift between runs may produce non-comparable scans when the analyzer ruleset changes. The captured digest enables a future operator to compare results against the exact image in use here. |
+31:| **Credentials: literal `admin/admin` as the only authentication input** | Generate a long-lived user token via the API on first boot, or rotate the admin password before scanning. | The SonarQube container is ephemeral, destroyed by the exit trap at end of run, so credential rotation would persist nothing. Directive D3 in AAP §0.1.3 mandates `admin/admin` literally. | A long-running container with default credentials would be a critical security defect. The trap-based teardown removes the container regardless of exit status, bounding credential exposure to the run window. |
+32:| **Quality gate: default Sonar Way with `qualitygate.wait=true`** | Author a custom quality gate before scanning, or omit `qualitygate.wait` and inspect results manually. | Directive D3 in AAP §0.1.3 requires `qualitygate.wait=true` literally. The default Sonar Way gate ships with the Community Build and is what sibling configs (II, III, …) will also see. | The default gate may be too permissive or too strict for Rust. The gate result `OK` is captured in the telemetry table and surfaced in the executive summary. |
+33:| **Pagination: `ps=500` with sequential `p=1,2,…`** | The SonarQube cursor-based pagination via `s=key&asc=true`, or smaller page sizes. | Directive D4 in AAP §0.1.3 fixes the page size at `ps=500`, and `paging.total` drives the loop until exhaustion. | SonarQube enforces a hard 10,000 cap on `/api/issues/search`. The workflow falls back to component-keyed sub-queries (one per top-level source directory) when `paging.total` reports ≥ 10,000. The fallback did not run during this scan because the raw issue count was 0. |
+43:| **Cargo PATH guarded for the scanner (`. $HOME/.cargo/env` sourced before invocation)** | Allow the SonarQube Rust analyzer to discover `cargo` on the system `PATH` only. | The rustup-installed `cargo` resides at `$HOME/.cargo/bin` and is absent from a non-login shell's inherited `PATH`. AAP §0.8.1 states the Rust analyzer falls back to file-only analysis without `cargo`, so `run_sonarqube_scan.sh` sources `$HOME/.cargo/env` before scanner invocation. The rustup env file is idempotent, so the operation is a no-op when `cargo` is already on `PATH`. | An environment with no rustup install would silently drop into file-only analysis. The live workflow log surfaces the analyzer `Sensor Clippy [rust] ran` line as positive confirmation that the full analyzer ran, per `blitzy/qa-evidence/checkpoint1-evidence.txt`. |
+44:| **Token-auth fallback for the scanner; literal `admin/admin` on the REST API** | Pass `sonar.login=admin` and `sonar.password=admin` directly to `sonar-scanner` as Directive D3 states. | SonarQube Community Build `26.5.0.122743` rejects username-password auth in the scanner protocol with the message `Not authorized. Please check the user token in property 'sonar.token' or 'sonar.login' (deprecated).`, captured verbatim in `blitzy/qa-evidence/checkpoint1-evidence.txt`. The driver mints a short-lived global analysis token from the user-supplied `admin/admin` credentials via `POST /api/user_tokens/generate`, then passes the token to `sonar-scanner` as `-Dsonar.token=…`. The REST API endpoints (`/api/issues/search`, `/api/rules/show`) still accept `admin/admin` Basic auth, so the harvest step uses the literal credentials. | An upstream rollback that restored username-password auth would leave the token-fallback code path dormant but harmless. The token is destroyed alongside the container at teardown, so credential exposure is bounded by the run window. |
+51:| **Workflow infrastructure files retained under `blitzy/scripts/` and `blitzy/qa-evidence/`** | Delete `blitzy/scripts/run_sonarqube_scan.sh`, `blitzy/scripts/sonar_pipeline.py`, `blitzy/scripts/README.md`, `blitzy/scripts/.gitignore`, `blitzy/qa-evidence/checkpoint1-evidence.txt`, and `blitzy/qa-evidence/checkpoint2-evidence.txt`, leaving only the three Config I sibling artifacts at the repository root. | These files are the auditable record of how `findings-config-i.json` was produced (the bash driver and Python pipeline that implement directives D1 through D5), plus the QA evidence that backs every numeric value in this decision log and in the executive summary. Removing them would erase reproducibility and the basis of every cited measurement. The literal "three sibling artifacts" wording in AAP §0.3.1 names the deliverables; it does not forbid implementation infrastructure that produces them. | The deliverable bundle is larger than a reader who expects only the three sibling artifacts may anticipate. The deviation entry below records the scope expansion explicitly so a downstream auditor sees both the artifacts and the workflow that produced them. |
+58:- **Scanner authentication via a short-lived token instead of `sonar.login=admin` / `sonar.password=admin`** · SonarQube Community Build `26.5.0.122743` deprecated username-password authentication in the scanner protocol (captured verbatim in `blitzy/qa-evidence/checkpoint1-evidence.txt`: `Not authorized. Please check the user token in property 'sonar.token' or 'sonar.login' (deprecated).`). The workflow uses the user-supplied `admin/admin` credentials as the only authentication input, mints an ephemeral token from those credentials via `POST /api/user_tokens/generate`, and destroys both the token and the container at teardown.
+
+================================================================================
+PHASE 5 — Docker Image Security (Checkpoint Phase 3)
+================================================================================
+
+### 5.1 SonarQube Community image CVE research
+Web search query: "SonarQube Community Build 2025 2026 CVE security advisory"
+
+Image identity captured:
+- Tag: sonarqube:community (rolling)
+- Digest (decision log row 4): sha256:35bedac3f40cda75969890da59b17d577770844fe6ef659206c678a8e00921c7
+- Version reported by container during run: SonarQube Community Build 26.5.0.122743
+- Local cache size: 1.42 GB
+
+Known SonarQube CVEs (cvedetails.com / Sonar advisories):
+- CVE-2025-58178 (HIGH): command injection in SonarQube **Scanner GitHub Action**, versions 4.0.0–5.3.0.
+  Our usage: native CLI `sonar-scanner` v6.2.1.4610, NOT the GitHub Action wrapper. NOT APPLICABLE.
+- Various pre-25.6 / 9.x CVEs: administrator-role required for exploitation
+  (group-membership SQL injection, JWT exfiltration, encrypted-value URL leakage,
+  /api/v2/users-management/users info leakage). Risk: bounded to authenticated admin.
+  Our ephemeral container destroys all state at teardown.
+- SonarQube 2026.2.1-developer (developer edition image, NOT Community) was reported on
+  the Sonar community forum with 6 High base-OS CVEs (CVE-2026-29062, CVE-2026-33871,
+  CVE-2025-55163, etc.). These are base-image layer CVEs (typically Java/glibc/openssl).
+  Our Community Build is a different image stream.
+- Per the SonarQube community thread "Timeline for CVE Fixes" (Oct 2025): SonarSource
+  acknowledges OS-layer CVEs in the published images and rolls fixes into subsequent
+  releases. Mitigation strategy depends on lifecycle of the deployment.
+
+Applicability assessment for THIS WORKFLOW:
+- Container is ephemeral: started, used for ~31 seconds (scan), torn down via exit trap.
+  CVE exploitation requires sustained network access AND authentication; our container
+  has neither (port 9000 closed at teardown; admin/admin destroyed with container state).
+- No persistent volumes (verified separately in Phase 11 / Checkpoint Phase 9).
+- No CI/CD exposure: workflow is one-shot, not a long-running service.
+- AAP §0.7.1 decision row 1 explicitly addresses the rolling-tag drift risk and pins
+  the observed digest in the decision log for auditability.
+
+Verdict: SonarQube Community Build image has well-documented CVEs (mostly OS-layer
+or admin-authenticated paths). NONE are exploitable in this ephemeral one-shot workflow.
+The captured digest enables a future operator to reproduce the exact image state.
+Recommended (defense-in-depth): for any *persistent* SonarQube deployment, monitor
+the SonarSource advisory feed and upgrade base images promptly.
+RESULT: INFORMATIONAL — risk mitigated by ephemerality contract per AAP §0.8.1.
+
+### 5.2 Docker engine security baseline
+Command: docker version --format '{{.Server.Version}}'
+Result: 28.5.2
+
+AAP §0.4.1 minimum requirement: Docker Engine ≥ 20.10. Our version: 28.5.2.
+Compliance: PASS (well above minimum).
+
+Known Docker Engine CVE landscape:
+- Most Docker Engine CVEs require local privilege escalation paths or runc/containerd
+  flaws; the 28.x series is current and includes patches for all known 2025 issues.
+- No critical CVEs apply to the 28.5.2 server build for this workflow's usage
+  (single ephemeral container, no untrusted images, no shared bind mounts).
+
+Verdict: PASS.
+
+================================================================================
+PHASE 6 — Host Tooling Vulnerability Scan (Checkpoint Phase 4)
+================================================================================
+
+### 6.1 sonar-scanner CLI 6.2.1.4610 CVE research
+Web search query: "sonar-scanner CLI 6.2 CVE vulnerability"
+
+Installed version (from environment discovery): SonarScanner CLI 6.2.1.4610 (Java 17.0.12 Eclipse Adoptium, Linux 6.6.122+ amd64).
+Binary path: /usr/local/bin/sonar-scanner
+
+Known CVE relevant to this version:
+- CVE-2024-12798 (Snyk SNYK-CHAINGUARDLATEST-SONARSCANNERCLI-8642989):
+  ACE vulnerability in logback-core's JaninoEventEvaluator (bundled dependency).
+  Affected logback-core: 0.1 - 1.3.14 and 1.4.0 - 1.5.12.
+  Fixed in: sonar-scanner-cli 6.2.1.4610-r1 (Chainguard) or upstream upgrade.
+  Attack vector: local + requires user interaction (must compromise existing
+  logback configuration file or inject environment variable BEFORE program execution).
+  CWE: ACE (Arbitrary Code Execution), CVSS 3.1 partial: PR:L (low privileges),
+  UI:R (user interaction required).
+
+Applicability assessment for THIS WORKFLOW:
+- Scanner is invoked one-shot by the privileged operator (workflow author).
+- No untrusted entity has write access to the operator's logback configuration files.
+- No untrusted environment-variable injection path: workflow runs in a controlled
+  container with operator-set env vars only.
+- Configuration is the default shipped with sonar-scanner CLI; no custom logback.xml.
+- Container is destroyed at teardown (Phase 11 / Checkpoint Phase 9 verification).
+
+Verdict: CVE-2024-12798 affects the installed scanner version, but the exploit
+prerequisites (attacker-controlled logback config OR env-var injection prior to
+invocation) are absent in this controlled one-shot workflow.
+Recommended (defense-in-depth): monitor sonar-scanner-cli releases for the embedded
+logback-core upgrade.
+FINDING: INFORMATIONAL (vulnerable version pinned, exploit prerequisites absent).
+
+CVE-2025-58178 (SonarQube Scanner GitHub Action command injection, versions 4.0.0-5.3.0)
+DOES NOT apply: we use the native CLI binary (v6.2.1.4610), not the GitHub Action wrapper.
+
+### 6.2 curl, jq, python3 baselines
+Captured versions:
+  curl 8.14.1 / OpenSSL 3.5.3 / zlib 1.3.1 / brotli 1.1.0 / zstd 1.5.7 /
+       libidn2 2.3.8 / libpsl 0.21.2 / libssh2 1.11.1 / nghttp2 1.64.0 /
+       librtmp 2.3 / OpenLDAP 2.6.10
+  jq 1.8.1
+  python3 3.13.7
+
+Versions are all current (curl 8.x is the current series; jq 1.8.x is latest;
+Python 3.13 is current). All received 2025-2026 security updates from upstream.
+
+Usage profile (low CVE surface in this workflow):
+- curl: HTTP GETs against localhost:9000 (loopback), no external URL fetches with
+  user-controlled content. No file uploads. No untrusted TLS chains. CVE surface
+  near zero in this usage.
+- jq: parses JSON from sonar-scanner output files. The JSON is produced by the
+  SonarQube API on localhost. No untrusted user-supplied JSON. CVE surface near zero.
+- python3: runs sonar_pipeline.py to normalize findings. Input is the JSON from
+  step above. Standard library only. No untrusted code execution. CVE surface near zero.
+
+Verdict: PASS — current versions, low CVE exposure given controlled usage.
+
+================================================================================
+PHASE 7 — Credential Audit (Checkpoint Phase 5)
+================================================================================
+
+### 7.1 No admin/admin literals in operational artifact contexts
+Findings-config-i.json: NO matches for "admin". PASS.
+Decision-log-config-i.md: 3 matches, ALL in decision-row context:
+  - Line 31: Decision row 2 explaining literal admin/admin credential choice (documented use).
+  - Line 44: Decision row 11 explaining token-auth fallback (documented use).
+  - Line 58: Deviation note 2 explaining token-auth approach (documented use).
+Executive-summary-config-i.html: 1 match at line 930, in the risks slide:
+  `<strong>Default <code>admin/admin</code></strong> accepted during the ephemeral window.`
+  This is documented risk acknowledgment per AAP §0.7.2 risk-slide requirement, NOT a leak.
+
+Result: All admin literals are documented context, not credential values present in
+operational fields. PASS.
+
+### 7.2 No password/secret/token literal credentials
+Findings-config-i.json: NO matches. PASS.
+Decision-log-config-i.md: 4 matches, ALL documentary:
+  - Line 31: "rotate the admin password" — alternative discussion (not a literal password).
+  - Line 44: "token", "sonar.token", "POST /api/user_tokens/generate" — describes the
+    token-auth design pattern, not a literal token value.
+  - Line 47: "CSS tokens" / "semantic tokens" — CSS context, not credentials.
+  - Line 58: "short-lived token" — deviation note explaining the token-auth code path.
+Executive-summary-config-i.html: 2 matches at lines 26, 42:
+  - Line 26: "Blitzy brand theme tokens" — CSS context.
+  - Line 42: "Muted text tokens" — CSS context.
+
+Result: Every match is a documentary reference (admin/admin design decision, CSS
+brand tokens) — no literal credential value, no API token value, no bearer token.
+PASS.
+
+### 7.3 Container destruction verification (ephemeral credential mitigation chain)
+Running containers (filter name=sonarqube-test):           NONE  ✓
+Stopped containers (filter name=sonarqube-test, -a):       NONE  ✓
+Docker volumes (filter name=sonarqube):                    NONE  ✓
+Docker networks containing 'sonar':                        NONE  ✓
+Active docker networks: bridge, host, none (defaults only)
+
+Result: Complete teardown verified. The exit-trap teardown executed correctly.
+The admin/admin credentials cannot persist beyond container destruction because
+the entire SonarQube state lives inside the destroyed container.
+PASS — credential mitigation chain INTACT.
+
+### 7.4 Decision log credential rationale verification
+Decision row 2 (line 31) explicitly documents:
+  - What was decided: literal admin/admin as only auth input
+  - Alternatives: long-lived user token via API, rotate admin password
+  - Rationale: "The SonarQube container is ephemeral, destroyed by the exit trap
+    at end of run, so credential rotation would persist nothing. Directive D3 in
+    AAP §0.1.3 mandates admin/admin literally."
+  - Risks: "A long-running container with default credentials would be a critical
+    security defect. The trap-based teardown removes the container regardless of
+    exit status, bounding credential exposure to the run window."
+
+The Explainability rule's required "What was decided / What alternatives existed /
+Why this choice was made / What risks it carries" structure is satisfied.
+PASS.
+
+================================================================================
+PHASE 8 — Information Disclosure & Leak Detection (Checkpoint Phase 6)
+================================================================================
+
+### 8.1 Host path leakage detection
+Grep patterns: /home/, /root/, /Users/<name>/, C:\, /var/lib/, /opt/, /srv/, /tmp/blitzy
+  findings-config-i.json:           0 matches  ✓
+  decision-log-config-i.md:         0 matches  ✓
+  executive-summary-config-i.html:  0 matches  ✓
+Result: NO host path leakage in any artifact. Per AAP §0.5.6.1, paths are
+project-relative (the project-key prefix is stripped during normalization).
+With findings being [], there are no path values at all.
+PASS.
+
+### 8.2 Stack traces / internal errors
+Grep patterns: Traceback, Exception, stack trace, at <Pkg>.<Method>(, java., .py:N
+  findings-config-i.json:           0 matches  ✓
+  decision-log-config-i.md:         0 matches  ✓
+  executive-summary-config-i.html:  0 matches  ✓
+Result: NO internal traceback or exception leakage. PASS.
+
+### 8.3 Server version disclosure
+Live endpoint probes (post-teardown):
+  curl http://localhost:9000/api/server/version  → UNREACHABLE (expected)  ✓
+  curl http://localhost:9000/api/system/status    → UNREACHABLE (expected)  ✓
+Documented version in decision log: "Community Build" rolling tag named, image
+digest `sha256:35bedac3...0921c7` captured for audit trail, runtime version
+`26.5.0.122743` recorded in decision row 11 / deviation note 2.
+
+The decision-log version disclosure is an AUDIT TRAIL requirement per the
+Explainability rule (AAP §0.7.1), NOT a live-endpoint leak. The actual server
+is destroyed; an attacker has no way to query it.
+PASS.
+
+================================================================================
+PHASE 9 — HTML Content Security (Checkpoint Phase 7)
+================================================================================
+
+### 9.1 No inline event handlers
+Initial grep `on[a-z]+="[^"]*"` returned `ontent="width=device-width..."` — a
+FALSE POSITIVE (substring match inside `content="..."` of the viewport meta tag).
+Re-ran with word-boundary regex matching only real DOM event handler names
+(onclick, onload, onerror, onsubmit, etc.):
+  Zero matches.
+Result: NO inline event handlers. All event registration happens via JS
+(`Reveal.on('ready', ...)`, `Reveal.on('slidechanged', ...)` — these are method
+calls in the script block, NOT inline HTML handlers).
+PASS.
+
+### 9.2 No suspicious script injection patterns
+Grep `eval(`, `new Function(`, `document.write(`, `innerHTML =`, `setTimeout('...')`:
+  Single match at line 1173: `el.innerHTML = src;`
+  Context: Standard Mermaid + reveal.js re-render pattern.
+  - Line 1170: `const src = el.getAttribute('data-source');`
+  - The `data-source` attribute is populated at line 1175 from `el.innerHTML`
+    on the FIRST pass through `runMermaid`, where `el.innerHTML` is the
+    project-authored static Mermaid source written directly into the HTML file
+    by the build pipeline (e.g., the flowchart LR diagram between lines 767-790).
+  - On subsequent slide visits, the previously-rendered SVG is replaced with
+    the captured `data-source` so Mermaid can re-render on slide-changed events.
+  - No user input. No URL parameters. No DOM input. Source bytes are
+    statically authored and never modified at runtime by anything except the
+    Mermaid library itself.
+Result: Safe library-pattern usage. The innerHTML sink is hydrated only from
+project-authored HTML content captured at first-pass.
+PASS.
+
+### 9.3 External CDN domain audit
+Domains used:
+  https://cdn.jsdelivr.net     — reveal.js 5.1.0, Mermaid 11.4.0, Lucide 0.460.0
+  https://fonts.googleapis.com — Google Fonts CSS bundle
+  https://fonts.gstatic.com    — Google Fonts binary (preconnect at line 10)
+
+All three are AAP §0.7.2 approved trusted CDN domains. No typosquats. No
+unexpected domains. PASS.
+
+### 9.4 Subresource Integrity (SRI)
+Count of `integrity="sha384-...` attributes: 5 (all five CDN assets protected)
+  Line 15 / 16:   reveal.js@5.1.0/dist/reveal.css           SRI ✓
+  Line 20 / 21:   reveal.js@5.1.0/dist/theme/white.css      SRI ✓
+  Line 1120/1121: reveal.js@5.1.0/dist/reveal.js            SRI ✓
+  Line 1124/1125: mermaid@11.4.0/dist/mermaid.min.js        SRI ✓
+  Line 1128/1129: lucide@0.460.0/dist/umd/lucide.min.js     SRI ✓
+
+Additional Mermaid hardening: `securityLevel: 'strict'` confirmed at line 1136.
+
+SRI is NOT mandated by AAP §0.7.2 but is a defense-in-depth security improvement
+added as part of Checkpoint 2 hardening. Exceeds AAP baseline. PASS (informational).
+
+### 9.5 HTTPS-only external resources
+Grep `http://[^"\s]+` (excluding localhost/127.0.0.1):
+  Zero matches.
+All external resources use HTTPS. PASS.
+
+================================================================================
+PHASE 10 — JSON Content Security (Checkpoint Phase 8)
+================================================================================
+
+### 10.1 No script injection in descriptions
+File content (cat -A): `[]$` (3 bytes: 0x5B 0x5D 0x0A)
+jq extraction of descriptions: empty (no rows in [])
+Grep `<script|javascript:|on(error|load|click)=|data:text/html` on full file: 0 matches
+Result: Vacuously safe (no findings = no description payloads). PASS.
+
+### 10.2 JSON integrity / control characters / single-line
+File size: 3 bytes
+Raw bytes (hex): 5b5d0a (= `[`, `]`, LF)
+Newline count: 1 → wc -l = 1 ✓ (AAP §0.1.3 pass criterion satisfied)
+Parsed type: list, length 0
+Schema check: vacuously passes (no records to validate)
+Control character check: vacuously passes
+Description length check: vacuously passes
+
+AAP §0.5.6.5 wording: "written as UTF-8 without a BOM and without a trailing
+newline so that wc -l reports exactly 1." Note: a file with a single trailing
+newline yields wc -l = 1 (correct math). The AAP §0.1.3 pass criterion is
+"cat findings-config-i.json | wc -l returns 1" — satisfied. The AAP also
+explicitly allows `]\n` ending in §0.5.6.5: "in practice, the file ends with `]`
+and no trailing newline to keep wc -l strictly at 1, but any single-line file
+with optional trailing \n yields wc -l = 1".
+
+### 10.2.b UTF-8 BOM check
+First 3 bytes: 5B 5D 0A (= `[`, `]`, LF). NOT 0xEF 0xBB 0xBF BOM. 
+file(1) output: "JSON text data" (no encoding anomaly flagged).
+Result: NO BOM, valid UTF-8 single-line. AAP §0.5.6.5 compliant. PASS.
+
+================================================================================
+PHASE 11 — Workflow Integrity & Ephemerality (Checkpoint Phase 9)
+================================================================================
+
+### 11.1 Ephemerality contract verification
+Container check:  No `sonarqube*` containers (running or stopped). ✓
+Volume check:     No `sonar*` volumes. ✓
+Network check:    No `sonar*` networks; only defaults (bridge/host/none). ✓
+Bind-mount check: No `sonarqube*` directories on host (excluding /var/lib/docker). ✓
+/tmp residue:     Some QA-related test artifacts present (decision-log-test.html,
+                  findings-config-i.json.baseline, qa-findings-dir) — these are from
+                  PRIOR QA checkpoints (1-4 validation), NOT live SonarQube state.
+                  Not a credential persistence concern.
+
+Result: Complete teardown confirmed. The ephemerality argument for accepting
+default `admin/admin` credentials per AAP §0.7.1 decision row 2 is INTACT.
+PASS.
+
+### 11.2 Port 9000 not bound
+ss -tln  | grep ":9000\b"  →  no matches  ✓
+netstat -tln | grep ":9000\b"  →  no matches  ✓
+Result: Port 9000 closed. No SonarQube server accessible on the host.
+PASS.
+
+### 11.3 Cargo dependency surface UNCHANGED (AAP §0.4.3)
+git diff HEAD -- Cargo.toml Cargo.lock        →  0 lines  ✓
+git diff --stat HEAD -- Cargo.toml Cargo.lock →  empty   ✓
+git status --porcelain Cargo.toml Cargo.lock  →  empty   ✓
+git diff --quiet HEAD -- Cargo.toml Cargo.lock → exit 0  ✓
+
+Result: Cargo.toml and Cargo.lock are byte-identical to HEAD. The Rust dependency
+graph (tokio 1.42, hickory-* 0.25, ring 0.17, nom 7.1, clap 4.5, etc.) is
+UNCHANGED by this AAP, fulfilling §0.4.3.
+PASS.
+
+================================================================================
+PHASE 12 — Findings Triage (Checkpoint Phase 10)
+================================================================================
+
+### 12.1 Triage summary
+findings-config-i.json: `[]` (empty array)
+Total findings:        0
+  Critical severity:   0
+  High severity:       0
+  Medium severity:     0
+  Low severity:        0
+Unique CWE entries:    none
+
+### 12.2 Path B per AAP §0.2.3 — Expected clean baseline
+This is the EXPECTED outcome per AAP §0.2.3:
+"Current implementation reports 0 compilation errors, 0 strict clippy warnings,
+ 592/592 passing tests... This baseline is what the SonarQube scan will be
+ measured against; a clean SonarQube run is the expected outcome and [] is a
+ permitted result for findings-config-i.json."
+
+Run telemetry from decision log:
+  Image pull time:      1s
+  Cold-start time:      38s   (well below 120s hard timeout in AAP §0.5.6.6)
+  Scan duration:        31s
+  Quality gate result:  OK (Sonar Way default, PASSED)
+  Total raw issues:     0
+  Container teardown:   removed (verified independently in Phase 11)
+  Run timestamp:        2026-05-15T03:41:34Z
+
+### 12.3 CWE inference cascade not exercised (documented deviation)
+Per decision log deviation note 3: "The raw issue count was 0, so neither the
+tag scan nor the /api/rules/show fallback ran. The count of CWE-UNKNOWN records
+is therefore 0. The cascade code path is exercised end-to-end by adversarial
+fixtures in blitzy/qa-evidence/checkpoint1-evidence.txt (3 rule lookups across
+4 issues, 2 memoized hits), confirming the cascade behaves correctly on
+synthetic data with all three branches reachable."
+
+Result: No triage required for this checkpoint scope. The empty result aligns
+with the documented Path B expectation. PASS.
+
+================================================================================
+PHASE 13 — Supplementary Adversarial Testing
+================================================================================
+
+### 13.1 PII / private key / cloud access key detection
+PEM/private-key markers (BEGIN PRIVATE KEY, BEGIN ENCRYPTED, ssh-rsa, ssh-ed25519):
+  3 artifacts:  0 matches  ✓
+AWS access keys (AKIA[0-9A-Z]{16}):
+  3 artifacts:  0 matches  ✓
+GitHub PATs (ghp_, gho_, ghs_, ghr_):
+  3 artifacts:  0 matches  ✓
+Email addresses (\w+@\w+\.\w+):
+  3 artifacts:  0 matches  ✓
+Result: NO PII, NO private keys, NO cloud credentials. PASS.
+
+### 13.2 Minified JSON single-line verification
+File: findings-config-i.json
+wc -l:                                                    1   ✓
+File size:                                            3 bytes  ✓
+Newlines:                                                 1
+Re-serialized minified content (json.dumps separators=','):  `[]`
+Actual content (excluding trailing newline):                  `[]`
+Minification match:                                       True  ✓
+Result: File is strictly minified single-line JSON. PASS.
+
+### 13.3 File encoding & BOM check
+findings-config-i.json:           JSON text data, no BOM (first 3 bytes: 5b5d0a)
+decision-log-config-i.md:         UTF-8 text, no BOM     (first 3 bytes: 232044 = "# D")
+executive-summary-config-i.html:  HTML UTF-8, no BOM     (first 3 bytes: 3c2164 = "<!d")
+jq parse:        VALID JSON  ✓
+python json:     VALID JSON  ✓
+Result: All 3 artifacts are valid UTF-8 with no BOM. PASS.
+
+### 13.4 Cross-artifact telemetry consistency
+Run timestamp `2026-05-15T03:41:34Z`:
+  - Decision log telemetry table (line 24 context)
+  - Executive summary line 711: `RUN 2026-05-15T03:41:34Z`
+Image digest `sha256:35bedac3f40cda75969890da59b17d577770844fe6ef659206c678a8e00921c7`:
+  - Decision log row 1 (line 30 context)
+  - Executive summary lines 712, 967
+Findings count = 0 / Quality gate = OK / Teardown = removed:
+  - Decision log lines 18-21
+  - Executive summary line 755: "Findings recorded: 0. Quality gate result: OK.
+    Container teardown: removed."
+Result: All three artifacts agree on run telemetry. PASS.
+
+### 13.5 IP address leakage check
+"IP-like" pattern matches (dotted numeric strings):
+  decision-log-config-i.md:24:    "0.5.6.6"     (AAP §0.5.6.6 reference)
+  decision-log-config-i.md:37:    "0.5.6.5"     (AAP §0.5.6.5 reference)
+  decision-log-config-i.md:49:    "0.6.2.3"     (AAP §0.6.2.3 reference)
+  decision-log-config-i.md:66:    "0.5.6.5"     (AAP §0.5.6.5 reference, twice)
+  executive-summary-config-i.html:876:  "0.5.6.3"  (AAP §0.5.6.3 reference)
+  executive-summary-config-i.html:901:  "1.2.3.3"  (AAP §1.2.3.3 reference)
+
+All matches are AAP SECTION REFERENCES (e.g., "§0.5.6.6"), NOT IPv4 addresses.
+No real IP address leakage. Decision log mentions `http://localhost:9000`
+(loopback only, not external). PASS.
+
+### 13.6 Unresolved env var / shell expansion check
+findings JSON / executive summary:  0 unresolved $HOME/$USER/$PATH expansions ✓
+Decision log: 2 matches, both `$HOME/.cargo/env` in decision-row context
+(line 43, row 10 explaining Cargo PATH setup; line 60, deviation note 4
+explaining the same). These are DOCUMENTED DESIGN RATIONALE, not unresolved
+shell output. PASS.
+
+================================================================================
+PHASE 14 — Reporting and Submission
+================================================================================
+
+### 14.1 Final git status verification
+Branch:                       blitzy-5e358023-afb8-4ba5-a896-aebda689d8a1
+HEAD commit:                  8a99ee5676419a433035bb6339b383315199e139
+git diff --stat HEAD:         empty (0 modifications)
+git status --porcelain:       only untracked QA evidence/screenshot files
+                              (checkpoint3-evidence/, checkpoint4-evidence.txt,
+                               checkpoint5-evidence.txt, screenshots/)
+
+Result: PASS — Zero source file modifications by this QA testing agent.
+Pre-testing baseline matches post-testing state exactly for all tracked files.
+
+### 14.2 Final evidence summary
+Evidence file:    blitzy/qa-evidence/checkpoint5-evidence.txt
+Total lines:      652
+Total size:       41094 bytes
+Phases covered:   4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
+
+(Phase 1-3 of the agent To-Do list are baseline / scope-analysis / discovery
+work that produced no separate evidence section but were exercised inline in
+the early commands captured in the original evidence file.)
