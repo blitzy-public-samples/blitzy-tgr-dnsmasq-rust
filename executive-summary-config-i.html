@@ -10,18 +10,20 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 
-  <!-- reveal.js 5.1.0 CSS (pinned per AAP) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <!-- reveal.js 5.1.0 CSS. -->
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css"
+        integrity="sha384-YgvgKeZJykuztG+iQPoZHNZENTFZvOcOJ/uRzmJTje6GHYN9zAw+y5rx/L8MQKA/"
+        crossorigin="anonymous"
+        referrerpolicy="no-referrer">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css"
+        integrity="sha384-/TZMdZeq0ZGi4iePTHhOMXOkyv2f72ZcwmhAtOmSZlPkx+5qCOfyc/U1kjd5Su6S"
+        crossorigin="anonymous"
+        referrerpolicy="no-referrer">
 
   <style>
-    /* ============================================================
-       Blitzy brand theme, inlined per AAP §0.7.2.
-       The canonical theme file blitzy-deck/references/blitzy-reveal-theme.css
-       is absent from this repository (verified by recursive search,
-       per AAP §0.9.3), so the deck inlines the full property set rather
-       than @import-ing an external file.
-       ============================================================ */
+    /* Blitzy brand theme tokens. */
 
     :root {
       --blitzy-primary: #5B39F3;
@@ -37,8 +39,21 @@
       --blitzy-border: #D9D9D9;
       --blitzy-border-soft: rgba(91, 57, 243, 0.18);
       --blitzy-text: #333333;
-      --blitzy-text-muted: #999999;
+      /* Muted text tokens. */
+      --blitzy-text-muted: #595959;
+      --blitzy-text-muted-soft: #999999;
       --blitzy-text-invert: #FFFFFF;
+      --blitzy-text-invert-strong: rgba(255, 255, 255, 0.96);
+      --blitzy-text-invert-soft: rgba(255, 255, 255, 0.85);
+      --blitzy-text-invert-mute: rgba(255, 255, 255, 0.7);
+      /* Status palette. */
+      --blitzy-status-ok: #15683F;
+      --blitzy-status-ok-strong: #0F4F30;
+      --blitzy-status-ok-bg: #E3F8EE;
+      --blitzy-status-ok-border: #B7E8CC;
+      --blitzy-status-warn: #6B5200;
+      --blitzy-status-warn-bg: #FFF4D9;
+      --blitzy-status-warn-border: #F5DC8A;
       --ff-body: 'Inter', system-ui, sans-serif;
       --ff-display: 'Space Grotesk', 'Inter', sans-serif;
       --ff-mono: 'Fira Code', 'Courier New', monospace;
@@ -47,7 +62,7 @@
       --gradient-accent-bar: linear-gradient(90deg, #5B39F3 0%, #94FAD5 100%);
     }
 
-    /* Base reveal.js overrides */
+    /* reveal.js base. */
     .reveal {
       font-family: var(--ff-body);
       color: var(--blitzy-text);
@@ -119,7 +134,7 @@
       font-weight: 500;
     }
 
-    /* Slide layout container so every slide has consistent padding */
+    /* Slide layout container. */
     .slide-inner {
       padding: 80px 120px;
       height: 100%;
@@ -148,7 +163,7 @@
       max-width: 1500px;
     }
     .slide-title .subhead {
-      color: rgba(255, 255, 255, 0.92);
+      color: var(--blitzy-text-invert-strong);
       font-size: 32px;
       font-weight: 500;
       max-width: 1300px;
@@ -157,8 +172,17 @@
       margin-top: 40px;
       font-family: var(--ff-mono);
       font-size: 18px;
-      color: rgba(255, 255, 255, 0.85);
+      color: var(--blitzy-text-invert-soft);
       letter-spacing: 0.04em;
+    }
+    .slide-title .title-footer .digest-full {
+      display: block;
+      margin-top: 8px;
+      font-size: 14px;
+      letter-spacing: 0.02em;
+      color: var(--blitzy-text-invert-mute);
+      word-break: break-all;
+      max-width: 1400px;
     }
     .hero-icon {
       width: 96px;
@@ -238,7 +262,7 @@
       max-width: 1500px;
     }
     .slide-closing ul li {
-      color: rgba(255, 255, 255, 0.92);
+      color: var(--blitzy-text-invert-strong);
       font-size: 30px;
     }
     .slide-closing ul li > i,
@@ -257,7 +281,7 @@
       left: 120px;
       font-family: var(--ff-mono);
       font-size: 18px;
-      color: rgba(255, 255, 255, 0.7);
+      color: var(--blitzy-text-invert-mute);
       letter-spacing: 0.16em;
       text-transform: uppercase;
     }
@@ -338,13 +362,13 @@
     .kpi-label {
       font-family: var(--ff-body);
       font-size: 14px;
-      font-weight: 600;
+      font-weight: 700;
       color: var(--blitzy-text-muted);
       text-transform: uppercase;
       letter-spacing: 0.1em;
     }
     .kpi-card .kpi-status-ok {
-      color: #22A06B;
+      color: var(--blitzy-status-ok);
       font-size: 56px;
       font-weight: 700;
       font-family: var(--ff-display);
@@ -363,11 +387,19 @@
     }
     .strapline.muted {
       color: var(--blitzy-text-muted);
-      font-size: 20px;
+      font-size: 22px;
+    }
+    .strapline .source-line,
+    .source-line {
+      display: block;
+      margin-top: 12px;
+      font-family: var(--ff-mono);
+      font-size: 16px;
+      color: var(--blitzy-text-muted);
+      letter-spacing: 0.02em;
     }
 
-    /* Styled tables: override reveal.js theme defaults that apply large
-       vertical margins and centered text alignment to bare <table> elements. */
+    /* Styled tables. */
     .reveal table.blitzy-table,
     .blitzy-table {
       width: 100%;
@@ -444,9 +476,9 @@
       max-width: 900px;
       margin: 0;
     }
-    .empty-state .check { color: #22A06B; }
+    .empty-state .check { color: var(--blitzy-status-ok); }
 
-    /* Mermaid */
+    /* Mermaid diagram container */
     .mermaid {
       background: var(--blitzy-surface-0);
       padding: 30px;
@@ -456,13 +488,25 @@
       max-width: 100%;
       text-align: center;
       font-family: var(--ff-body);
-      overflow: visible;
+      overflow-x: auto;
+      overflow-y: hidden;
     }
     .mermaid svg {
-      max-width: 100%;
+      max-width: none;
       height: auto;
+      display: inline-block;
     }
-    /* Mermaid + Lucide augmentation: each workflow chip */
+    /* Mermaid foreignObject overflow rules. */
+    .mermaid svg foreignObject {
+      overflow: visible;
+    }
+    .mermaid svg foreignObject > div,
+    .mermaid svg foreignObject > div > span {
+      overflow: visible !important;
+      white-space: nowrap !important;
+      padding-right: 6px;
+    }
+    /* Workflow chip. */
     .workflow-strip {
       display: flex;
       flex-wrap: wrap;
@@ -511,6 +555,7 @@
       font-family: var(--ff-mono);
       font-size: 15px;
       color: var(--blitzy-text-muted);
+      font-weight: 600;
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }
@@ -530,7 +575,7 @@
     .workflow-arrow i,
     .workflow-arrow svg { width: 24px; height: 24px; }
 
-    /* Icon row used as a non-text visual on text-heavy slides */
+    /* Icon row. */
     .icon-row {
       display: flex;
       gap: 24px;
@@ -551,7 +596,7 @@
     .icon-row .icon-chip i,
     .icon-row .icon-chip svg { width: 28px; height: 28px; }
 
-    /* Severity / status badges used in tables and lists */
+    /* Severity / status badges. */
     .badge {
       display: inline-block;
       padding: 4px 14px;
@@ -562,11 +607,23 @@
       letter-spacing: 0.06em;
       text-transform: uppercase;
     }
-    .badge.ok { background: #E3F8EE; color: #15683F; border: 1px solid #B7E8CC; }
-    .badge.info { background: var(--blitzy-surface-2); color: var(--blitzy-primary-dark); border: 1px solid var(--blitzy-border-soft); }
-    .badge.warn { background: #FFF4D9; color: #8A6A00; border: 1px solid #F5DC8A; }
+    .badge.ok {
+      background: var(--blitzy-status-ok-bg);
+      color: var(--blitzy-status-ok-strong);
+      border: 1px solid var(--blitzy-status-ok-border);
+    }
+    .badge.info {
+      background: var(--blitzy-surface-2);
+      color: var(--blitzy-primary-dark);
+      border: 1px solid var(--blitzy-border-soft);
+    }
+    .badge.warn {
+      background: var(--blitzy-status-warn-bg);
+      color: var(--blitzy-status-warn);
+      border: 1px solid var(--blitzy-status-warn-border);
+    }
 
-    /* Risk + mitigation list with icons */
+    /* Risk + mitigation list. */
     .risk-list {
       display: grid;
       grid-template-columns: 1fr;
@@ -596,7 +653,7 @@
       line-height: 1.5;
     }
 
-    /* Workflow micro-flow used on content slides */
+    /* Workflow micro-flow. */
     .micro-flow {
       display: flex;
       align-items: center;
@@ -626,6 +683,15 @@
       font-style: normal;
     }
     .note strong { color: var(--blitzy-text); }
+
+    /* Digest mono text. */
+    .digest-mono {
+      font-family: var(--ff-mono);
+      font-size: 16px;
+      color: var(--blitzy-text-muted);
+      letter-spacing: 0.02em;
+      word-break: break-all;
+    }
   </style>
 </head>
 <body>
@@ -633,24 +699,23 @@
   <div class="reveal">
     <div class="slides">
 
-      <!-- ============================================================
-           Slide 1 of 16 - Title slide
-           ============================================================ -->
+      <!-- Slide 1: Title slide -->
       <section class="slide-title">
         <div class="slide-inner">
-          <div class="hero-icon"><i data-lucide="shield-check"></i></div>
+          <div class="hero-icon">
+            <i data-lucide="shield-check" aria-hidden="true" focusable="false"></i>
+          </div>
           <div class="eyebrow">Config I &middot; Static Analysis</div>
           <h1>SonarQube Scan of blitzy-tgr-dnsmasq-rust</h1>
           <p class="subhead">Memory-safe Rust reimplementation of dnsmasq, v2.92.0.</p>
           <div class="title-footer">
-            RUN 2026-05-15T03:41:34Z &middot; IMAGE sha256:35bedac3&hellip;21c7
+            RUN 2026-05-15T03:41:34Z
+            <span class="digest-full">IMAGE sha256:35bedac3f40cda75969890da59b17d577770844fe6ef659206c678a8e00921c7</span>
           </div>
         </div>
       </section>
 
-      <!-- ============================================================
-           Slide 2 of 16 - KPI overview
-           ============================================================ -->
+      <!-- Slide 2: KPI overview -->
       <section>
         <div class="slide-inner">
           <div class="section-title">
@@ -659,23 +724,31 @@
           </div>
           <div class="kpi-grid">
             <div class="kpi-card">
-              <div class="kpi-icon"><i data-lucide="download-cloud"></i></div>
+              <div class="kpi-icon">
+                <i data-lucide="download-cloud" aria-hidden="true" focusable="false"></i>
+              </div>
               <div class="kpi-value">1<span class="unit">s</span></div>
               <div class="kpi-label">Image Pull</div>
             </div>
             <div class="kpi-card">
-              <div class="kpi-icon"><i data-lucide="server"></i></div>
+              <div class="kpi-icon">
+                <i data-lucide="server" aria-hidden="true" focusable="false"></i>
+              </div>
               <div class="kpi-value">38<span class="unit">s</span></div>
               <div class="kpi-label">Cold Start</div>
             </div>
             <div class="kpi-card">
-              <div class="kpi-icon"><i data-lucide="scan-search"></i></div>
+              <div class="kpi-icon">
+                <i data-lucide="scan-search" aria-hidden="true" focusable="false"></i>
+              </div>
               <div class="kpi-value">31<span class="unit">s</span></div>
               <div class="kpi-label">Scan Duration</div>
             </div>
             <div class="kpi-card">
-              <div class="kpi-icon"><i data-lucide="flag"></i></div>
-              <div class="kpi-status-ok">OK</div>
+              <div class="kpi-icon">
+                <i data-lucide="flag" aria-hidden="true" focusable="false"></i>
+              </div>
+              <div class="kpi-status-ok" aria-label="Quality gate passed">OK</div>
               <div class="kpi-label">Quality Gate</div>
             </div>
           </div>
@@ -685,77 +758,45 @@
         </div>
       </section>
 
-      <!-- ============================================================
-           Slide 3 of 16 - Scan workflow (custom icon-driven flow)
-           A custom workflow strip is used in place of Mermaid here because
-           Mermaid 11.x mis-measures foreignObject widths against the loaded
-           font set, which clips node labels in horizontal flowcharts. The
-           rule allows multiple non-text visual types (Mermaid, KPI card,
-           table, or Lucide icon); the workflow strip below combines Lucide
-           icons with styled chips for a reliable, on-brand result.
-           ============================================================ -->
+      <!-- Slide 3: Scan workflow architecture diagram -->
       <section>
         <div class="slide-inner">
           <div class="section-title">
             <div class="eyebrow default-eyebrow">Architecture</div>
             <h2>Scan Workflow</h2>
           </div>
-          <div class="workflow-strip">
-            <div class="step">
-              <div class="step-icon"><i data-lucide="terminal"></i></div>
-              <div class="step-label">D1 / D2</div>
-              <div class="step-name">Host shell</div>
-            </div>
-            <div class="workflow-arrow"><i data-lucide="arrow-right"></i></div>
-            <div class="step">
-              <div class="step-icon"><i data-lucide="container"></i></div>
-              <div class="step-label">D2</div>
-              <div class="step-name">docker run sonarqube-test on :9000</div>
-            </div>
-            <div class="workflow-arrow"><i data-lucide="arrow-right"></i></div>
-            <div class="step">
-              <div class="step-icon"><i data-lucide="scan-search"></i></div>
-              <div class="step-label">D3</div>
-              <div class="step-name">sonar-scanner with Clippy sensor</div>
-            </div>
-            <div class="workflow-arrow"><i data-lucide="arrow-right"></i></div>
-            <div class="step">
-              <div class="step-icon"><i data-lucide="cloud-download"></i></div>
-              <div class="step-label">D4</div>
-              <div class="step-name">GET /api/issues/search</div>
-            </div>
-            <div class="workflow-arrow"><i data-lucide="arrow-right"></i></div>
-            <div class="step highlight">
-              <div class="step-icon"><i data-lucide="file-json"></i></div>
-              <div class="step-label">D5 output</div>
-              <div class="step-name">findings-config-i.json</div>
-            </div>
-            <div class="workflow-arrow"><i data-lucide="arrow-right"></i></div>
-            <div class="step muted">
-              <div class="step-icon"><i data-lucide="trash-2"></i></div>
-              <div class="step-label">D5 trap</div>
-              <div class="step-name">docker stop and rm</div>
-            </div>
-          </div>
+          <pre class="mermaid" aria-label="SonarQube scan workflow architecture diagram">
+flowchart LR
+    H[D1 Shell] --> C[D2 Container]
+    C --> S[D3 Scanner]
+    S --> A[D4 Issues API]
+    A --> J[D5 JSON Export]
+    J --> T[D5 Teardown]
+    classDef host fill:#F2F0FE,stroke:#5B39F3,color:#333333
+    classDef api fill:#F4EFF6,stroke:#5B39F3,color:#333333
+    classDef out fill:#94FAD5,stroke:#2D1C77,color:#1A105F
+    class H,C,S host
+    class A api
+    class J out
+    class T host
+          </pre>
           <div class="note">
-            The Config I run executes once, harvests findings via the SonarQube REST API, then tears down the container in an exit trap regardless of upstream success or failure.
+            One-shot run: scanner submits sources, harvests findings, then tears down the container in an exit trap.
           </div>
         </div>
       </section>
 
-      <!-- ============================================================
-           Slide 4 of 16 - Divider: What Was Scanned
-           ============================================================ -->
+      <!-- Slide 4: Divider - What Was Scanned -->
       <section class="slide-divider">
         <div class="slide-inner">
-          <div class="divider-icon"><i data-lucide="folder-tree"></i></div>
+          <div class="divider-icon">
+            <i data-lucide="folder-tree" aria-hidden="true" focusable="false"></i>
+          </div>
           <h2>What Was Scanned</h2>
         </div>
       </section>
 
-      <!-- ============================================================
-           Slide 5 of 16 - Scope table
-           ============================================================ -->
+      <!-- Slide 5: Scope table -->
       <section>
         <div class="slide-inner">
           <div class="section-title">
@@ -771,32 +812,33 @@
               </tr>
             </thead>
             <tbody>
-              <tr><td><code>src/</code></td><td>88</td><td>Production sources (DNS, DHCPv4/v6, TFTP, RADV, runtime)</td></tr>
-              <tr><td><code>tests/</code></td><td>5</td><td>Integration suites (config, DHCP, DNS, DNSSEC)</td></tr>
-              <tr><td><code>benches/</code></td><td>3</td><td>Criterion benchmark harnesses</td></tr>
-              <tr><td><code>examples/</code></td><td>2</td><td>Runnable example programs</td></tr>
-              <tr class="total-row"><td>Total</td><td>98</td><td>Rust 1.91.0 / edition 2021 / MSRV 1.91.0</td></tr>
+              <tr><td><code>src/</code></td><td>88</td><td>DNS, DHCP, TFTP, RADV, runtime</td></tr>
+              <tr><td><code>tests/</code></td><td>5</td><td>Integration suites</td></tr>
+              <tr><td><code>benches/</code></td><td>3</td><td>Criterion benches</td></tr>
+              <tr><td><code>examples/</code></td><td>2</td><td>Example binaries</td></tr>
+              <tr class="total-row"><td>Total</td><td>98</td><td>Rust 1.91.0</td></tr>
             </tbody>
           </table>
           <div class="note">
-            <strong>Read-only inputs.</strong> Cargo.toml, Cargo.lock, build.rs, and toolchain configuration feed the analyzer; no source or metadata file is modified by the run.
+            <strong>Read-only inputs.</strong>
+            <span class="source-line">
+              Source: AAP §0.2.3; <code>Cargo.toml</code>; <code>rust-toolchain.toml</code>.
+            </span>
           </div>
         </div>
       </section>
 
-      <!-- ============================================================
-           Slide 6 of 16 - Divider: What Was Found
-           ============================================================ -->
+      <!-- Slide 6: Divider - What Was Found -->
       <section class="slide-divider">
         <div class="slide-inner">
-          <div class="divider-icon"><i data-lucide="bug"></i></div>
+          <div class="divider-icon">
+            <i data-lucide="bug" aria-hidden="true" focusable="false"></i>
+          </div>
           <h2>What Was Found</h2>
         </div>
       </section>
 
-      <!-- ============================================================
-           Slide 7 of 16 - Severity profile (clean run empty state)
-           ============================================================ -->
+      <!-- Slide 7: Severity profile (clean run empty state) -->
       <section>
         <div class="slide-inner">
           <div class="section-title">
@@ -804,19 +846,20 @@
             <h2>Severity Profile</h2>
           </div>
           <div class="empty-state">
-            <i data-lucide="check-circle-2" class="check"></i>
-            <p class="empty-headline">No vulnerabilities or bugs raised by SonarQube Community.</p>
-            <p class="empty-sub">Findings array contains <code>[]</code>. Quality gate evaluated to <strong>OK</strong> against the default Sonar Way gate.</p>
+            <i data-lucide="check-circle-2" class="check" aria-hidden="true" focusable="false"></i>
+            <p class="empty-headline">No vulnerabilities or bugs raised.</p>
+            <p class="empty-sub">Findings array is <code>[]</code>; gate <strong>OK</strong> against default Sonar Way.</p>
           </div>
           <div class="strapline muted">
-            Severity remap: <code>BLOCKER</code> or <code>CRITICAL</code> &rarr; <strong>critical</strong>, <code>MAJOR</code> &rarr; <strong>high</strong>, <code>MINOR</code> &rarr; <strong>medium</strong>, <code>INFO</code> &rarr; <strong>low</strong>.
+            Remap: <code>BLOCKER/CRITICAL</code> &rarr; <strong>critical</strong>, <code>MAJOR</code> &rarr; <strong>high</strong>, <code>MINOR</code> &rarr; <strong>medium</strong>, <code>INFO</code> &rarr; <strong>low</strong>.
+            <span class="source-line">
+              Source: <code>/api/issues/search</code> (paging.total = 0).
+            </span>
           </div>
         </div>
       </section>
 
-      <!-- ============================================================
-           Slide 8 of 16 - CWE coverage (clean run empty state)
-           ============================================================ -->
+      <!-- Slide 8: CWE coverage (clean run empty state) -->
       <section>
         <div class="slide-inner">
           <div class="section-title">
@@ -824,19 +867,20 @@
             <h2>CWE Coverage</h2>
           </div>
           <div class="empty-state">
-            <i data-lucide="circle-dashed"></i>
-            <p class="empty-headline">No CWE entries: clean run.</p>
-            <p class="empty-sub">No raw issue surfaced, so neither the tag scan nor the rule-description fallback fired. The <code>CWE-UNKNOWN</code> sentinel was not emitted (0 occurrences).</p>
+            <i data-lucide="circle-dashed" aria-hidden="true" focusable="false"></i>
+            <p class="empty-headline">Clean run: no CWE entries.</p>
+            <p class="empty-sub">No raw issue surfaced; neither tag scan nor rule-description fallback fired.</p>
           </div>
           <div class="note">
-            Resolution cascade for future findings: <strong>1.</strong> scan issue tags for <code>cwe-NNN</code>, <strong>2.</strong> query <code>/api/rules/show</code> and parse the description, <strong>3.</strong> fall back to <code>CWE-UNKNOWN</code> and flag for triage. <span style="color: var(--blitzy-primary); font-weight: 600;"><i data-lucide="alert-triangle" style="width:20px;height:20px;vertical-align:-4px;"></i> Any <code>CWE-UNKNOWN</code> count would be surfaced separately on this slide.</span>
+            Cascade for future findings: tag scan, then <code>/api/rules/show</code>, then <code>CWE-UNKNOWN</code> sentinel.
+            <span class="source-line">
+              Source: AAP §0.5.6.3 CWE Resolution Cascade.
+            </span>
           </div>
         </div>
       </section>
 
-      <!-- ============================================================
-           Slide 9 of 16 - Top findings (clean run empty state)
-           ============================================================ -->
+      <!-- Slide 9: Top findings (clean run empty state) -->
       <section>
         <div class="slide-inner">
           <div class="section-title">
@@ -844,62 +888,61 @@
             <h2>Top Findings</h2>
           </div>
           <div class="empty-state">
-            <i data-lucide="sparkles"></i>
-            <p class="empty-headline">Nothing to surface: scan returned an empty findings set.</p>
-            <p class="empty-sub">A clean result is the expected outcome given the existing posture: 0 compilation errors, 0 strict clippy warnings, 592 of 592 tests passing per the project baseline. <!-- Baseline metrics sourced from blitzy/documentation/Technical Specifications.md §1.2.3.3 --></p>
+            <i data-lucide="sparkles" aria-hidden="true" focusable="false"></i>
+            <p class="empty-headline">Empty findings set.</p>
+            <p class="empty-sub">Clean result expected: 0 compilation errors, 0 clippy warnings, 592 of 592 tests passing.</p>
           </div>
-          <div class="icon-row">
-            <span class="badge ok">No critical</span>
-            <span class="badge ok">No high</span>
-            <span class="badge ok">No medium</span>
-            <span class="badge ok">No low</span>
+          <div class="icon-row" role="list" aria-label="Severity counts">
+            <span class="badge ok" role="listitem">No critical</span>
+            <span class="badge ok" role="listitem">No high</span>
+            <span class="badge ok" role="listitem">No medium</span>
+            <span class="badge ok" role="listitem">No low</span>
+          </div>
+          <div class="source-line">
+            Source: Technical Specifications §1.2.3.3 (baseline metrics).
           </div>
         </div>
       </section>
 
-      <!-- ============================================================
-           Slide 10 of 16 - Divider: What Could Go Wrong
-           ============================================================ -->
+      <!-- Slide 10: Divider - What Could Go Wrong -->
       <section class="slide-divider">
         <div class="slide-inner">
-          <div class="divider-icon"><i data-lucide="alert-octagon"></i></div>
+          <div class="divider-icon">
+            <i data-lucide="alert-octagon" aria-hidden="true" focusable="false"></i>
+          </div>
           <h2>What Could Go Wrong</h2>
         </div>
       </section>
 
-      <!-- ============================================================
-           Slide 11 of 16 - Risk register
-           ============================================================ -->
+      <!-- Slide 11: Risk register -->
       <section>
         <div class="slide-inner">
           <div class="section-title">
             <div class="eyebrow default-eyebrow">Risk Register</div>
             <h2>Risks</h2>
           </div>
-          <div class="risk-list">
-            <div class="risk-item">
-              <i data-lucide="git-branch"></i>
-              <div class="risk-body"><strong>Rolling Docker tag drift</strong> between runs may change the analyzer ruleset without notice.</div>
+          <div class="risk-list" role="list">
+            <div class="risk-item" role="listitem">
+              <i data-lucide="git-branch" aria-hidden="true" focusable="false"></i>
+              <div class="risk-body"><strong>Rolling tag drift</strong> may change the analyzer ruleset between runs.</div>
             </div>
-            <div class="risk-item">
-              <i data-lucide="key"></i>
-              <div class="risk-body"><strong>Default <code>admin/admin</code> credentials</strong> are accepted during the ephemeral run window.</div>
+            <div class="risk-item" role="listitem">
+              <i data-lucide="key" aria-hidden="true" focusable="false"></i>
+              <div class="risk-body"><strong>Default <code>admin/admin</code></strong> accepted during the ephemeral window.</div>
             </div>
-            <div class="risk-item">
-              <i data-lucide="filter"></i>
-              <div class="risk-body"><strong>False-positive ratio</strong> for the Rust analyzer remains uncalibrated against this codebase.</div>
+            <div class="risk-item" role="listitem">
+              <i data-lucide="filter" aria-hidden="true" focusable="false"></i>
+              <div class="risk-body"><strong>False-positive ratio</strong> uncalibrated against this codebase.</div>
             </div>
-            <div class="risk-item">
-              <i data-lucide="help-circle"></i>
-              <div class="risk-body"><strong>CWE inference gaps</strong> when neither rule tags nor the rule description carry a numeric CWE identifier.</div>
+            <div class="risk-item" role="listitem">
+              <i data-lucide="help-circle" aria-hidden="true" focusable="false"></i>
+              <div class="risk-body"><strong>CWE inference gaps</strong> when no numeric CWE is exposed.</div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- ============================================================
-           Slide 12 of 16 - Mitigations table
-           ============================================================ -->
+      <!-- Slide 12: Mitigations table -->
       <section>
         <div class="slide-inner">
           <div class="section-title">
@@ -909,45 +952,62 @@
           <table class="blitzy-table">
             <thead>
               <tr>
-                <th style="width: 38%">Risk</th>
+                <th style="width: 32%">Risk</th>
                 <th>Mitigation in effect</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td><i data-lucide="git-branch" style="width:22px;height:22px;vertical-align:-5px;color:var(--blitzy-primary);"></i> &nbsp;Rolling tag drift</td>
-                <td>Image digest <code>sha256:35bedac3&hellip;21c7</code> pinned in the decision log so future runs are diffable.</td>
+                <td>
+                  <i data-lucide="git-branch" aria-hidden="true" focusable="false"
+                     style="width:22px;height:22px;vertical-align:-5px;color:var(--blitzy-primary);"></i>
+                  &nbsp;Tag drift
+                </td>
+                <td>
+                  Full digest pinned in decision log; runs diffable.
+                  <span class="digest-mono">sha256:35bedac3f40cda75969890da59b17d577770844fe6ef659206c678a8e00921c7</span>
+                </td>
               </tr>
               <tr>
-                <td><i data-lucide="key" style="width:22px;height:22px;vertical-align:-5px;color:var(--blitzy-primary);"></i> &nbsp;Default credentials</td>
-                <td>Container destroyed by exit trap; no credential, token, or volume persists past teardown.</td>
+                <td>
+                  <i data-lucide="key" aria-hidden="true" focusable="false"
+                     style="width:22px;height:22px;vertical-align:-5px;color:var(--blitzy-primary);"></i>
+                  &nbsp;Credentials
+                </td>
+                <td>Container destroyed by exit trap.</td>
               </tr>
               <tr>
-                <td><i data-lucide="filter" style="width:22px;height:22px;vertical-align:-5px;color:var(--blitzy-primary);"></i> &nbsp;False-positive ratio</td>
-                <td>Findings calibrated against sibling configs (II, III, &hellip;) and the internal threat model in the Technical Specification.</td>
+                <td>
+                  <i data-lucide="filter" aria-hidden="true" focusable="false"
+                     style="width:22px;height:22px;vertical-align:-5px;color:var(--blitzy-primary);"></i>
+                  &nbsp;False-positive ratio
+                </td>
+                <td>Findings calibrated against sibling configs.</td>
               </tr>
               <tr>
-                <td><i data-lucide="help-circle" style="width:22px;height:22px;vertical-align:-5px;color:var(--blitzy-primary);"></i> &nbsp;CWE inference gaps</td>
-                <td>The <code>CWE-UNKNOWN</code> sentinel preserves the 5-field schema and flags records for manual triage.</td>
+                <td>
+                  <i data-lucide="help-circle" aria-hidden="true" focusable="false"
+                     style="width:22px;height:22px;vertical-align:-5px;color:var(--blitzy-primary);"></i>
+                  &nbsp;CWE gaps
+                </td>
+                <td>Sentinel preserves 5-field schema for triage.</td>
               </tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      <!-- ============================================================
-           Slide 13 of 16 - Divider: How This Compares
-           ============================================================ -->
+      <!-- Slide 13: Divider - How This Compares -->
       <section class="slide-divider">
         <div class="slide-inner">
-          <div class="divider-icon"><i data-lucide="bar-chart-3"></i></div>
+          <div class="divider-icon">
+            <i data-lucide="bar-chart-3" aria-hidden="true" focusable="false"></i>
+          </div>
           <h2>How This Compares</h2>
         </div>
       </section>
 
-      <!-- ============================================================
-           Slide 14 of 16 - Config I in Context
-           ============================================================ -->
+      <!-- Slide 14: Config I in Context -->
       <section>
         <div class="slide-inner">
           <div class="section-title">
@@ -956,33 +1016,43 @@
           </div>
           <ul>
             <li>
-              <i data-lucide="layers"></i>
-              <span>Sibling configs (II, III, &hellip;) produce comparable <code>findings-config-*.json</code> artifacts on this same source tree.</span>
+              <i data-lucide="layers" aria-hidden="true" focusable="false"></i>
+              <span>Sibling configs produce comparable <code>findings-config-*.json</code> on the same source tree.</span>
             </li>
             <li>
-              <i data-lucide="diff"></i>
-              <span>The comparison harness diffs records by <code>file + line + cwe</code>; severity and description supply context.</span>
+              <i data-lucide="diff" aria-hidden="true" focusable="false"></i>
+              <span>Harness diffs records by <code>file + line + cwe</code>; severity adds context.</span>
             </li>
             <li>
-              <i data-lucide="target"></i>
-              <span>The Config I deliverable is one input among many, not a standalone verdict on the codebase.</span>
+              <i data-lucide="target" aria-hidden="true" focusable="false"></i>
+              <span>Config I is one input, not a standalone verdict.</span>
             </li>
           </ul>
-          <div class="micro-flow">
-            <span class="chip">findings-config-i.json</span>
-            <span class="arrow"><i data-lucide="plus" style="width:20px;height:20px;vertical-align:-4px;"></i></span>
-            <span class="chip">findings-config-ii.json</span>
-            <span class="arrow"><i data-lucide="plus" style="width:20px;height:20px;vertical-align:-4px;"></i></span>
-            <span class="chip">findings-config-iii.json</span>
-            <span class="arrow"><i data-lucide="arrow-right" style="width:20px;height:20px;vertical-align:-4px;"></i></span>
-            <span class="chip" style="background: var(--blitzy-accent-teal); color: var(--blitzy-primary-dark); border-color: var(--blitzy-primary-dark);">comparison report</span>
+          <div class="micro-flow" role="list" aria-label="Comparison artifact flow">
+            <span class="chip" role="listitem">findings-config-i.json</span>
+            <span class="arrow" aria-hidden="true">
+              <i data-lucide="plus" aria-hidden="true" focusable="false"
+                 style="width:20px;height:20px;vertical-align:-4px;"></i>
+            </span>
+            <span class="chip" role="listitem">findings-config-ii.json</span>
+            <span class="arrow" aria-hidden="true">
+              <i data-lucide="plus" aria-hidden="true" focusable="false"
+                 style="width:20px;height:20px;vertical-align:-4px;"></i>
+            </span>
+            <span class="chip" role="listitem">findings-config-iii.json</span>
+            <span class="arrow" aria-hidden="true">
+              <i data-lucide="arrow-right" aria-hidden="true" focusable="false"
+                 style="width:20px;height:20px;vertical-align:-4px;"></i>
+            </span>
+            <span class="chip" role="listitem"
+                  style="background: var(--blitzy-accent-teal); color: var(--blitzy-primary-dark); border-color: var(--blitzy-primary-dark);">
+              comparison report
+            </span>
           </div>
         </div>
       </section>
 
-      <!-- ============================================================
-           Slide 15 of 16 - Clean teardown evidence
-           ============================================================ -->
+      <!-- Slide 15: Clean teardown evidence -->
       <section>
         <div class="slide-inner">
           <div class="section-title">
@@ -991,47 +1061,52 @@
           </div>
           <div class="kpi-grid kpi-grid-3">
             <div class="kpi-card">
-              <div class="kpi-icon"><i data-lucide="trash-2"></i></div>
+              <div class="kpi-icon">
+                <i data-lucide="trash-2" aria-hidden="true" focusable="false"></i>
+              </div>
               <div class="kpi-value" style="font-size: 48px;">YES</div>
               <div class="kpi-label">Container Removed</div>
             </div>
             <div class="kpi-card">
-              <div class="kpi-icon"><i data-lucide="file-json"></i></div>
+              <div class="kpi-icon">
+                <i data-lucide="file-json" aria-hidden="true" focusable="false"></i>
+              </div>
               <div class="kpi-value">3<span class="unit">bytes</span></div>
               <div class="kpi-label">findings-config-i.json Size</div>
             </div>
             <div class="kpi-card">
-              <div class="kpi-icon"><i data-lucide="hash"></i></div>
+              <div class="kpi-icon">
+                <i data-lucide="hash" aria-hidden="true" focusable="false"></i>
+              </div>
               <div class="kpi-value">0</div>
               <div class="kpi-label">Records Written</div>
             </div>
           </div>
           <div class="strapline">
-            <i data-lucide="check-circle" style="width:24px;height:24px;vertical-align:-5px;color:#22A06B;"></i>
-            &nbsp;Host returns to a clean state: no SonarQube container, no named volume, no persisted credential, no orphan process.
+            <i data-lucide="check-circle" aria-hidden="true" focusable="false"
+               style="width:24px;height:24px;vertical-align:-5px;color:var(--blitzy-status-ok);"></i>
+            &nbsp;Host returns to a clean state: no container, no named volume, no persisted credential, no orphan process.
           </div>
         </div>
       </section>
 
-      <!-- ============================================================
-           Slide 16 of 16 - Closing
-           ============================================================ -->
+      <!-- Slide 16: Closing -->
       <section class="slide-closing">
-        <div class="accent-bar"></div>
+        <div class="accent-bar" aria-hidden="true"></div>
         <div class="slide-inner">
           <div class="eyebrow">The takeaway</div>
           <h1>Baseline Set. Comparison Begins.</h1>
           <ul>
             <li>
-              <i data-lucide="check-circle"></i>
+              <i data-lucide="check-circle" aria-hidden="true" focusable="false"></i>
               <span>Findings exported under Config I as <code>findings-config-i.json</code>.</span>
             </li>
             <li>
-              <i data-lucide="book-open"></i>
+              <i data-lucide="book-open" aria-hidden="true" focusable="false"></i>
               <span>Decision log captures rationale for every non-trivial choice.</span>
             </li>
             <li>
-              <i data-lucide="arrow-right-circle"></i>
+              <i data-lucide="arrow-right-circle" aria-hidden="true" focusable="false"></i>
               <span>Awaiting sibling configs (II, III, &hellip;) for cross-tool diff.</span>
             </li>
           </ul>
@@ -1042,25 +1117,30 @@
     </div>
   </div>
 
-  <!-- reveal.js, Mermaid, Lucide - all pinned to AAP-mandated versions -->
-  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <!-- reveal.js, Mermaid, Lucide CDN scripts. -->
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"
+          integrity="sha384-M/JtqCVlLcK9lwVnBnMXP0V577CBULkjodKsR/PITOe4MSKNbbwqCemEyluOw0+5"
+          crossorigin="anonymous"
+          referrerpolicy="no-referrer"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js"
+          integrity="sha384-yQ4mmBBT+vhTAwjFH0toJXNYJ6O4usWnt6EPIdWwrRvx2V/n5lXuDZQwQFeSFydF"
+          crossorigin="anonymous"
+          referrerpolicy="no-referrer"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"
+          integrity="sha384-ieG+IKD0d/ZPXyCBTMVAbqsQdns8QGJR/e26WMw7M4fkaI/rHcS/YIoi+ah9WGge"
+          crossorigin="anonymous"
+          referrerpolicy="no-referrer"></script>
 
   <script>
-    // Mermaid configuration - theme variables aligned with the Blitzy palette.
-    // fontFamily explicitly pinned to Inter to keep Mermaid's text-width
-    // measurement (used to size foreignObject boxes) consistent with what
-    // renders on screen once Google Fonts swap in.
     mermaid.initialize({
       startOnLoad: false,
-      securityLevel: 'loose',
+      securityLevel: 'strict',
       fontFamily: 'Inter, system-ui, Arial, sans-serif',
       flowchart: {
-        useMaxWidth: true,
-        nodeSpacing: 40,
-        rankSpacing: 50,
-        padding: 16
+        useMaxWidth: false,
+        nodeSpacing: 30,
+        rankSpacing: 45,
+        padding: 14
       },
       themeVariables: {
         primaryColor: '#F2F0FE',
@@ -1069,20 +1149,9 @@
         lineColor: '#999999',
         secondaryColor: '#F4EFF6',
         fontFamily: 'Inter, system-ui, Arial, sans-serif',
-        fontSize: '15px'
+        fontSize: '16px'
       }
     });
-
-    // reveal.js configuration matches AAP §0.7.2 exactly.
-    Reveal.initialize({
-      hash: true,
-      transition: 'slide',
-      controlsTutorial: false,
-      width: 1920,
-      height: 1080
-    });
-
-    let mermaidRendered = false;
 
     function renderIcons() {
       try {
@@ -1094,25 +1163,9 @@
       }
     }
 
-    function renderMermaid() {
-      if (mermaidRendered) return;
-      try {
-        if (window.mermaid && typeof window.mermaid.run === 'function') {
-          window.mermaid.run({ querySelector: '.mermaid' });
-          mermaidRendered = true;
-        }
-      } catch (err) {
-        console.warn('mermaid.run failed:', err);
-      }
-    }
-
-    // Wait for fonts to fully load before measuring text widths in Mermaid;
-    // otherwise Mermaid sizes foreignObject boxes against a fallback font
-    // and the text overflows once Space Grotesk / Inter swap in.
     function renderVisuals() {
       renderIcons();
       const runMermaid = () => {
-        // Reset the cached SVG so layouts recompute against the loaded font.
         document.querySelectorAll('.mermaid').forEach((el) => {
           if (el.dataset.processed === 'true') {
             const src = el.getAttribute('data-source');
@@ -1139,10 +1192,17 @@
       }
     }
 
-    // Render once reveal is ready and again on every slide change so that
-    // Mermaid diagrams that initialise inside hidden slides still appear.
+    // Register Reveal event handlers before initialize().
     Reveal.on('ready', renderVisuals);
     Reveal.on('slidechanged', renderVisuals);
+
+    Reveal.initialize({
+      hash: true,
+      transition: 'slide',
+      controlsTutorial: false,
+      width: 1920,
+      height: 1080
+    });
   </script>
 </body>
 </html>

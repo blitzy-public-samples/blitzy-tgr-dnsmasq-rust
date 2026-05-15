@@ -1,78 +1,37 @@
 #!/usr/bin/env bash
-# ---------------------------------------------------------------------------
 # run_sonarqube_scan.sh
 #
-# Ephemeral SonarQube Community Build scan driver for the
-# blitzy-tgr-dnsmasq-rust Rust workspace (Config I of the multi-config
-# security-tool comparison).
-#
-# This script is the auditable record of how findings-config-i.json was
-# produced. It implements the user-mandated five-directive workflow
-# (D1..D5) defined in:
-#   blitzy/documentation/Technical Specifications.md  (Agent Action Plan, §0)
-#
-# Cross-reference each "CR1-#" tag below against the Checkpoint 1 AAP
-# Compliance Matrix rows 16..24.
+# Driver for the ephemeral SonarQube Community Build scan that produces
+# findings-config-i.json. Implements directives D1..D5 from AAP §0.
 #
 # Usage:
 #   ./run_sonarqube_scan.sh [REPO_ROOT]
 #
-# REPO_ROOT defaults to the parent of this script's directory, which
-# resolves to /tmp/blitzy/blitzy-tgr-dnsmasq-rust/<branch>/.
-#
 # Exit codes:
-#   0  Pipeline completed; findings-config-i.json is current
+#   0  Pipeline completed
 #   2  Bad arguments or missing host tooling
-#   3  SonarQube backend failed to reach status UP within 120 s
-#   4  sonar-scanner returned non-zero (scan failure or quality-gate failure)
+#   3  SonarQube backend did not reach status UP within 120 s
+#   4  sonar-scanner returned non-zero
 #   5  Findings harvest / normalization failed
 #
-# Idempotency: a trap registered at the very top of the script ensures the
-# sonarqube-test container is stopped and removed on every exit path, even
-# on signal-driven termination. (CR1-24)
-# ---------------------------------------------------------------------------
+# All rationale for every decision below lives in decision-log-config-i.md
+# per the Explainability rule (AAP §0.7.1).
 
 set -o errexit
 set -o nounset
 set -o pipefail
 
-# ---------------------------------------------------------------------------
-# CR1-25: Ensure rustup-installed cargo is reachable by sonar-scanner.
-#
-# SonarQube's Rust analyzer invokes ``cargo`` to probe the workspace per AAP
-# §0.8.1; when cargo is absent from PATH, the Clippy sensor (which carries
-# the bulk of the Rust ruleset) silently falls back to file-only analysis.
-# rustup installs cargo at ``$HOME/.cargo/bin``, and its env file is
-# idempotent (it is a no-op when ``$HOME/.cargo/bin`` is already present in
-# PATH), so unconditional sourcing here is safe on hosts that already have
-# cargo on the system PATH.
-# ---------------------------------------------------------------------------
+# Bring cargo onto PATH if rustup is installed.
 if [ -f "${HOME:-/root}/.cargo/env" ]; then
-  # shellcheck disable=SC1091  # path is dynamic by design
+  # shellcheck disable=SC1091
   . "${HOME:-/root}/.cargo/env"
 fi
 
-# ---------------------------------------------------------------------------
-# CR1-24: Idempotent teardown trap registered at top of script.
-#
-# Both subcommands are silenced because the container may not exist if the
-# pull or run step itself failed before reaching docker run. The trap fires
-# on EXIT (normal or error), INT (Ctrl-C), TERM (kill), and HUP.
-# ---------------------------------------------------------------------------
-trap '
-  docker stop  sonarqube-test >/dev/null 2>&1 || true
-  docker rm -f sonarqube-test >/dev/null 2>&1 || true
-' EXIT INT TERM HUP
+# Resolve repository root.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${1:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 
-# ---------------------------------------------------------------------------
 # Constants.
-#
-# The container name (sonarqube-test), the host port (9000), the image tag
-# (sonarqube:community), the project key (blitzy-tgr-dnsmasq-rust), and the
-# credentials (admin/admin) are all taken verbatim from the user prompt and
-# are not parameterized. Changing any of these would break reproducibility
-# of the comparison harness.
-# ---------------------------------------------------------------------------
 CONTAINER_NAME='sonarqube-test'
 IMAGE_TAG='sonarqube:community'
 HOST_PORT='9000'
@@ -82,9 +41,14 @@ SONAR_PASSWORD='admin'
 PROJECT_KEY='blitzy-tgr-dnsmasq-rust'
 COLD_START_TIMEOUT_S=120
 
-# Resolve repository root.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="${1:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+PROPERTIES_FILE="${SCRIPT_DIR}/sonar-project.properties"
+
+# Idempotent teardown trap. Runs on EXIT, INT, TERM, HUP.
+trap '
+  docker stop  sonarqube-test >/dev/null 2>&1 || true
+  docker rm -f sonarqube-test >/dev/null 2>&1 || true
+  rm -f "'"${PROPERTIES_FILE}"'" 2>/dev/null || true
+' EXIT INT TERM HUP
 
 if [ ! -f "${REPO_ROOT}/Cargo.toml" ]; then
   echo "ERROR: REPO_ROOT ${REPO_ROOT} does not contain Cargo.toml." >&2
@@ -99,7 +63,6 @@ fi
 
 OUTPUT_FILE="${REPO_ROOT}/findings-config-i.json"
 PIPELINE_SCRIPT="${SCRIPT_DIR}/sonar_pipeline.py"
-PROPERTIES_FILE="${SCRIPT_DIR}/sonar-project.properties"
 
 echo "==> Config I scan starting"
 echo "    REPO_ROOT       = ${REPO_ROOT}"
@@ -108,42 +71,32 @@ echo "    SONAR_HOST_URL  = ${SONAR_HOST_URL}"
 echo "    CONTAINER_NAME  = ${CONTAINER_NAME}"
 echo "    IMAGE_TAG       = ${IMAGE_TAG}"
 
-# ===========================================================================
-# D1: Install sonar-scanner and pull the sonarqube:community image.
-#
-# Both invocations match the user examples verbatim. The image-pull duration
-# is captured for the executive summary (Checkpoint 2 decision log).
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# D1: install sonar-scanner and pull the sonarqube:community image.
+# ---------------------------------------------------------------------------
 echo "==> D1: Installing host tooling"
 
-# Install sonar-scanner via apt (idempotent: skipped if already installed).
 if ! command -v sonar-scanner >/dev/null 2>&1; then
   DEBIAN_FRONTEND=noninteractive apt-get install -y sonar-scanner
 fi
 
-# Sanity check per the user D1 pass criterion.
 sonar-scanner --version
 
-# Pull the image and time it (CR1-23 telemetry source).
 echo "==> D1: docker pull ${IMAGE_TAG}"
 PULL_START_S=$(date +%s)
 docker pull "${IMAGE_TAG}"
 PULL_END_S=$(date +%s)
 IMAGE_PULL_TIME_S=$(( PULL_END_S - PULL_START_S ))
 
-# Capture the resolved image digest for the audit trail.
 IMAGE_DIGEST="$(docker image inspect --format '{{index .RepoDigests 0}}' "${IMAGE_TAG}" 2>/dev/null || echo "${IMAGE_TAG}")"
 echo "    image digest    = ${IMAGE_DIGEST}"
 echo "    image pull time = ${IMAGE_PULL_TIME_S}s"
 
-# ===========================================================================
-# D2: Start the SonarQube container detached and poll /api/system/status
-# until the server reports UP, with a hard 120-second timeout.
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# D2: start the SonarQube container and poll /api/system/status until UP.
+# ---------------------------------------------------------------------------
 echo "==> D2: Starting ephemeral SonarQube backend"
 
-# In the rare case a prior run left a stopped container around, remove it
-# first so docker run does not fail with "name already in use".
 docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
 
 docker run -d \
@@ -151,16 +104,6 @@ docker run -d \
   -p "${HOST_PORT}:9000" \
   "${IMAGE_TAG}" >/dev/null
 
-# ---------------------------------------------------------------------------
-# CR1-23: Cold-start polling per AAP §0.5.6.6.
-#
-# curl is invoked with both --connect-timeout (network-level) and
-# --max-time (whole-request), so a hung server cannot stall the poll loop.
-# The accepted intermediate states are STARTING, DB_MIGRATION_NEEDED, and
-# DB_MIGRATION_RUNNING. The single failure state is DOWN. The single
-# success state is UP. Any other state is treated as transient and is
-# retried up to the cumulative 120-second budget.
-# ---------------------------------------------------------------------------
 POLL_START_S=$(date +%s)
 COLD_START_TIME_S=-1
 while true; do
@@ -200,39 +143,18 @@ except json.JSONDecodeError:
       sleep 1
       ;;
     *)
-      # Unknown state: keep polling under the 120s budget rather than
-      # failing fast, but log it for the decision log.
-      echo "    (unrecognized status '${status}' — continuing poll)"
+      echo "    (unrecognized status '${status}' - continuing poll)"
       sleep 1
       ;;
   esac
 done
 
-# ===========================================================================
-# CR1-26: Mint a short-lived scanner token from the literal admin/admin
-# credentials.
-#
-# Current SonarQube Community Build releases (≥ v26.5.0) reject
-# ``sonar.login``/``sonar.password`` in the scanner protocol with
-# "Not authorized. Please check the user token in the property
-# 'sonar.token' or 'sonar.login' (deprecated)." while keeping admin/admin
-# Basic auth available on the REST API (verified in Checkpoint 1 QA
-# evidence). The user-supplied admin/admin credentials remain the
-# authoritative authentication input; this step uses them via HTTP Basic
-# auth on ``POST /api/user_tokens/generate`` to obtain an ephemeral
-# scanner token that satisfies the new scanner protocol.
-#
-# The token is bound to the ephemeral container's H2 database and is
-# destroyed by the teardown trap at the end of the run, preserving the
-# AAP §0.8.1 ephemeral-credentials risk-mitigation chain: "the entire
-# SonarQube state is destroyed by the teardown step. This is the safest
-# behavior for an ephemeral run."
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# Mint a short-lived global analysis token from admin/admin.
+# ---------------------------------------------------------------------------
 echo "==> Minting ephemeral scanner token"
 TOKEN_NAME="config-i-scan-$(date +%s)"
 
-# Best-effort cleanup of any same-named token from a prior failed run,
-# then mint a fresh one. Both calls are scoped to the ephemeral container.
 curl --silent --show-error --fail \
      --connect-timeout 2 --max-time 10 \
      -u "${SONAR_LOGIN}:${SONAR_PASSWORD}" \
@@ -266,29 +188,13 @@ if [ -z "${SONAR_TOKEN}" ]; then
 fi
 echo "    token name = ${TOKEN_NAME}"
 
-# ===========================================================================
-# D3: Execute the scan.
-#
-# The scanner is invoked with ``sonar.token=<TOKEN>`` (the modern auth
-# property) instead of the legacy ``sonar.login``/``sonar.password`` pair,
-# per the QA Checkpoint 1 MAJOR finding (Issue #1). The other five
-# properties are passed verbatim from the user's literal D3 example. A
-# side-car ``sonar-project.properties`` file is regenerated next to this
-# script for human auditability; it documents the user-supplied static
-# values (sonar.login=admin, sonar.password=admin) but contains no
-# generated secret. The file lives outside version control (see
-# ``blitzy/scripts/.gitignore``) so each run leaves the working tree
-# byte-identical to its pre-run state, satisfying AAP §0.6.2.4
-# ("Not committed to the repository") and §0.3.2.
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# D3: execute the scan.
+# ---------------------------------------------------------------------------
 echo "==> D3: Running sonar-scanner"
 
 cat > "${PROPERTIES_FILE}" <<EOF
-# Auto-regenerated by run_sonarqube_scan.sh. Edit the .sh, not this file.
-# This file is transient (gitignored) and exists for audit visibility only;
-# it is NOT read by the scanner because run_sonarqube_scan.sh passes every
-# property via -D flags. The runtime ``-Dsonar.token`` is intentionally
-# omitted from this file to avoid persisting the generated secret to disk.
+# Auto-regenerated by run_sonarqube_scan.sh; transient (gitignored).
 sonar.projectKey=${PROJECT_KEY}
 sonar.sources=${REPO_ROOT}
 sonar.host.url=${SONAR_HOST_URL}
@@ -312,34 +218,14 @@ SCAN_WALL_CLOCK_S=$(( SCAN_END_S - SCAN_START_S ))
 echo "    sonar-scanner exit = ${SCANNER_EXIT}"
 echo "    scan wall-clock    = ${SCAN_WALL_CLOCK_S}s"
 
-# sonar-scanner returns non-zero when the quality gate fails. The user's D3
-# pass criterion is "Scan completes AND the quality gate result is returned",
-# so we treat a quality-gate failure as a soft fail: we still harvest the
-# issue set. A scanner crash (different exit code class, no quality-gate
-# JSON) is a hard fail.
 if [ ${SCANNER_EXIT} -ne 0 ] && [ ${SCANNER_EXIT} -ne 1 ]; then
   echo "ERROR: sonar-scanner failed with exit code ${SCANNER_EXIT}." >&2
   exit 4
 fi
 
-# ===========================================================================
-# D4 + D5: Harvest issues and normalize to the user-specified 5-field schema.
-#
-# All API filters, pagination logic, the 10k fallback, the severity remap,
-# the CWE cascade, the .rs path filter, the positive-line filter, the
-# code-point truncation, and the minified JSON serialization live in the
-# Python pipeline module to keep the bash driver thin and the safeguards
-# testable in isolation.
-#
-# Cross-references:
-#   CR1-16  Severity remap with hard error           -> sonar_pipeline.py: SEVERITY_REMAP / normalize_severity
-#   CR1-17  CWE cascade with memoized rule lookup     -> sonar_pipeline.py: CweResolver.resolve
-#   CR1-18  Component prefix strip + .rs filter       -> sonar_pipeline.py: normalize_component
-#   CR1-19  Positive-integer line filter              -> sonar_pipeline.py: normalize_line
-#   CR1-20  Code-point truncation (no ellipsis)       -> sonar_pipeline.py: truncate_description
-#   CR1-21  ps=500 pagination with types filter       -> sonar_pipeline.py: fetch_issues_page
-#   CR1-22  paging.total >= 10000 fallback            -> sonar_pipeline.py: harvest_issues
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# D4 + D5: harvest issues and normalize to the 5-field schema.
+# ---------------------------------------------------------------------------
 echo "==> D4 + D5: Harvesting and normalizing findings"
 
 "${PYTHON_BIN}" "${PIPELINE_SCRIPT}" \
@@ -349,21 +235,13 @@ echo "==> D4 + D5: Harvesting and normalizing findings"
   --project-key "${PROJECT_KEY}" \
   --output     "${OUTPUT_FILE}"
 
-# ===========================================================================
-# D5: Teardown.
-#
-# The trap registered at the top of the script will run docker stop + rm on
-# EXIT, so the explicit teardown commands below are redundant but match the
-# user's literal D5 example. Both forms guarantee the container is gone.
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# D5: explicit teardown.
+# ---------------------------------------------------------------------------
 echo "==> D5: Tearing down"
 docker stop "${CONTAINER_NAME}" >/dev/null 2>&1 || true
 docker rm   "${CONTAINER_NAME}" >/dev/null 2>&1 || true
 
-# Telemetry summary for the decision-log header (Checkpoint 2 deliverable).
-# The token VALUE is never echoed; only the token NAME (a non-secret
-# identifier of the form ``config-i-scan-<epoch>``) is recorded so the
-# decision log can correlate a run to its scanner-authentication artifact.
 echo ""
 echo "==> Telemetry"
 echo "    image_digest         = ${IMAGE_DIGEST}"
