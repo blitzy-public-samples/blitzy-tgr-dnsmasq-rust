@@ -18,7 +18,7 @@
     ],
     "component": {
       "type": "application",
-      "bom-ref": "path+file:///tmp/blitzy/blitzy-tgr-dnsmasq-rust/blitzy-d26589a1-12ea-4a87-8155-b16ae267b3f4_e58384#dnsmasq@2.92.0",
+      "bom-ref": "path+file:%SRCROOT%#dnsmasq@2.92.0",
       "author": "Dnsmasq Contributors",
       "name": "dnsmasq",
       "version": "2.92.0",
@@ -39,14 +39,14 @@
       "components": [
         {
           "type": "library",
-          "bom-ref": "path+file:///tmp/blitzy/blitzy-tgr-dnsmasq-rust/blitzy-d26589a1-12ea-4a87-8155-b16ae267b3f4_e58384#dnsmasq@2.92.0 bin-target-0",
+          "bom-ref": "path+file:%SRCROOT%#dnsmasq@2.92.0 bin-target-0",
           "name": "dnsmasq",
           "version": "2.92.0",
           "purl": "pkg:cargo/dnsmasq@2.92.0?download_url=file://.#src/lib.rs"
         },
         {
           "type": "application",
-          "bom-ref": "path+file:///tmp/blitzy/blitzy-tgr-dnsmasq-rust/blitzy-d26589a1-12ea-4a87-8155-b16ae267b3f4_e58384#dnsmasq@2.92.0 bin-target-1",
+          "bom-ref": "path+file:%SRCROOT%#dnsmasq@2.92.0 bin-target-1",
           "name": "dnsmasq",
           "version": "2.92.0",
           "purl": "pkg:cargo/dnsmasq@2.92.0?download_url=file://.#src/main.rs"
@@ -7234,7 +7234,7 @@
   ],
   "dependencies": [
     {
-      "ref": "path+file:///tmp/blitzy/blitzy-tgr-dnsmasq-rust/blitzy-d26589a1-12ea-4a87-8155-b16ae267b3f4_e58384#dnsmasq@2.92.0",
+      "ref": "path+file:%SRCROOT%#dnsmasq@2.92.0",
       "dependsOn": [
         "registry+https://github.com/rust-lang/crates.io-index#ahash@0.8.12",
         "registry+https://github.com/rust-lang/crates.io-index#anyhow@1.0.100",
