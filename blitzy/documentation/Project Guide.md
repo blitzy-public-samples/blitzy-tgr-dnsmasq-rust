@@ -1,1304 +1,648 @@
-# DNSMASQ C-TO-RUST REFACTORING - COMPREHENSIVE PROJECT GUIDE
+# Blitzy Project Guide — Config A: Bare Blitzy Baseline Security Audit
 
-## Executive Summary
-
-### Project Status: 90.0% Complete (950 hours completed / 1056 total hours)
-
-The dnsmasq C-to-Rust refactoring has achieved **production-ready status** with comprehensive validation confirming full functional equivalence and memory safety. The Rust implementation successfully transforms the entire C codebase into a memory-safe, modern implementation while maintaining 100% backward compatibility.
-
-**Based on detailed analysis: 950 hours of engineering work have been completed out of an estimated 1,056 total project hours, representing 90.0% project completion.**
-
-### Key Accomplishments
-
-**Code Implementation (Complete):**
-- ✅ 88 Rust source files created (~86,000 lines in src/)
-- ✅ 5 comprehensive integration test suites (~8,000 lines)
-- ✅ 3 performance benchmark suites (~2,000 lines)
-- ✅ 2 example implementations (~1,000 lines)
-- ✅ **Total: ~97,000 lines of production-quality Rust code**
-
-**Validation Results (All Passing):**
-- ✅ **592/592 tests passing (100% pass rate)**
-  - 485 unit tests passing
-  - 107 integration tests passing (config: 46, DHCP: 18, DNS: 20, DNSSEC: 23)
-- ✅ Zero compilation errors
-- ✅ Zero clippy warnings (strict mode)
-- ✅ All code properly formatted
-- ✅ 6.1MB optimized release binary functional
-
-**Functional Coverage (Complete):**
-- ✅ DNS forwarding and caching with DNSSEC validation
-- ✅ DHCPv4 and DHCPv6 server with lease management
-- ✅ IPv6 Router Advertisement (SLAAC)
-- ✅ TFTP server for network boot
-- ✅ Platform integration (D-Bus, systemd, signals)
-- ✅ ~350 configuration directives fully compatible
-- ✅ Command-line interface identical to C version
-
-**Quality Metrics (Excellent):**
-- ✅ Memory safety guaranteed by Rust compiler
-- ✅ Type-safe error handling throughout
-- ✅ Async I/O with tokio runtime
-- ✅ Cross-platform support (Linux, BSD, macOS)
-- ✅ 272 git commits documenting development
-- ✅ Clean working tree (all changes committed)
-
-### What's Remaining (10% - 106 hours)
-
-The remaining work focuses on final production hardening, deployment validation, and operational readiness:
-
-1. **Performance Validation** (12 hours) - Comprehensive benchmark validation against C version
-2. **Extended Integration Testing** (16 hours) - Real-world infrastructure testing
-3. **Production Deployment Guides** (8 hours) - Systemd, Docker, package deployment
-4. **Security Audit Review** (16 hours) - Third-party security assessment
-5. **Load Testing Validation** (12 hours) - High-traffic stress testing
-6. **Documentation Enhancement** (8 hours) - Operational guides and troubleshooting
-7. **Monitoring Setup Guidance** (8 hours) - Observability and metrics configuration
-
-With enterprise multipliers (1.15x compliance, 1.15x uncertainty buffer) applied: **106 hours remaining**
+> **Title context:** Config A — Bare Blitzy Baseline | `blitzy-tgr-dnsmasq-rust`  
+> **Descriptor:** `[2 directives | 0 files modified | 1 new file | baseline measurement]`  
+> **Brand palette:** Completed/AI = Dark Blue `#5B39F3` · Remaining = White `#FFFFFF` · Accents = Violet-Black `#B23AF2` · Soft Accent = Mint `#A8FDD9`
 
 ---
 
-## Visual Progress Overview
+## 1. Executive Summary
+
+### 1.1 Project Overview
+
+This project delivers the **Config A — Bare Blitzy Baseline** leg of a multi-config security-tool comparison study against the `blitzy-tgr-dnsmasq-rust` codebase (a memory-safe Rust port of the dnsmasq DNS forwarder, DHCP server, TFTP server, and Router-Advertisement daemon). The audit applies **native agent analysis only** — no `cargo-audit`, `cargo-deny`, `semgrep`, `CodeQL`, or external SAST/DAST scanners — across 88 Rust source files (~85,918 LOC), 5 integration tests, 2 examples, 3 benchmarks, and 8 manifests. The deliverable is a single artifact, `findings-config-a.json` at the repository root, that records every vulnerability the agent identifies in single-line minified UTF-8 JSON. The artifact serves as the bare-baseline measurement against which other configs (B, C, …) in the study are compared.
+
+### 1.2 Completion Status
 
 ```mermaid
-pie title Project Hours Breakdown (Total: 1056 hours)
-    "Completed Work" : 950
-    "Remaining Work" : 106
+%%{init: {"themeVariables": {"pie1": "#5B39F3", "pie2": "#FFFFFF", "pieStrokeColor": "#B23AF2", "pieOpacity": "1"}}}%%
+pie showData
+    title 95.6% Complete (65 / 68 hours)
+    "Completed Work" : 65
+    "Remaining Work" : 3
 ```
 
-The project has achieved 90.0% completion with all core functionality implemented, tested, and validated.
+| Metric | Value |
+|--------|-------|
+| **Total Hours** | 68 |
+| **Completed Hours (AI + Manual)** | 65 |
+| **Remaining Hours** | 3 |
+| **Percent Complete** | 95.6% |
+
+**Hours calculation (AAP-scoped methodology per PA1):**
+- Completed Hours = 65h (audit execution + classification + serialization + gate verification + gap-finding pass)
+- Remaining Hours = 3h (downstream security-engineer sanity-check + harness integration verification)
+- Total = 65 + 3 = 68h
+- Completion = 65 / 68 = **95.6%**
+
+### 1.3 Key Accomplishments
+
+- [x] **Exhaustive read-only audit** of all 88 Rust source files in `src/` plus tests, examples, benches, and manifest files — 100% file coverage of the in-scope analysis surface
+- [x] **13 native analytical techniques** applied: data-flow tracing, call-chain following, configuration inspection, dependency declaration review, FFI boundary analysis (5 `unsafe` modules), parser bounds audit, resource-cap review, privilege-escalation path analysis, env-var sanitization audit, RNG audit, cryptographic primitive review, atomic/concurrency audit, TOCTOU audit
+- [x] **46 security findings** documented, each grounded in a verifiable file:line location
+- [x] **26 distinct MITRE CWE classifications** applied at maximum specificity within agent confidence (e.g., CWE-122 over parent CWE-119, CWE-78/CWE-77 over parent CWE-74)
+- [x] **Four-band CVSS-aligned severity assignment** (0 critical / 10 high / 21 medium / 15 low)
+- [x] **Schema-rigorous single-line minified UTF-8 JSON output** at `findings-config-a.json` (12,468 bytes); maximum description length 198 / 200 chars
+- [x] **Deterministic ordering** — findings sorted by (`file`, `line`, `cwe`) for byte-reproducible output across runs
+- [x] **All 6 pass/fail gates verified** (file exists, `wc -l == 1`, valid JSON, UTF-8, schema correctness, sort order)
+- [x] **Independent verification + gap-finding pass** — 37 prior findings independently re-checked against source, plus 9 net-new findings added (e.g., unbounded `outstanding_queries` HashMap, never-referenced `MAX_PROCS` / `TCP_MAX_QUERIES` resource caps)
+- [x] **Read-only constraint honored** — zero `.rs`, `.toml`, `.lock`, `build.rs`, or configuration files modified; only `findings-config-a.json` added
+- [x] **Native-only constraint honored** — no `cargo-audit`, `cargo-deny`, `cargo-geiger`, `semgrep`, `CodeQL`, RustSec DB queries, or third-party SAST/DAST/SCA tools invoked
+
+### 1.4 Critical Unresolved Issues
+
+| Issue | Impact | Owner | ETA |
+|-------|--------|-------|-----|
+| Security engineer has not yet sanity-checked the 46 findings for CWE/severity accuracy | Possible mis-classification could distort the bare-baseline measurement; downstream remediation prioritization depends on accurate severity | Downstream security reviewer (human) | 2 hours |
+| Comparison harness has not yet ingested `findings-config-a.json` end-to-end | Until harness consumption is verified, the baseline contribution to the multi-config study is unconfirmed | Study operator (human) | 1 hour |
+
+### 1.5 Access Issues
+
+No access issues identified. The audit was performed against an on-disk checkout of `blitzy-tgr-dnsmasq-rust` at branch `blitzy-a9f227d7-ca83-4421-84d4-bad22a7c020c`. No third-party credentials, repository permissions, or service tokens were required because the audit is purely static and read-only, and the deliverable is a single local-file write.
+
+### 1.6 Recommended Next Steps
+
+1. **[High]** Have a human security engineer review the 10 high-severity findings — particularly `src/dns/forwarder.rs:554` (unbounded `outstanding_queries`), `src/network/firewall/nftables.rs:568` (`build_nft_command` injection), and `src/platform/privileges.rs:380` (container-detection bypass) — to confirm severity bands before triaging for remediation
+2. **[High]** Run the comparison harness against `findings-config-a.json` to confirm clean ingestion (`cat findings-config-a.json | wc -l` returns 1; parser loads 46 records)
+3. **[Medium]** Cross-reference Config A's 46 findings against subsequent configs (B, C, …) once those baselines are produced; differences in finding set will measure the marginal contribution of each tool layer
+4. **[Medium]** File internal tickets for the 10 high-severity findings so remediation work can be scheduled independently of this comparison study
+5. **[Low]** Capture the audit methodology (the 13 techniques and subsystem mapping) in a follow-up README so future Config-A reruns are reproducible
 
 ---
 
-## Detailed Validation Results
+## 2. Project Hours Breakdown
 
-### Compilation Status: ✅ 100% Successful
+### 2.1 Completed Work Detail
 
-**Build Commands Verified:**
-```bash
-✅ cargo check                           # 0 errors, 0 warnings
-✅ cargo build --release --all-features  # Success in 1m 45s
-✅ cargo clippy --all-features           # 0 warnings (strict mode)
-✅ cargo fmt -- --check                  # All code formatted
-✅ cargo bench --no-run                  # All benchmarks compile
-✅ cargo build --examples                # All examples compile
-```
+Each row maps to a specific AAP requirement or path-to-production activity; the **Hours column sums to 65**, matching Section 1.2 Completed Hours.
 
-**Binary Details:**
-- **Location:** `target/release/dnsmasq`
-- **Size:** 6.1MB (optimized, stripped)
-- **Features:** DHCP, DHCPv6, IPv6, DNSSEC, DBus, IDN, Lua, TFTP, conntrack, ipset, nftset
+| Component | Hours | Description |
+|-----------|-------|-------------|
+| Trust model & privilege drop audit | 2 | Walked `src/main.rs` 12-step initialization, `src/platform/privileges.rs` (Linux caps + OpenBSD pledge/unveil), `src/constants.rs` CHUSER/CHGRP/resource-cap inventory |
+| DNS forwarder & cache audit | 5 | Walked `src/dns/{forwarder,cache,upstream,edns0,auth,filter,matcher,mod}.rs` — surfaced 7 findings in `forwarder.rs` including incomplete IPv4-mapped IPv6 rebinding deny-list and unbounded outstanding-queries map |
+| DNS protocol parser audit | 4 | Walked `src/dns/protocol/{compression,constants,message,mod,name,record}.rs` — bounds, label length, pointer-loop, RDATA, integer-overflow checks |
+| DNSSEC subsystem audit | 4 | Walked `src/dns/dnssec/{blockdata,crypto,mod,trust_anchors,validator}.rs` — ring 0.17 RSA legacy 1024-bit algorithm, ECDSA dispatch panic, NSEC3 iteration cap |
+| DHCPv4 subsystem audit | 5 | Walked `src/dhcp/v4/{constants,message,mod,options,protocol,server}.rs` — surfaced unauthenticated DECLINE-driven pool exhaustion and unverified RELEASE |
+| DHCPv6 subsystem audit | 4 | Walked `src/dhcp/v6/{constants,message,mod,options,protocol,server}.rs` — DUID handling, IA_NA/IA_PD option parsing |
+| DHCP lease & script audit | 3 | Walked `src/dhcp/lease/{database,dns_integration,mod,script_hooks}.rs` — temp+fsync+rename, helper-script privilege inheritance, raw-env-var injection vectors |
+| TFTP server audit | 2 | Walked `src/tftp/{mod,server,transfer}.rs` — `check_tftp_fileperm` canonicalize→metadata→open TOCTOU window |
+| Router Advertisement audit | 2 | Walked `src/radv/{mod,protocol,slaac}.rs` — IPv6 SLAAC and RA emission paths |
+| Runtime audit | 2 | Walked `src/runtime/{event_loop,mod,reactor,tasks}.rs` — tokio task spawn rate, raw-FD adoption type checks |
+| Network primitives audit | 3 | Walked `src/network/{arp,conntrack,interfaces,ipset,mod,nftset,sockets}.rs` — socket creation/binding, ARP table primitives |
+| FFI surfaces audit (5 unsafe modules) | 6 | Walked `src/network/firewall/{nftables,pf,ipset,mod}.rs`, `src/network/platform/{bsd,linux,macos,common,mod}.rs`, `src/platform/ubus.rs` — libnftables FFI command injection, BSD PF ioctl alignment, BPF/getifaddrs |
+| Platform integration audit | 3 | Walked `src/platform/{dbus,inotify,mod,privileges,signals,systemd,ubus}.rs` — drop-privileges sequence, sd_notify partial writes, signal dispatch |
+| Util subsystem audit | 4 | Walked `src/util/{helpers,logging,metrics,mod,patterns,pcap,random}.rs` — `build_environment` raw-string env vars, log truncation mid-codepoint panic, SURF RNG seeding |
+| Configuration subsystem audit | 3 | Walked `src/config/{cli,mod,parser,reload,types,validator}.rs` — defaults (`dnssec_enabled=false`, `bogus_priv=false`, `stop_dns_rebind=false`, `tftp_secure=false`) |
+| Top-level files audit | 2 | Walked `src/{constants,error,lib,main,types}.rs` — resource caps, identity constants, public crate surface |
+| Dependency declaration review | 2 | Inspected `Cargo.toml`, `Cargo.lock` (90,264 bytes), `build.rs`, `rust-toolchain.toml` (1.91.0), `.cargo/config.toml` (RELRO/BIND_NOW); surfaced unmaintained webpki 0.22 and ring feature-gating concern |
+| Tests / examples / benches audit | 1 | Walked 5 test files, 2 examples, 3 benches for accidental insecure patterns |
+| CWE classification for 46 findings | 2 | Applied MITRE CWE decision tree per finding; preferred leaf entries (CWE-122 over CWE-119, CWE-23 over CWE-22 where evidence supported) |
+| Severity assignment for 46 findings | 2 | Applied CVSS qualitative bands (critical/high/medium/low) per CVSS rubric considering impact + exploitability + exposure + mitigations |
+| Aggregation, deterministic sort, JSON serialization, 6-gate verification | 2 | `serde_json` compact serializer, sort by `(file, line, cwe)`, write `findings-config-a.json`, verify `wc -l == 1`, `python3 -m json.tool` parse, `file --mime-encoding` UTF-8, schema scan, length scan |
+| Gap-finding pass (9 net-new findings) | 2 | Independent verification of 37 prior findings + identification of 9 additional vulnerabilities: never-referenced `MAX_PROCS`/`TCP_MAX_QUERIES`, raw `DNSMASQ_SUPPLIED_HOSTNAME`, UDP-to-port-0 ping_test, ECDSA `from_u8().unwrap()` panic, unbounded `outstanding_queries`, parse_domain_name pointer-arithmetic UB, BSD `RtMsghdr` unaligned cast, unbounded tokio-task DNS UDP spawn |
+| **TOTAL** | **65** | **= Completed Hours in Section 1.2** |
 
-### Test Execution: ✅ 100% Pass Rate (592/592)
+### 2.2 Remaining Work Detail
 
-**Unit Tests:**
-- **485 tests PASSED** ✅
-- **0 tests FAILED** ✅
-- **2 tests ignored** (intentional doc-test placeholders)
-- **Execution time:** 98.30 seconds
+The Hours column sums to **3**, matching Section 1.2 Remaining Hours and Section 7 "Remaining Work" pie slice.
 
-**Integration Tests:**
-| Test Suite | Tests Passed | Status |
-|-----------|--------------|--------|
-| Configuration Tests | 46/46 | ✅ PASS |
-| DHCP Integration | 18/18 | ✅ PASS |
-| DNS Integration | 20/20 | ✅ PASS |
-| DNSSEC Validation | 23/23 | ✅ PASS |
-| **Total Integration** | **107/107** | ✅ **PASS** |
+| Category | Hours | Priority |
+|----------|-------|----------|
+| Security engineer sanity-check of 46 findings (CWE/severity/line accuracy review) | 2 | High |
+| Comparison harness integration verification (`cat findings-config-a.json \| wc -l == 1`, end-to-end load test) | 1 | Medium |
+| **TOTAL** | **3** | — |
 
-**Test Coverage:**
-- Comprehensive coverage across all modules
-- DNS protocol parsing and caching
-- DHCPv4/v6 message handling and lease management
-- DNSSEC signature verification
-- Configuration file parsing (all 350+ options)
-- Platform-specific code paths
+### 2.3 Hours Summary
 
-### Runtime Validation: ✅ Fully Functional
+| Bucket | Hours | % of Total |
+|--------|-------|-----------|
+| Completed (Section 2.1) | 65 | 95.6% |
+| Remaining (Section 2.2) | 3 | 4.4% |
+| **Total Project Hours** | **68** | **100%** |
 
-**Binary Execution Tests:**
-```bash
-# Version information
-$ ./target/release/dnsmasq --version
-dnsmasq version 2.92  Copyright (c) 2000-2025 Simon Kelley
-Compile time options: DHCP DHCPv6 IPv6 DNSSEC DBus IDN Lua TFTP conntrack ipset nftset
-✅ SUCCESS
-
-# Configuration validation
-$ ./target/release/dnsmasq --test --conf-file=/etc/dnsmasq.conf
-dnsmasq: syntax check OK
-✅ SUCCESS
-
-# Help documentation
-$ ./target/release/dnsmasq --help
-[Complete CLI documentation displayed]
-✅ SUCCESS
-```
-
-**All functional components verified working:**
-- DNS query forwarding and response caching
-- DHCP lease allocation and renewal
-- Configuration file parsing and validation
-- Command-line argument processing
-- Signal handling (SIGHUP, SIGTERM, SIGUSR1, SIGUSR2)
-
-### Code Quality: ✅ Excellent
-
-**Quality Metrics:**
-- **Total Lines of Code:** 96,995 lines of Rust
-  - Source files: ~86,000 lines (88 files)
-  - Test files: ~8,000 lines (5 files)
-  - Benchmarks: ~2,000 lines (3 files)
-  - Examples: ~1,000 lines (2 files)
-- **Source Files:** 88 Rust modules in src/
-- **Commits:** 272 commits documenting complete development
-- **Warnings:** 0 clippy warnings in strict mode
-- **Formatting:** 100% compliant with rustfmt
-
-**Memory Safety:**
-- ✅ Zero unsafe blocks in core logic
-- ✅ Ownership system eliminates use-after-free
-- ✅ Borrow checker prevents data races
-- ✅ Compile-time bounds checking eliminates buffer overflows
-
-### Dependency Status: ✅ 100% Resolved
-
-**Total Dependencies:** 200+ crates from crates.io, all resolved without conflicts
-
-**Key Dependencies Verified:**
-| Dependency | Version | Purpose |
-|-----------|---------|---------|
-| tokio | 1.48.0 | Async runtime (replaces poll loop) |
-| hickory-proto | 0.25.2 | DNS protocol implementation |
-| hickory-server | 0.25.2 | DNS server components |
-| ring | 0.17.14 | DNSSEC cryptography |
-| nix | 0.29.0 | POSIX/UNIX system APIs |
-| rtnetlink | 0.15.0 | Linux netlink interface |
-| caps | 0.5.5 | Linux capability management |
-| clap | 4.5.52 | CLI argument parsing |
-| zbus | 5.12.0 | D-Bus integration |
-
-**Rust Toolchain:**
-- **Version:** 1.91.0 (stable)
-- **Edition:** 2021
-- **Cargo Version:** 1.91.0
+Cross-section integrity check: 65 (Section 2.1) + 3 (Section 2.2) = 68 = Total Hours in Section 1.2 ✓
 
 ---
 
-## Completed Work Breakdown (950 Hours)
+## 3. Test Results
 
-### Core System Implementation (40 hours)
-**Files:** `src/main.rs`, `src/lib.rs`, `src/types.rs`, `src/error.rs`, `src/constants.rs`
-- Binary entry point with tokio runtime setup
-- Library root with public API surface
-- Core type definitions with ownership semantics
-- Comprehensive error types using thiserror
-- Global constants and feature flags
+All test execution below originates from Blitzy's autonomous validation runs against the codebase. The audit itself is purely static (per AAP §0.9.2), so the audit deliverable does not produce new runtime tests; instead, the table below records the pre-existing test suite that Blitzy's autonomous validation ran against the codebase plus the audit's own 6 pass/fail gates against the produced JSON artifact.
 
-### Configuration Module (60 hours)
-**Files:** 6 files in `src/config/`
-- Complete dnsmasq.conf parser (350+ directives)
-- Command-line argument parsing with clap
-- Configuration validation logic
-- SIGHUP reload handling
-- Type-safe configuration structures
+| Test Category | Framework | Total Tests | Passed | Failed | Coverage % | Notes |
+|---------------|-----------|-------------|--------|--------|-----------|-------|
+| Unit tests (`cargo test --lib`) | Rust test harness | 456 | 455 | 0 | n/a (line cov not measured by audit) | 1 pre-existing `#[ignore]` |
+| Config integration (`tests/config_tests.rs`) | Rust test harness | 45 | 45 | 0 | n/a | Default-safety validation suite |
+| DHCP integration (`tests/dhcp_integration_tests.rs`) | Rust test harness | 18 | 18 | 0 | n/a | DHCPv4/v6 server flows |
+| DNS integration (`tests/dns_integration_tests.rs`) | Rust test harness | 19 | 19 | 0 | n/a | Forwarder query/response paths |
+| DNSSEC integration (`tests/dnssec_tests.rs`) | Rust test harness | 23 | 23 | 0 | n/a | Validator + crypto + trust-anchor flows |
+| Doc tests (`cargo test --doc`) | Rust doctest | 84 | 84 | 0 | n/a | 541 compile-only doctests also pass `--no-run` |
+| **Source-code subtotal** | | **645** | **644** | **0** | | 1 ignored |
+| Audit deliverable Gate 1 — file exists | `test -f` | 1 | 1 | 0 | n/a | `findings-config-a.json` present |
+| Audit deliverable Gate 2 — single line | `wc -l` | 1 | 1 | 0 | n/a | `wc -l` returns `1` |
+| Audit deliverable Gate 3 — valid JSON | `python3 -m json.tool` | 1 | 1 | 0 | n/a | Parser exits 0 |
+| Audit deliverable Gate 4 — UTF-8 encoding | `file --mime-encoding` | 1 | 1 | 0 | n/a | Reports `utf-8` |
+| Audit deliverable Gate 5 — schema correctness | Python schema scanner | 46 | 46 | 0 | n/a | 5 required keys / types / enum / regex / length; max desc 198/200 |
+| Audit deliverable Gate 6 — deterministic sort | Python tuple-sort check | 1 | 1 | 0 | n/a | Sorted by `(file, line, cwe)` |
+| **Audit gate subtotal** | | **51** | **51** | **0** | | |
+| **GRAND TOTAL** | | **696** | **695** | **0** | | 1 pre-existing ignored |
 
-### DNS Subsystem (160 hours)
-**Files:** 19 files in `src/dns/`, `src/dns/protocol/`, `src/dns/dnssec/`
+**Pass rate: 100.0% of executed tests (695 / 695); 0 failures.**
 
-**Protocol Implementation (50 hours):**
-- DNS message parsing with nom combinators
-- Domain name handling and compression
-- Resource record types and encoding
-- Wire format serialization
-
-**DNSSEC Validation (40 hours):**
-- Signature verification with ring cryptography
-- Trust anchor management
-- Validation chain building
-- Crypto operations (RSA, ECDSA, EdDSA)
-
-**Core DNS Logic (70 hours):**
-- Query forwarding with upstream selection
-- DNS cache with LRU eviction
-- Authoritative zone answering
-- EDNS0 option handling
-- RR filtering and domain matching
-
-### DHCP Subsystem (140 hours)
-**Files:** 18 files in `src/dhcp/`, `src/dhcp/v4/`, `src/dhcp/v6/`, `src/dhcp/lease/`
-
-**DHCPv4 Implementation (50 hours):**
-- DISCOVER/OFFER/REQUEST/ACK state machine
-- Message parsing and serialization
-- Option encoding/decoding
-- Protocol compliance (RFC 2131)
-
-**DHCPv6 Implementation (50 hours):**
-- SOLICIT/ADVERTISE/REQUEST/REPLY flows
-- IA_NA and IA_PD handling
-- Option serialization
-- Protocol compliance (RFC 3315)
-
-**Lease Management (30 hours):**
-- Lease database with persistence
-- DNS integration for hostname registration
-- Helper script execution
-- Async file I/O with tokio
-
-**Shared Utilities (10 hours):**
-- Common DHCPv4/v6 functions
-- MAC address handling
-- Transaction ID generation
-
-### Network Layer (130 hours)
-**Files:** 16 files in `src/network/`, `src/network/platform/`, `src/network/firewall/`
-
-**Core Networking (50 hours):**
-- Socket creation and management with tokio
-- Interface enumeration
-- Cross-platform abstractions
-- UDP/TCP socket handling
-
-**Platform-Specific Code (50 hours):**
-- Linux netlink integration (rtnetlink)
-- BSD BPF support (nix crate)
-- macOS-specific networking
-- Common platform traits
-
-**Firewall Integration (30 hours):**
-- Linux ipset support
-- nftables integration (nftnl)
-- BSD PF tables
-- Connection tracking
-
-### Router Advertisement (30 hours)
-**Files:** 3 files in `src/radv/`
-- ICMPv6 Router Advertisement generation
-- SLAAC duplicate address detection
-- RA protocol implementation (RFC 4861)
-
-### TFTP Server (25 hours)
-**Files:** 3 files in `src/tftp/`
-- TFTP protocol implementation
-- File transfer state machine
-- Async file I/O for reads
-- PXE network boot support
-
-### Platform Integration (60 hours)
-**Files:** 7 files in `src/platform/`
-- POSIX signal handling (tokio::signal)
-- Privilege dropping with capabilities (Linux)
-- D-Bus interface implementation (zbus)
-- OpenWrt ubus integration
-- File monitoring (notify crate)
-- systemd socket activation
-
-### Runtime & Async (40 hours)
-**Files:** 4 files in `src/runtime/`
-- Main event loop with tokio::select!
-- I/O multiplexing (replaces poll)
-- Background task management
-- Async executor configuration
-
-### Utilities (50 hours)
-**Files:** 7 files in `src/util/`
-- Structured logging with tracing
-- Metrics collection and reporting
-- Helper script execution
-- Pattern matching utilities
-- Random number generation (SURF)
-- Packet capture (pcap dump)
-
-### Testing Infrastructure (85 hours)
-**Files:** 5 integration test files (~8,000 lines)
-
-**Test Development:**
-- Configuration parsing tests (46 tests) - 15 hours
-- DHCP integration tests (18 tests) - 20 hours
-- DNS integration tests (20 tests) - 20 hours
-- DNSSEC validation tests (23 tests) - 20 hours
-- Test infrastructure and fixtures - 10 hours
-
-**Test Coverage:**
-- All major functionality exercised
-- Edge cases and error conditions
-- Configuration compatibility validation
-- Protocol compliance verification
-
-### Benchmarks (20 hours)
-**Files:** 3 benchmark files
-- DNS query performance benchmarks
-- Cache operation benchmarks (insert, lookup, eviction)
-- DHCP lease allocation benchmarks
-
-### Examples (10 hours)
-**Files:** 2 example programs
-- Simple DNS forwarder example
-- Minimal DHCP server example
-
-### Build Configuration & Tooling (20 hours)
-- Cargo.toml with 200+ dependencies
-- rust-toolchain.toml specification
-- rustfmt.toml and clippy.toml configuration
-- Feature flags matching C HAVE_* options
-- CI/CD configuration considerations
-
-### Validation, Debugging & Fixes (80 hours)
-- 272 git commits documenting iterative development
-- Compilation error resolution
-- Test failure debugging and fixes
-- Performance optimization
-- Code review and cleanup
-- Documentation of unsafe code
-- Integration testing and validation
+> Note: `cargo clippy --offline --no-deps` emits 9 stylistic warnings (unused `self`, doc backtick formatting) and 0 errors. These predate the audit and are out of scope for this audit's read-only deliverable.
 
 ---
 
-## Remaining Tasks (106 Hours)
+## 4. Runtime Validation & UI Verification
 
-### Task Breakdown with Detailed Action Steps
+### 4.1 Runtime Validation
 
-| Priority | Task | Hours | Severity | Action Steps |
-|----------|------|-------|----------|--------------|
-| **HIGH** | **Performance Benchmark Validation** | 12 | Medium | 1. Run criterion benchmarks against C dnsmasq<br>2. Compare DNS query latency (target: ≤ C version)<br>3. Compare DHCP allocation time<br>4. Measure memory footprint under load<br>5. Document performance characteristics<br>6. Identify any performance gaps |
-| **HIGH** | **Extended Integration Testing** | 16 | Medium | 1. Deploy in test environment with real DNS/DHCP clients<br>2. Test with production dnsmasq.conf files<br>3. Validate D-Bus interface with real consumers<br>4. Test systemd socket activation<br>5. Verify helper script execution in real scenarios<br>6. Test configuration reload (SIGHUP) under load<br>7. Document any integration issues found |
-| **HIGH** | **Security Audit Review** | 16 | High | 1. Run cargo-audit for dependency vulnerabilities<br>2. Review all unsafe code blocks (should be minimal)<br>3. Conduct DNSSEC validation security review<br>4. Review privilege dropping implementation<br>5. Test network input validation (fuzzing)<br>6. Document security considerations<br>7. Address any findings |
-| **MEDIUM** | **Load Testing Validation** | 12 | Medium | 1. Set up load testing environment<br>2. Generate high DNS query volume (10K+ qps)<br>3. Generate high DHCP request volume<br>4. Monitor memory usage and leak detection<br>5. Test cache performance under pressure<br>6. Verify graceful degradation<br>7. Document load test results |
-| **MEDIUM** | **Production Deployment Guides** | 8 | Low | 1. Document systemd service deployment<br>2. Create Docker deployment guide<br>3. Document configuration migration steps<br>4. Write troubleshooting guide<br>5. Create monitoring setup guide<br>6. Document rollback procedures |
-| **MEDIUM** | **Documentation Enhancement** | 8 | Low | 1. Generate cargo doc HTML documentation<br>2. Write operational runbook<br>3. Document performance tuning options<br>4. Create FAQ for common issues<br>5. Write security best practices guide<br>6. Document platform-specific considerations |
-| **LOW** | **Monitoring Setup Guidance** | 8 | Low | 1. Document metrics endpoint configuration<br>2. Create Prometheus exporter guide (if applicable)<br>3. Write logging configuration guide<br>4. Document tracing integration<br>5. Create sample dashboards<br>6. Write alerting recommendations |
+| Surface | Status | Notes |
+|---------|--------|-------|
+| Audit deliverable artifact (`findings-config-a.json`) | ✅ Operational | File present at repo root, 12,468 bytes, parses as valid JSON, single-line UTF-8, all 6 pass/fail gates green |
+| Comparison harness ingestion contract (`cat findings-config-a.json \| wc -l == 1`) | ✅ Operational | Verified locally; `wc -l` returns exactly `1` |
+| Source codebase `cargo check` (offline, default features) | ✅ Operational | 0 errors, 0 warnings — unchanged by audit |
+| Source codebase `cargo test` (offline, default features) | ✅ Operational | 560 unit/integration + 84 doc tests pass, 0 failures — unchanged by audit |
+| Source codebase `cargo clippy` (offline, no-deps) | ⚠ Partial | 9 stylistic warnings, 0 errors — predate the audit and out of scope |
+| End-to-end dnsmasq daemon runtime (DNS/DHCP/TFTP/RA service execution) | ⚠ Partial | Audit is purely static per AAP §0.9.1; no runtime exercise of the daemon was performed (intentional scope boundary) |
 
-**Subtotal:** 80 hours  
-**Enterprise Multipliers Applied:**
-- Compliance/Security Review: 1.15x
-- Uncertainty Buffer: 1.15x
-- **Total Remaining:** 80 × 1.15 × 1.15 = **106 hours**
+### 4.2 UI Verification
 
----
+**Not applicable.** The `blitzy-tgr-dnsmasq-rust` codebase is a CLI/daemon (DNS forwarder, DHCP server, TFTP server, Router Advertisement daemon) with no UI surface. AAP §0.6.3 and §0.10.5 confirm "no UI surface". No design-system alignment, screenshot evidence, accessibility audit, or visual-regression check is applicable to this work.
 
-## Risk Assessment
+### 4.3 API Integration Verification
 
-### Technical Risks
-
-| Risk | Severity | Impact | Likelihood | Mitigation |
-|------|----------|--------|------------|------------|
-| Performance regression vs C version | Medium | High | Low | Run comprehensive benchmarks; optimize hot paths if needed; tokio runtime provides excellent performance |
-| Undiscovered edge cases in protocol handling | Medium | Medium | Medium | Extensive integration testing; run against C test suite; real-world deployment validation |
-| Platform-specific bugs on BSD/macOS | Low | Medium | Low | Platform-specific code uses well-tested nix crate; compile-test on all platforms |
-
-### Security Risks
-
-| Risk | Severity | Impact | Likelihood | Mitigation |
-|------|----------|--------|------------|------------|
-| Dependency vulnerabilities | Medium | High | Low | Regular cargo-audit runs; automated dependency updates; all deps from crates.io |
-| Privilege escalation in privilege drop code | High | Critical | Very Low | Uses well-audited caps crate; follows security best practices; limited unsafe code |
-| Network input validation gaps | Medium | High | Low | All parsing uses safe Rust; nom combinators for protocol parsing; bounds checking enforced |
-
-### Operational Risks
-
-| Risk | Severity | Impact | Likelihood | Mitigation |
-|------|----------|--------|------------|------------|
-| Insufficient monitoring in production | Medium | Medium | Medium | Implement comprehensive tracing; provide metrics endpoints; document monitoring setup |
-| Configuration incompatibilities | Low | High | Very Low | 100% backward compatible parser; all 350+ options tested; extensive config tests passing |
-| Upgrade path complexity | Low | Medium | Low | Drop-in binary replacement; no config changes needed; systemd service compatible |
-
-### Integration Risks
-
-| Risk | Severity | Impact | Likelihood | Mitigation |
-|------|----------|--------|------------|------------|
-| D-Bus interface compatibility issues | Low | Medium | Low | Uses standard zbus crate; interface name unchanged; tested with dbus-test.py |
-| systemd socket activation failures | Low | Medium | Very Low | Standard systemd integration; compatible service units; signal handling validated |
-| Helper script execution differences | Low | Medium | Low | Same environment variables; same invocation timing; same exit code handling |
-
-**Overall Risk Level:** **LOW**
-
-The project has achieved production-ready status with comprehensive testing and validation. Remaining risks are primarily operational and can be addressed through standard production hardening practices.
+**Not applicable to the audit deliverable.** The audit produces a JSON file consumed by a comparison harness via plain file read; no HTTP/RPC/IPC integration is involved. The dnsmasq daemon itself exposes DNS over UDP/TCP, DHCP, TFTP, D-Bus (feature-gated), ubus (feature-gated) — these surfaces were *analyzed* statically and are accounted for in Section 2.1, but were not exercised at runtime.
 
 ---
 
-## Complete Development Guide
+## 5. Compliance & Quality Review
 
-### System Prerequisites
+The audit's deliverable is itself the compliance artifact for the comparison study. The table below maps AAP-stated quality benchmarks to the deliverable's status.
 
-**Required Software:**
-- **Rust Toolchain:** 1.91.0 or later
-  - Install: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-  - Verify: `rustc --version` (should show 1.91.0+)
-- **Cargo:** 1.91.0 or later (included with Rust)
-- **Git:** For cloning repository
+| AAP Quality Benchmark | Status | Evidence |
+|-----------------------|--------|----------|
+| **R1 — Native-only analysis** (no external scanners) | ✅ Pass | Tool log shows zero invocations of `cargo-audit`, `cargo-deny`, `cargo-geiger`, `semgrep`, `CodeQL`, RustSec CLI |
+| **R2 — Exhaustive enumeration** (no under-reporting) | ✅ Pass | 46 findings emitted spanning 24 files and 26 distinct CWEs; gap-finding pass surfaced 9 additional findings beyond initial 37 |
+| **R3 — CWE classification mandatory** | ✅ Pass | Every finding carries a `cwe` field; verified by schema scanner |
+| **R4 — CWE specificity** (most specific within confidence) | ✅ Pass | Mix of leaf entries (CWE-77 OS Command Injection, CWE-122 Heap Buffer Overflow surrogates, CWE-345 Insufficient Verification of Data Authenticity, CWE-758 Reliance on Undefined Behavior) and parent categories where ambiguity required |
+| **R5 — Schema rigor** (5 fields, correct types) | ✅ Pass | Schema scanner: all 46 findings have exactly `{file, line, severity, cwe, description}` |
+| **R6 — Single-line minified output** | ✅ Pass | `wc -l < findings-config-a.json` = `1` |
+| **R7 — Valid JSON** | ✅ Pass | `python3 -m json.tool < findings-config-a.json` exits 0 |
+| **R8 — UTF-8 encoding** | ✅ Pass | `file --mime-encoding` reports `utf-8` |
+| **R9 — Empty-case literal `[]`** | ✅ N/A | 46 findings emitted; empty-case path not exercised |
+| **R10 — Read-only audit** (no source edits) | ✅ Pass | `git diff --name-status 1ae3e78..HEAD` shows only `A findings-config-a.json`; zero `.rs`/`.toml`/`build.rs` modifications |
+| **R11 — Baseline integrity** | ✅ Pass | Findings reflect agent's own analysis with no external-tool augmentation; ordering deterministic for byte-reproducible comparison |
+| **Description length ≤ 200 chars** | ✅ Pass | Max length 198 / 200 across all 46 findings |
+| **Severity enum membership** | ✅ Pass | All severities ∈ {critical, high, medium, low}; distribution 0/10/21/15 |
+| **CWE format regex `^CWE-\d+$`** | ✅ Pass | All 46 `cwe` values match |
+| **File-path discipline** (relative, no leading `./` or `/`) | ✅ Pass | All 46 `file` values are repo-root-relative |
+| **Line integer discipline** (positive integer) | ✅ Pass | All 46 `line` values are positive integers; each maps to a valid line in its file |
+| **Deterministic ordering** (sort by file, line, cwe) | ✅ Pass | Tuple-sort verification passes |
 
-**Operating System:**
-- Primary: Linux (Ubuntu 20.04+, Debian 11+, RHEL 8+, etc.)
-- Supported: FreeBSD, OpenBSD, NetBSD, macOS 11+
+**Net assessment: all quality benchmarks pass.** The single residual concern is human security-engineer sanity-check of finding accuracy, captured as remaining work in Section 2.2.
 
-**Hardware Requirements:**
-- CPU: x86_64 or aarch64
-- RAM: 2GB minimum for build, 512MB for runtime
-- Disk: 2GB for build artifacts, <10MB for binary
+---
 
-**Build Dependencies (Linux):**
-```bash
-# Ubuntu/Debian
-sudo apt-get update
-sudo apt-get install -y build-essential pkg-config libdbus-1-dev
+## 6. Risk Assessment
 
-# RHEL/CentOS/Fedora
-sudo dnf install -y gcc make pkgconfig dbus-devel
+| Risk | Category | Severity | Probability | Mitigation | Status |
+|------|----------|----------|-------------|-----------|--------|
+| Finding mis-classification (wrong CWE or severity band) distorts the bare-baseline measurement | Technical (audit-quality) | Medium | Medium | Human security-engineer sanity-check of 46 findings before harness consumption (planned, ~2h) | Open — captured in Section 2.2 |
+| Finding under-reporting (missed vulnerabilities) undervalues the baseline | Technical (audit-completeness) | Medium | Low | Independent gap-finding pass already executed (added 9 net-new findings); 13-technique sweep covered every in-scope file | Mitigated |
+| Finding over-reporting (false positives) inflates the baseline | Technical (audit-precision) | Low | Medium | Every finding cited to a verifiable file:line; spot-check verified citations reference real source constructs | Mitigated |
+| Downstream consumers act on raw audit findings as production tickets without triage | Operational | Medium | Medium | Project guide explicitly states baseline-measurement intent; high-severity findings flagged for review | Open — owner: study operator |
+| Comparison harness fails to ingest the artifact due to format/encoding mismatch | Integration | Low | Low | All 6 pass/fail gates verified locally; `wc -l == 1`, valid JSON parse, UTF-8 confirmed | Mitigated, pending harness end-to-end verification (~1h in Section 2.2) |
+| The 10 high-severity findings (unbounded query map, FFI command injection, container-detection bypass, etc.) reflect real exploit paths and require code remediation | Security (in-codebase, not in-audit) | High | Confirmed-present (these are the audit's findings) | Remediation is **out of scope** for THIS audit (per AAP §0.4.2); fix work is a separate downstream workstream | Out of scope — documented for triage |
+| Cryptographic configuration: ring 0.17 RSA_PKCS1_1024_8192_SHA*_FOR_LEGACY_USE_ONLY permits 1024-bit RSA in DNSSEC validation | Security (in-codebase) | Medium | Confirmed-present | Documented as findings at `src/dns/dnssec/crypto.rs:682-683`; remediation deferred | Out of scope — documented for triage |
+| Default-disabled security features (`dnssec_enabled=false`, `bogus_priv=false`, `stop_dns_rebind=false`, `tftp_secure=false`) make insecure-by-default deployment likely | Security (in-codebase) | Medium | High | Documented as 4 findings at `src/config/types.rs:652,656,657,1340` | Out of scope — documented for triage |
+| Resource caps `MAX_PROCS=20`, `TCP_MAX_QUERIES=100`, `FTABSIZ=150` are defined but never referenced from enforcement sites | Operational (in-codebase) | Medium | Confirmed-present | Documented as findings at `src/constants.rs:190,202` and `src/dns/forwarder.rs:554` | Out of scope — documented for triage |
+| FFI surface concentration in 5 `unsafe` modules introduces memory-safety risk despite Rust elsewhere | Security (in-codebase) | Medium | Codebase-inherent | Audit covered all 5 modules; findings emitted at `src/network/firewall/nftables.rs:568`, `src/network/firewall/pf.rs:800`, `src/network/platform/bsd.rs:1046` | Out of scope — documented for triage |
+| External-tool prohibition limits the audit's depth of dependency analysis (no advisory DB queries against `Cargo.lock`) | Process (audit-method) | Low | Confirmed-present | AAP R1 explicitly requires this constraint as the Config A baseline measurement; subsequent configs (B, C, …) will measure marginal value of tooling | Accepted — by design |
+| The audit artifact uses 0 critical findings, which may surprise harness validators expecting any-distribution | Audit-quality | Low | Low | 0 critical is the agent's honest assessment based on impact/exploitability reasoning; remote code execution paths were not identified in this Rust codebase | Accepted — honest baseline |
 
-# Alpine Linux
-sudo apk add build-base pkgconfig dbus-dev
+---
+
+## 7. Visual Project Status
+
+```mermaid
+%%{init: {"themeVariables": {"pie1": "#5B39F3", "pie2": "#FFFFFF", "pieStrokeColor": "#B23AF2"}}}%%
+pie showData
+    title Project Hours Breakdown
+    "Completed Work" : 65
+    "Remaining Work" : 3
 ```
 
-### Environment Setup
+### 7.1 Severity Distribution of Findings
 
-**1. Clone Repository:**
-```bash
-git clone https://github.com/dnsmasq/dnsmasq.git
-cd dnsmasq
-git checkout blitzy-40f6e639-d48b-4db8-9f86-f23abdd54866
+```mermaid
+%%{init: {"themeVariables": {"pie1": "#B23AF2", "pie2": "#5B39F3", "pie3": "#A8FDD9", "pie4": "#FFFFFF", "pieStrokeColor": "#5B39F3"}}}%%
+pie showData
+    title Findings by Severity (Total: 46)
+    "Critical" : 0
+    "High" : 10
+    "Medium" : 21
+    "Low" : 15
 ```
 
-**2. Verify Rust Toolchain:**
+### 7.2 Remaining Hours by Category (Section 2.2)
+
+```mermaid
+%%{init: {"themeVariables": {"pie1": "#5B39F3", "pie2": "#B23AF2"}}}%%
+pie showData
+    title Remaining Hours by Category (Total: 3)
+    "Security engineer sanity-check (High)" : 2
+    "Harness integration verification (Medium)" : 1
+```
+
+### 7.3 Findings by Subsystem
+
+```mermaid
+%%{init: {"themeVariables": {"pie1": "#5B39F3", "pie2": "#B23AF2", "pie3": "#A8FDD9", "pie4": "#FFFFFF", "pie5": "#5B39F3", "pieStrokeColor": "#B23AF2"}}}%%
+pie showData
+    title Findings by Subsystem (Total: 46)
+    "src/dns/* (DNS + DNSSEC + protocol)" : 14
+    "src/dhcp/* (v4 + v6 + lease)" : 8
+    "src/* (top-level, incl. constants + main)" : 5
+    "src/config/*" : 4
+    "src/platform/*" : 4
+    "src/network/* (incl. FFI)" : 3
+    "src/util/*" : 3
+    "src/runtime/*" : 2
+    "Cargo.toml" : 2
+    "src/tftp/*" : 1
+```
+
+**Cross-section integrity:** Section 7 pie "Remaining Work" = **3**, identical to Section 1.2 Remaining Hours = **3**, and identical to Section 2.2 total = **3** ✓
+
+---
+
+## 8. Summary & Recommendations
+
+### 8.1 Achievements
+
+The Config A — Bare Blitzy Baseline audit is **95.6% complete (65 of 68 hours)**. The agent has produced the AAP-specified deliverable, `findings-config-a.json`, containing 46 schema-conformant security findings across 26 distinct MITRE CWE classifications, sorted deterministically and passing all six AAP pass/fail gates (file existence, single-line, valid JSON, UTF-8 encoding, schema correctness, sort order). The audit covered 100% of the in-scope analysis surface (88 Rust source files, 8 manifest files, 5 tests, 2 examples, 3 benchmarks), used only native agent analysis per AAP Rule R1, and modified zero source/manifest files per AAP Rule R10.
+
+### 8.2 Remaining Gaps to Production
+
+3 hours of downstream work remain to fully integrate the artifact into the comparison study:
+
+1. Security engineer sanity-check of the 46 findings for CWE/severity/line accuracy (~2 hours, High priority)
+2. End-to-end comparison harness ingestion verification (~1 hour, Medium priority)
+
+Note that **remediation of the 10 high-severity in-codebase vulnerabilities** the audit identified (unbounded outstanding-queries map, helper-script command injection in nftables FFI, spoofable container-detection markers, DHCPv4 pool exhaustion via crafted DECLINE, etc.) is **explicitly out of scope for this audit** per AAP §0.4.2 — those fixes are a separate downstream workstream and do not factor into this project's completion percentage.
+
+### 8.3 Critical Path to Production
+
+```mermaid
+graph LR
+    A[Audit Deliverable Complete<br/>findings-config-a.json] --> B[Security Engineer Review<br/>~2h]
+    B --> C[Harness Ingestion Test<br/>~1h]
+    C --> D[Baseline Locked for Comparison Study]
+    style A fill:#5B39F3,stroke:#B23AF2,color:#FFFFFF
+    style B fill:#FFFFFF,stroke:#5B39F3,color:#000000
+    style C fill:#FFFFFF,stroke:#5B39F3,color:#000000
+    style D fill:#A8FDD9,stroke:#B23AF2,color:#000000
+```
+
+### 8.4 Success Metrics
+
+| Metric | Target | Actual | Status |
+|--------|--------|--------|--------|
+| `findings-config-a.json` exists at repo root | Yes | Yes | ✅ |
+| `wc -l < findings-config-a.json` | 1 | 1 | ✅ |
+| `python3 -m json.tool` parses | exits 0 | exits 0 | ✅ |
+| File encoding | UTF-8 | UTF-8 | ✅ |
+| All findings have 5 required fields | 100% | 100% (46/46) | ✅ |
+| Max description length | ≤200 chars | 198 chars | ✅ |
+| Severity enum membership | 100% | 100% (46/46) | ✅ |
+| CWE regex match | 100% | 100% (46/46) | ✅ |
+| Deterministic sort | Yes | Yes (file, line, cwe) | ✅ |
+| Read-only constraint honored | 0 source edits | 0 source edits | ✅ |
+| Native-only constraint honored | 0 external tools | 0 external tools | ✅ |
+| Coverage of in-scope files | 100% | 100% (88/88 src/*.rs + tests + manifests) | ✅ |
+
+### 8.5 Production Readiness Assessment
+
+The `findings-config-a.json` artifact is **production-ready for the comparison-study harness**. All AAP-specified pass/fail gates green; schema compliance verified; encoding correct; deterministic ordering preserved. The remaining 3 hours of work are downstream consumption activities (security review and harness verification), not deliverable production. The codebase build & test posture is unchanged by the audit: `cargo check` clean, `cargo test` 560 / 0 / 1-ignored, `cargo clippy` 9 stylistic warnings.
+
+**Project is 95.6% complete; recommended to proceed with downstream consumption.**
+
+---
+
+## 9. Development Guide
+
+The "application" this guide describes is the dnsmasq Rust daemon itself (so that reviewers can inspect the code that was audited and re-run the codebase's own tests) plus the verification commands for the audit deliverable.
+
+### 9.1 System Prerequisites
+
+| Component | Version | Notes |
+|-----------|---------|-------|
+| Operating system | Linux x86_64 or aarch64 (Ubuntu 25.10 tested) | OpenBSD/macOS targets exist in code but are conditionally compiled |
+| Rust toolchain | 1.91.0 (pinned in `rust-toolchain.toml`) | `rustup` will auto-install the pinned version on first `cargo` invocation |
+| Cargo | 1.91.0 (ships with Rust toolchain) | Required for `cargo check`, `cargo test`, `cargo build` |
+| `git` | 2.x | For repository operations and verifying audit-related commits |
+| `python3` | 3.x | For verifying audit artifact (`json.tool` module) |
+| `file` (1)| any | For verifying UTF-8 encoding |
+| Disk space | ~6 MB source + ~250 MB build artifacts (debug profile) | `target/` directory size on disk; production binary is smaller |
+| Memory | ≥ 2 GB RAM for `cargo build` | Test compilation can spike higher; `criterion` benchmarks need additional memory |
+
+### 9.2 Environment Setup
+
 ```bash
+# Clone the repository (skip if already present at the working-directory path)
+git clone <repository-url> dnsmasq-rust
+cd dnsmasq-rust
+
+# Add Rust toolchain to PATH (if not already present)
+export PATH="$HOME/.cargo/bin:$PATH"
+
+# Verify toolchain matches the pinned version
 rustc --version
-# Expected: rustc 1.91.0 or later
-
+# Expected: rustc 1.91.0 (...)
 cargo --version
-# Expected: cargo 1.91.0 or later
+# Expected: cargo 1.91.0 (...)
 
-rustup show
-# Expected: active toolchain 1.91.0+
+# Confirm working directory and current branch
+pwd
+git branch --show-current
+# Expected branch: blitzy-a9f227d7-ca83-4421-84d4-bad22a7c020c
 ```
 
-**3. Set Environment Variables (Optional):**
+No environment variables, API keys, secrets, or external services are required to inspect the codebase or verify the audit deliverable. The dnsmasq daemon itself would, in production, require root or specific Linux capabilities (`CAP_NET_ADMIN`, `CAP_NET_RAW`, `CAP_NET_BIND_SERVICE`) — but those are runtime concerns of the daemon, not of this audit's deliverable.
+
+### 9.3 Dependency Installation
+
 ```bash
-# Enable all features for build
-export RUST_FEATURES="--all-features"
-
-# Set release profile for optimized build
-export CARGO_PROFILE="--release"
-
-# Enable backtraces for debugging (if needed)
-export RUST_BACKTRACE=1
+# Verify all dependencies resolve from Cargo.lock (offline / no network required)
+cargo check --offline
+# Expected: "Finished `dev` profile [unoptimized + debuginfo] target(s) in <time>"
+# Expected: 0 errors, 0 warnings
 ```
 
-### Dependency Installation
+If `cargo check --offline` fails because the local cargo registry cache is empty, allow Cargo network access on first build to populate `~/.cargo/registry`:
 
-**1. Download and Verify Dependencies:**
 ```bash
-cd /path/to/dnsmasq-rust
-
-# Download all dependencies (first time)
-cargo fetch
-
-# Verify dependency resolution
-cargo tree --all-features | head -20
+# Online build (populates registry on first run)
+cargo check
 ```
 
-**Expected output:**
-```
-dnsmasq v2.92.0 (/path/to/dnsmasq-rust)
-├── ahash v0.8.x
-├── anyhow v1.0.x
-├── async-recursion v1.1.x
-├── async-trait v0.1.x
-├── bitflags v2.6.x
-... (200+ dependencies)
-```
+### 9.4 Verification — Codebase Build & Test
 
-**2. Verify All Dependencies Resolved:**
 ```bash
-# Check for dependency conflicts
-cargo check --all-features
+# Static compile check (no binary produced)
+cargo check --offline
+# Expected: 0 errors, 0 warnings
 
-# Expected: "Finished dev [unoptimized + debuginfo] target(s)"
+# Full debug build (binary at target/debug/dnsmasq)
+cargo build --offline
+# Expected: 0 errors, 0 warnings
+
+# Full test suite (unit + integration + doc tests)
+cargo test --offline
+# Expected results (canonical run from this session):
+#   unit tests:           455 passed / 0 failed / 1 ignored
+#   config_tests:          45 passed / 0 failed
+#   dhcp_integration:      18 passed / 0 failed
+#   dns_integration:       19 passed / 0 failed
+#   dnssec_tests:          23 passed / 0 failed
+#   doc tests:             84 passed / 0 failed / 541 ignored (compile-only)
+
+# Lint (clippy) — informational only
+cargo clippy --offline --no-deps
+# Expected: ~9 stylistic warnings, 0 errors (predate the audit)
 ```
 
-### Build Instructions
+### 9.5 Verification — Audit Deliverable (Pass/Fail Gates)
 
-**1. Debug Build (For Development):**
+Run these six commands from the repository root. Each should produce the indicated result:
+
 ```bash
-# Build with debug symbols
-cargo build --all-features
+# Gate 1 — File exists
+test -f findings-config-a.json && echo "PASS" || echo "FAIL"
+# Expected: PASS
 
-# Verify build success
-ls -lh target/debug/dnsmasq
-# Expected: Executable binary ~15-20MB
+# Gate 2 — Single line (wc -l must return 1)
+wc -l < findings-config-a.json
+# Expected: 1
 
-# Run tests to verify
-cargo test --all-features
-# Expected: All 592 tests passing
+# Gate 3 — Valid JSON
+python3 -m json.tool < findings-config-a.json > /dev/null && echo "PASS" || echo "FAIL"
+# Expected: PASS
+
+# Gate 4 — UTF-8 encoding
+file --mime-encoding findings-config-a.json
+# Expected: findings-config-a.json: utf-8
+
+# Gate 5 — Schema correctness (5 required fields, types, enum, regex, length)
+python3 -c "
+import json, re
+d = json.load(open('findings-config-a.json'))
+req = {'file','line','severity','cwe','description'}
+sev = {'critical','high','medium','low'}
+cwe = re.compile(r'^CWE-\d+\$')
+errs = 0
+for f in d:
+    if set(f.keys()) != req or not isinstance(f['line'], int) or f['line']<1: errs += 1
+    if f['severity'] not in sev or not cwe.match(f['cwe']): errs += 1
+    if len(f['description']) > 200: errs += 1
+    if f['file'].startswith('/') or f['file'].startswith('./'): errs += 1
+print(f'PASS — {len(d)} findings schema-valid' if errs==0 else f'FAIL — {errs} issues')"
+# Expected: PASS — 46 findings schema-valid
+
+# Gate 6 — Deterministic sort order
+python3 -c "
+import json
+d = json.load(open('findings-config-a.json'))
+k = [(f['file'], f['line'], f['cwe']) for f in d]
+print('PASS' if k == sorted(k) else 'FAIL')"
+# Expected: PASS
 ```
 
-**2. Release Build (For Production):**
+### 9.6 Example Usage — Inspecting Findings
+
 ```bash
-# Build optimized release binary
-cargo build --release --all-features
+# Count findings by severity
+python3 -c "
+import json, collections
+d = json.load(open('findings-config-a.json'))
+c = collections.Counter(f['severity'] for f in d)
+for s in ['critical','high','medium','low']: print(f'{s}: {c.get(s,0)}')"
+# Expected:
+#   critical: 0
+#   high: 10
+#   medium: 21
+#   low: 15
 
-# Verify build success
-ls -lh target/release/dnsmasq
-# Expected: Optimized binary ~6.1MB
+# List all high-severity findings
+python3 -c "
+import json
+d = json.load(open('findings-config-a.json'))
+for f in d:
+    if f['severity']=='high': print(f\"{f['file']}:{f['line']} [{f['cwe']}] {f['description'][:80]}...\")"
 
-# Verify binary is stripped
-file target/release/dnsmasq
-# Expected: ELF 64-bit LSB executable, stripped
+# Spot-check a specific finding against source
+LINE=$(python3 -c "
+import json
+d = json.load(open('findings-config-a.json'))
+print(d[26]['file'], d[26]['line'])")
+echo "Finding 27 location: $LINE"
+# Read context around the cited line:
+sed -n "$(echo $LINE | awk '{print $2-3","$2+3}')p" $(echo $LINE | awk '{print $1}')
+
+# Filter by CWE category
+python3 -c "
+import json
+d = json.load(open('findings-config-a.json'))
+for f in d:
+    if f['cwe']=='CWE-770': print(f\"{f['file']}:{f['line']} {f['description'][:80]}...\")"
+# Lists all resource-exhaustion findings
 ```
 
-**3. Build Specific Feature Sets:**
-```bash
-# Minimal build (no optional features)
-cargo build --release --no-default-features
-
-# Build with specific features
-cargo build --release --features "dnssec,dbus,tftp"
-
-# List available features
-cargo metadata --no-deps --format-version=1 | jq -r '.packages[0].features | keys[]'
-```
-
-**Build Time Expectations:**
-- Debug build (first time): ~5-8 minutes
-- Release build (first time): ~8-12 minutes
-- Incremental rebuilds: ~30-60 seconds
-
-### Testing
-
-**1. Run Unit Tests:**
-```bash
-# Run all unit tests (in library and binary)
-cargo test --lib --bins --all-features
-
-# Expected output:
-#   running 485 tests
-#   test result: ok. 485 passed; 0 failed; 2 ignored
-#   Duration: ~98 seconds
-```
-
-**2. Run Integration Tests:**
-```bash
-# Run all integration tests
-cargo test --test '*' --all-features
-
-# Run specific test suite
-cargo test --test config_tests --all-features          # 46 tests
-cargo test --test dhcp_integration_tests --all-features # 18 tests
-cargo test --test dns_integration_tests --all-features  # 20 tests
-cargo test --test dnssec_tests --all-features          # 23 tests
-
-# Expected: All 107 integration tests passing
-```
-
-**3. Run All Tests:**
-```bash
-# Comprehensive test run
-cargo test --all-features
-
-# Expected output:
-#   running 592 tests
-#   test result: ok. 590 passed; 0 failed; 2 ignored
-```
-
-**4. Run Benchmarks:**
-```bash
-# Compile benchmarks
-cargo bench --no-run --all-features
-
-# Run benchmarks (takes ~5-10 minutes)
-cargo bench --all-features
-
-# Benchmarks available:
-# - DNS query performance
-# - Cache operations (insert, lookup, eviction)
-# - DHCP lease allocation
-```
-
-### Application Startup
-
-**1. Command-Line Usage:**
-```bash
-# Show version and features
-./target/release/dnsmasq --version
-
-# Expected output:
-#   dnsmasq version 2.92  Copyright (c) 2000-2025 Simon Kelley
-#   Compile time options: DHCP DHCPv6 IPv6 DNSSEC DBus IDN Lua TFTP conntrack ipset nftset
-
-# Show help
-./target/release/dnsmasq --help
-
-# Test configuration file syntax
-./target/release/dnsmasq --test --conf-file=/etc/dnsmasq.conf
-
-# Expected: "dnsmasq: syntax check OK"
-```
-
-**2. Run in Foreground (Development):**
-```bash
-# Run with minimal configuration
-sudo ./target/release/dnsmasq \
-  --no-daemon \
-  --port=5353 \
-  --listen-address=127.0.0.1 \
-  --no-resolv \
-  --server=8.8.8.8 \
-  --log-queries
-
-# This will:
-# - Run in foreground (--no-daemon)
-# - Listen on port 5353 (non-privileged)
-# - Bind to localhost only
-# - Forward to Google DNS (8.8.8.8)
-# - Log all queries to console
-```
-
-**3. Run with Configuration File:**
-```bash
-# Create minimal test configuration
-cat > /tmp/test-dnsmasq.conf << 'EOF'
-# Minimal dnsmasq configuration for testing
-port=5353
-interface=lo
-bind-interfaces
-no-resolv
-server=8.8.8.8
-log-queries
-EOF
-
-# Validate configuration
-./target/release/dnsmasq --test --conf-file=/tmp/test-dnsmasq.conf
-
-# Run with configuration
-sudo ./target/release/dnsmasq --no-daemon --conf-file=/tmp/test-dnsmasq.conf
-```
-
-**4. Run as systemd Service (Production):**
-```bash
-# Install binary
-sudo cp target/release/dnsmasq /usr/local/bin/dnsmasq
-sudo chmod +x /usr/local/bin/dnsmasq
-
-# Copy configuration
-sudo cp /etc/dnsmasq.conf /etc/dnsmasq.conf.backup
-# Edit /etc/dnsmasq.conf as needed
-
-# Test configuration
-sudo /usr/local/bin/dnsmasq --test
-
-# Start with systemd (assumes dnsmasq.service exists)
-sudo systemctl daemon-reload
-sudo systemctl start dnsmasq
-sudo systemctl status dnsmasq
-
-# Enable on boot
-sudo systemctl enable dnsmasq
-```
-
-### Verification Steps
-
-**1. Verify DNS Functionality:**
-```bash
-# Start dnsmasq on port 5353 (in another terminal)
-sudo ./target/release/dnsmasq --no-daemon --port=5353 --listen-address=127.0.0.1 --server=8.8.8.8
-
-# Test DNS query with dig
-dig @127.0.0.1 -p 5353 example.com
-
-# Expected output:
-#   ;; ANSWER SECTION:
-#   example.com.  XXX  IN  A  93.184.216.34
-#   ;; Query time: <50 msec
-#   ;; SERVER: 127.0.0.1#5353(127.0.0.1)
-
-# Test caching (second query should be faster)
-dig @127.0.0.1 -p 5353 example.com
-# Expected: Query time: <5 msec (cached)
-```
-
-**2. Verify DHCP Functionality (Requires Privileges):**
-```bash
-# Note: DHCP testing requires network interface setup
-# This is a conceptual example
-
-# Start with DHCP range
-sudo ./target/release/dnsmasq \
-  --no-daemon \
-  --interface=eth0 \
-  --dhcp-range=192.168.1.100,192.168.1.200,12h \
-  --log-dhcp
-
-# Monitor for DHCP requests
-# Expected: DHCP DISCOVER/OFFER/REQUEST/ACK logged
-```
-
-**3. Verify Configuration Reload:**
-```bash
-# Start dnsmasq in background
-sudo ./target/release/dnsmasq --conf-file=/etc/dnsmasq.conf &
-DNSMASQ_PID=$!
-
-# Modify configuration file
-# (edit /etc/dnsmasq.conf)
-
-# Send SIGHUP to reload
-sudo kill -HUP $DNSMASQ_PID
-
-# Check logs for reload confirmation
-# Expected: "exiting on receipt of SIGHUP" or "reading /etc/dnsmasq.conf"
-
-# Cleanup
-sudo kill $DNSMASQ_PID
-```
-
-**4. Verify Features Enabled:**
-```bash
-# Check compile-time features
-./target/release/dnsmasq --version | grep "Compile time options"
-
-# Expected features:
-#   DHCP DHCPv6 IPv6 DNSSEC DBus IDN Lua TFTP conntrack ipset nftset
-
-# Each feature indicates:
-# - DHCP: DHCPv4 server enabled
-# - DHCPv6: DHCPv6 server enabled
-# - IPv6: IPv6 support enabled
-# - DNSSEC: DNSSEC validation enabled
-# - DBus: D-Bus interface available
-# - IDN: International domain name support
-# - Lua: Lua scripting support
-# - TFTP: TFTP server enabled
-# - conntrack: Linux connection tracking
-# - ipset: ipset firewall integration
-# - nftset: nftables integration
-```
-
-### Example Usage Scenarios
-
-**Scenario 1: Simple DNS Forwarder**
-```bash
-# Run as simple DNS forwarder with caching
-sudo ./target/release/dnsmasq \
-  --no-daemon \
-  --port=53 \
-  --listen-address=0.0.0.0 \
-  --server=8.8.8.8 \
-  --server=1.1.1.1 \
-  --cache-size=10000 \
-  --log-queries \
-  --log-facility=-
-
-# Test from another machine
-dig @<server-ip> example.com
-```
-
-**Scenario 2: DHCP Server for Local Network**
-```bash
-# Configuration file
-cat > /etc/dnsmasq.conf << 'EOF'
-# Network interface
-interface=eth0
-bind-interfaces
-
-# DHCP range
-dhcp-range=192.168.1.100,192.168.1.200,24h
-
-# DNS servers for clients
-dhcp-option=option:dns-server,192.168.1.1
-
-# Domain name
-dhcp-option=option:domain-name,local.lan
-
-# Gateway
-dhcp-option=option:router,192.168.1.1
-
-# Enable DHCP logging
-log-dhcp
-log-queries
-EOF
-
-# Start DHCP server
-sudo ./target/release/dnsmasq --no-daemon --conf-file=/etc/dnsmasq.conf
-```
-
-**Scenario 3: DNS with DNSSEC Validation**
-```bash
-# Enable DNSSEC validation
-sudo ./target/release/dnsmasq \
-  --no-daemon \
-  --port=53 \
-  --conf-file=/dev/null \
-  --server=8.8.8.8 \
-  --dnssec \
-  --trust-anchor=.,20326,8,2,E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D \
-  --log-queries
-
-# Test DNSSEC validation
-dig @127.0.0.1 +dnssec example.com
-
-# Expected: AD flag set in response (authenticated data)
-```
-
-### Common Issues and Troubleshooting
-
-**Issue: "Permission denied" when binding to port 53**
-```bash
-# Solution 1: Run with sudo
-sudo ./target/release/dnsmasq ...
-
-# Solution 2: Use non-privileged port
-./target/release/dnsmasq --port=5353 ...
-
-# Solution 3: Set capabilities (Linux)
-sudo setcap CAP_NET_BIND_SERVICE=+eip target/release/dnsmasq
-./target/release/dnsmasq --port=53 ...
-```
-
-**Issue: "Address already in use"**
-```bash
-# Check what's using port 53
-sudo lsof -i :53
-sudo netstat -tulpn | grep :53
-
-# Stop conflicting service
-sudo systemctl stop systemd-resolved  # Ubuntu
-sudo systemctl stop dnsmasq          # If C version running
-
-# Or use different port
-./target/release/dnsmasq --port=5353 ...
-```
-
-**Issue: Configuration file errors**
-```bash
-# Validate configuration
-./target/release/dnsmasq --test --conf-file=/etc/dnsmasq.conf
-
-# Check for syntax errors
-# Expected: "dnsmasq: syntax check OK"
-
-# If errors, check configuration file format
-# - Remove any unsupported directives
-# - Check for typos in option names
-# - Verify include files exist
-```
-
-**Issue: Tests failing**
-```bash
-# Ensure all dependencies installed
-cargo build --all-features
-
-# Run tests with verbose output
-cargo test --all-features -- --nocapture
-
-# Run specific failing test
-cargo test --test config_tests <test_name> -- --nocapture
-
-# Check Rust version
-rustc --version  # Should be 1.91.0+
-```
-
-### Performance Tuning
-
-**Cache Size:**
-```bash
-# Increase cache size for high-traffic environments
-./target/release/dnsmasq --cache-size=10000  # Default: 150
-```
-
-**Upstream DNS Servers:**
-```bash
-# Use multiple upstream servers for redundancy
-./target/release/dnsmasq \
-  --server=8.8.8.8 \
-  --server=8.8.4.4 \
-  --server=1.1.1.1 \
-  --server=1.0.0.1
-```
-
-**Monitoring:**
-```bash
-# Enable detailed logging for troubleshooting
-./target/release/dnsmasq --log-queries --log-dhcp --log-facility=/var/log/dnsmasq.log
-
-# Send SIGUSR1 to dump cache stats
-sudo kill -USR1 <pid>
-# Check logs for cache statistics
-
-# Send SIGUSR2 to dump extended statistics
-sudo kill -USR2 <pid>
-```
+### 9.7 Troubleshooting
+
+| Symptom | Likely Cause | Resolution |
+|---------|--------------|------------|
+| `wc -l < findings-config-a.json` returns 0 instead of 1 | File has no trailing newline | Re-emit with a single trailing `\n` (current artifact ends `]\n`) |
+| `wc -l` returns > 1 | File is pretty-printed JSON instead of minified | Re-serialize with `serde_json::to_string` (not `to_string_pretty`) |
+| `python3 -m json.tool` reports `Expecting value: line 1 column 1` | File is empty or contains non-JSON | Verify file content; for zero findings, expected literal is `[]` |
+| `file --mime-encoding` reports `binary` or `iso-8859-1` | Non-UTF-8 bytes in description text | Re-emit ensuring all string fields are UTF-8 |
+| Schema scanner reports issues | Field missing, wrong type, severity not in enum, or description >200 chars | Re-validate finding objects against AAP §0.1.1 schema |
+| `cargo check` reports compilation errors | Toolchain mismatch | Run `rustup show` to confirm 1.91.0 is the active toolchain; `cd` into the repo to trigger `rust-toolchain.toml` |
+| `cargo build` requires network access | Empty `~/.cargo/registry/cache` | Run `cargo fetch` once with network to populate the cache, then `cargo build --offline` works thereafter |
+| Tests fail with "address already in use" | Previous test left a port open | Kill stale `dnsmasq`/test processes; tests use ephemeral ports but a stuck process can block |
+| Doc tests show 541 ignored | Expected behavior | Most `///` examples are compile-only (not run) due to needing external services or root privileges; this is intentional |
 
 ---
 
-## Architecture Highlights
-
-### Memory Safety Transformation
-
-**C Implementation Vulnerabilities:**
-- Manual memory management with malloc/free
-- Pointer arithmetic for packet parsing
-- Buffer overflow risks in fixed-size arrays
-- Use-after-free potential in complex logic
-- Data race conditions in signal handlers
-
-**Rust Implementation Safety:**
-- **Ownership System:** Compile-time guarantee of no use-after-free
-- **Borrow Checker:** Prevents data races at compile time
-- **Bounds Checking:** All array/slice access verified
-- **Type Safety:** Strong typing eliminates entire classes of bugs
-- **RAII:** Automatic resource cleanup with Drop trait
-
-**Example Transformation:**
-```rust
-// C (unsafe):
-char *buf = malloc(512);
-memcpy(buf, data, len);  // Potential buffer overflow
-// ... use buf ...
-free(buf);  // Easy to forget or double-free
-
-// Rust (safe):
-let mut buf = vec![0u8; 512];  // Automatic allocation
-buf.copy_from_slice(&data[..len.min(512)]);  // Bounds checked
-// ... use buf ...
-// Automatic Drop when buf goes out of scope
-```
-
-### Async I/O Architecture
-
-**C Implementation:**
-- poll()-based event loop
-- Manual state machines for async operations
-- Complex callback chains
-- Difficult error propagation
-
-**Rust Implementation:**
-- **tokio Runtime:** Modern async executor
-- **async/await Syntax:** Linear code for async operations
-- **Type-safe Futures:** Compiler-verified async correctness
-- **select! Macro:** Clean multiplexing of I/O sources
-
-**Example Transformation:**
-```rust
-// C (complex state machine):
-poll(fds, nfds, timeout);
-if (fds[DNS_FD].revents & POLLIN) {
-    // Handle DNS - complex state tracking
-}
-if (fds[DHCP_FD].revents & POLLIN) {
-    // Handle DHCP - complex state tracking
-}
-
-// Rust (clean async):
-tokio::select! {
-    result = dns_socket.recv_from(&mut buf) => {
-        handle_dns_query(result?).await?;
-    }
-    result = dhcp_socket.recv_from(&mut buf) => {
-        handle_dhcp_packet(result?).await?;
-    }
-}
-```
-
-### Error Handling Transformation
-
-**C Implementation:**
-- Return codes (-1, 0, 1)
-- NULL pointer returns
-- Global errno variable
-- Easy to ignore errors
-
-**Rust Implementation:**
-- **Result<T, E> Type:** Explicit error handling
-- **Option<T> Type:** Null safety
-- **? Operator:** Ergonomic error propagation
-- **Compile-time Verification:** Can't ignore errors
-
-**Example Transformation:**
-```rust
-// C (error-prone):
-int result = forward_query(query);
-if (result < 0) {  // Easy to forget check
-    return -1;
-}
-
-// Rust (compiler-enforced):
-let response = forward_query(query).await?;  // Must handle Result
-// Compiler error if ? or explicit error handling not used
-```
-
-### Module Organization
-
-**Comprehensive Structure:**
-```
-src/
-├── main.rs                 # Binary entry point
-├── lib.rs                  # Library root
-├── types.rs                # Core types
-├── error.rs                # Error definitions
-├── constants.rs            # Global constants
-├── config/                 # Configuration (6 files)
-├── dns/                    # DNS subsystem (19 files)
-│   ├── protocol/          # Wire format (6 files)
-│   └── dnssec/            # DNSSEC validation (5 files)
-├── dhcp/                   # DHCP subsystem (18 files)
-│   ├── v4/                # DHCPv4 (6 files)
-│   ├── v6/                # DHCPv6 (6 files)
-│   └── lease/             # Lease management (4 files)
-├── network/                # Networking (16 files)
-│   ├── platform/          # OS-specific (5 files)
-│   └── firewall/          # Firewall integration (4 files)
-├── radv/                   # Router Advertisement (3 files)
-├── tftp/                   # TFTP server (3 files)
-├── platform/               # System integration (7 files)
-├── runtime/                # Async runtime (4 files)
-└── util/                   # Utilities (7 files)
-```
-
-### Cross-Platform Support
-
-**Platform Abstraction:**
-- Trait-based abstractions for OS differences
-- Feature flags for platform-specific code
-- nix crate for POSIX APIs
-- Platform-specific modules in network/platform/
-
-**Supported Platforms:**
-- Linux (primary) - full feature support
-- FreeBSD - validated
-- OpenBSD - validated
-- NetBSD - validated
-- macOS - validated
-
----
-
-## Deployment Readiness
-
-### Binary Artifacts
-
-**Release Binary:**
-- **Location:** `target/release/dnsmasq`
-- **Size:** 6.1MB (stripped, optimized)
-- **Format:** ELF 64-bit LSB executable
-- **Features:** All optional features compiled in
-- **Performance:** Optimized with LTO and single codegen unit
-
-**Installation:**
-```bash
-# System-wide installation
-sudo cp target/release/dnsmasq /usr/local/bin/dnsmasq
-sudo chmod 755 /usr/local/bin/dnsmasq
-
-# Verify installation
-which dnsmasq
-dnsmasq --version
-```
-
-### Configuration Compatibility
-
-**100% Backward Compatible:**
-- All ~350 dnsmasq.conf directives supported
-- Identical command-line interface
-- Same environment variable handling
-- Include file processing unchanged
-- Comment syntax preserved
-
-**Configuration Migration:**
-```bash
-# Existing configurations work without changes
-sudo /usr/local/bin/dnsmasq --test --conf-file=/etc/dnsmasq.conf
-# Expected: "dnsmasq: syntax check OK"
-
-# No migration scripts needed
-# Drop-in replacement for C version
-```
-
-### System Integration
-
-**systemd Service:**
-```ini
-# /etc/systemd/system/dnsmasq.service
-# Compatible with existing service units
-
-[Unit]
-Description=dnsmasq - Lightweight DNS forwarder and DHCP server
-Requires=network-online.target
-After=network-online.target
-
-[Service]
-Type=forking
-PIDFile=/run/dnsmasq/dnsmasq.pid
-ExecStart=/usr/local/bin/dnsmasq
-ExecReload=/bin/kill -HUP $MAINPID
-ExecStop=/bin/kill -TERM $MAINPID
-Restart=on-failure
-PrivateTmp=true
-ProtectSystem=strict
-ReadWritePaths=/var/lib/misc /run/dnsmasq
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**D-Bus Interface:**
-- Service name: `uk.org.thekelleys.dnsmasq` (unchanged)
-- All methods and signals compatible
-- Existing D-Bus configurations work without modification
-
-**Signal Handling:**
-- SIGHUP: Configuration reload
-- SIGTERM/SIGINT: Graceful shutdown
-- SIGUSR1: Dump cache statistics
-- SIGUSR2: Extended statistics
-- All signals handled identically to C version
-
-### Docker Deployment
-
-**Dockerfile:**
-```dockerfile
-FROM rust:1.91.0 AS builder
-WORKDIR /build
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
-RUN cargo build --release --all-features
-
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates libdbus-1-3 && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /build/target/release/dnsmasq /usr/local/bin/dnsmasq
-EXPOSE 53/udp 53/tcp 67/udp 69/udp
-ENTRYPOINT ["/usr/local/bin/dnsmasq"]
-CMD ["--no-daemon", "--keep-in-foreground"]
-```
-
-**Run Container:**
-```bash
-# Build image
-docker build -t dnsmasq:rust .
-
-# Run container
-docker run -d \
-  --name dnsmasq \
-  --cap-add=NET_ADMIN \
-  -p 53:53/udp \
-  -p 53:53/tcp \
-  -v /etc/dnsmasq.conf:/etc/dnsmasq.conf:ro \
-  dnsmasq:rust --conf-file=/etc/dnsmasq.conf
-```
-
----
-
-## Success Criteria Met
-
-### All Validation Gates Passed ✅
-
-1. **✅ Test Pass Rate: 100%** (592/592 tests)
-2. **✅ Application Runtime: Verified** (binary functional)
-3. **✅ Zero Unresolved Errors** (clean build, no warnings)
-4. **✅ In-Scope Files Validated** (all 88 source files)
-5. **✅ Code Quality Standards Met** (formatting, linting, memory safety)
-
-### Production Readiness Checklist ✅
-
-- [x] All compilation successful (zero errors, zero warnings)
-- [x] All tests passing (100% pass rate)
-- [x] Binary executes successfully
-- [x] Configuration compatibility validated
-- [x] Runtime functionality verified
-- [x] Memory safety guaranteed by Rust compiler
-- [x] Cross-platform support implemented
-- [x] Documentation comprehensive
-- [x] Git repository clean (no uncommitted changes)
-- [x] Performance characteristics acceptable
-
----
-
-## Next Steps
-
-### Immediate Actions (High Priority)
-
-1. **Performance Validation:**
-   - Run criterion benchmarks against C dnsmasq
-   - Compare DNS query latency and throughput
-   - Validate memory footprint under load
-   - Document performance characteristics
-
-2. **Security Review:**
-   - Run cargo-audit for dependency vulnerabilities
-   - Review all unsafe code blocks
-   - Conduct DNSSEC security assessment
-   - Document security considerations
-
-3. **Integration Testing:**
-   - Deploy in test environment with real clients
-   - Test with production configurations
-   - Validate D-Bus interface with real consumers
-   - Test systemd integration end-to-end
-
-### Medium-Term Actions
-
-4. **Load Testing:**
-   - Set up high-traffic test environment
-   - Generate realistic DNS/DHCP load
-   - Monitor for memory leaks or performance degradation
-   - Document load test results
-
-5. **Documentation:**
-   - Generate cargo doc HTML documentation
-   - Write operational runbook
-   - Create troubleshooting guide
-   - Document monitoring setup
-
-### Long-Term Actions
-
-6. **Production Deployment:**
-   - Package for distribution (deb, rpm, etc.)
-   - Deploy to staging environment
-   - Gradual rollout to production
-   - Monitor and collect feedback
-
-7. **Ongoing Maintenance:**
-   - Regular dependency updates
-   - Security vulnerability monitoring
-   - Performance optimization
-   - Bug fixes and enhancements
-
----
-
-## Conclusion
-
-The dnsmasq C-to-Rust refactoring has successfully achieved **90.0% completion** (950 hours completed out of 1,056 total hours) with **production-ready status**. The Rust implementation delivers:
-
-### Core Achievements
-
-✅ **Complete Functional Parity:** All DNS, DHCP, DNSSEC, TFTP, and RA features implemented  
-✅ **Memory Safety:** Entire vulnerability classes eliminated through Rust's ownership system  
-✅ **100% Test Success:** All 592 tests passing with comprehensive coverage  
-✅ **Backward Compatibility:** Drop-in replacement for C version  
-✅ **Production Quality:** Zero errors, zero warnings, optimized binary  
-✅ **Cross-Platform:** Linux, BSD, and macOS support implemented  
-
-### Business Value
-
-- **Security:** Eliminates ~70% of security vulnerabilities (memory-safety related)
-- **Maintainability:** Modern codebase with type safety and error handling
-- **Reliability:** Compiler-verified correctness, comprehensive testing
-- **Performance:** Efficient async I/O with tokio runtime
-- **Future-Proof:** Built on stable, well-supported Rust ecosystem
-
-### Remaining Work (10%)
-
-The remaining 106 hours focus on production hardening:
-- Performance validation and optimization
-- Extended integration and load testing  
-- Security audit and penetration testing
-- Production deployment documentation
-- Operational monitoring setup
-
-**Recommendation:** The project is ready for production deployment with standard operational validation. The Rust implementation successfully achieves the goal of memory safety while maintaining complete functional equivalence with the C version.
-
----
-
-**Project Completion:** 90.0%  
-**Status:** Production Ready  
-**Branch:** blitzy-40f6e639-d48b-4db8-9f86-f23abdd54866  
-**Total Engineering Hours:** 950 completed / 1,056 total  
-**Date:** November 23, 2025
+## 10. Appendices
+
+### Appendix A — Command Reference
+
+| Command | Purpose |
+|---------|---------|
+| `cargo check --offline` | Static compile check (no binary) |
+| `cargo build --offline` | Debug build at `target/debug/dnsmasq` |
+| `cargo build --release --offline` | Release build with `panic="abort"`, `lto="fat"`, `strip=true` |
+| `cargo test --offline` | Run full test suite (unit + integration + doc) |
+| `cargo test --offline --doc` | Run only doc tests |
+| `cargo test --offline --test config_tests` | Run only `tests/config_tests.rs` |
+| `cargo clippy --offline --no-deps` | Run clippy lints (informational) |
+| `cargo bench --offline` | Run criterion benchmarks (requires release-profile compile) |
+| `wc -l < findings-config-a.json` | Gate 2 verification |
+| `python3 -m json.tool < findings-config-a.json` | Gate 3 verification |
+| `file --mime-encoding findings-config-a.json` | Gate 4 verification |
+| `git log --oneline 1ae3e78..HEAD` | List audit-related commits |
+| `git diff --name-status 1ae3e78..HEAD` | Confirm only `findings-config-a.json` was added |
+
+### Appendix B — Port Reference
+
+| Service | Default Port | Protocol | Notes |
+|---------|--------------|----------|-------|
+| DNS | 53 | UDP + TCP | dnsmasq daemon (not exercised by audit) |
+| DHCPv4 server | 67 | UDP | dnsmasq daemon (not exercised by audit) |
+| DHCPv4 client | 68 | UDP | Client-side, not bound by dnsmasq |
+| DHCPv6 server | 547 | UDP | dnsmasq daemon (not exercised by audit) |
+| DHCPv6 client | 546 | UDP | Client-side |
+| TFTP | 69 | UDP | dnsmasq daemon (not exercised by audit) |
+| ICMPv6 RA | n/a (raw) | ICMPv6 | RouterAdvert daemon (not exercised by audit) |
+| D-Bus | system bus | IPC | Feature-gated `dbus`; not enabled in default build |
+
+The audit deliverable itself has **no port exposure** — it is a static JSON file consumed by a local file read.
+
+### Appendix C — Key File Locations
+
+| Path | Role |
+|------|------|
+| `/findings-config-a.json` | **Audit deliverable** — 46 findings, 12,468 bytes, single-line UTF-8 JSON |
+| `/Cargo.toml` | Dependency declarations, feature flags, release-profile hardening (`panic="abort"`, `strip=true`, `lto="fat"`) |
+| `/Cargo.lock` | Transitive dependency pinning (90,264 bytes) |
+| `/build.rs` | Build script — pkg-config probe for libubus |
+| `/rust-toolchain.toml` | Pinned Rust 1.91.0 + rustfmt + clippy + x86_64/aarch64 Linux targets |
+| `/.cargo/config.toml` | Linker hardening (RELRO, BIND_NOW, --as-needed) |
+| `/src/main.rs` | 12-step daemon initialization sequence (privilege drop, socket binds) |
+| `/src/lib.rs` | Public crate surface |
+| `/src/constants.rs` | Resource caps: `FTABSIZ=150`, `MAX_PROCS=20`, `TCP_MAX_QUERIES=100`, `MAXLEASES=1000`, `DEFAULT_SCRIPT_TIMEOUT_SECS=60`, etc. |
+| `/src/dns/forwarder.rs` | DNS query routing, rebinding protection at `is_private_or_reserved_ip()` |
+| `/src/dns/dnssec/{validator,crypto,trust_anchors,blockdata}.rs` | DNSSEC implementation |
+| `/src/dhcp/v4/server.rs` | DHCPv4 server, `ping_test` conflict detection, `handle_decline` backoff |
+| `/src/dhcp/v6/server.rs` | DHCPv6 server, DUID handling, prefix delegation |
+| `/src/tftp/server.rs` | TFTP server with `check_tftp_fileperm` 4-layer access control |
+| `/src/util/helpers.rs` | `build_environment` for lease scripts, `execute_shell_event` |
+| `/src/util/random.rs` | SURF RNG (djbdns-derived, 32 rounds, constant-time) |
+| `/src/platform/privileges.rs` | `LinuxPrivilegeManager` (caps), `OpenBsdPrivilegeManager` (pledge/unveil) |
+| `/src/network/firewall/{nftables,pf}.rs` | FFI surfaces with `unsafe` blocks |
+| `/src/network/platform/{bsd,macos}.rs` | FFI surfaces with `unsafe` blocks |
+| `/src/platform/ubus.rs` | FFI surface (feature-gated) |
+
+### Appendix D — Technology Versions
+
+| Component | Version | Source of truth |
+|-----------|---------|-----------------|
+| Rust toolchain | 1.91.0 | `rust-toolchain.toml` |
+| Cargo edition | 2021 | `Cargo.toml::[package].edition` |
+| `tokio` | 1.42 | `Cargo.toml` |
+| `hickory-proto` / `hickory-server` / `hickory-client` / `hickory-resolver` | 0.25 | `Cargo.toml` |
+| `ring` | 0.17 (feature-gated `dnssec`) | `Cargo.toml` |
+| `getrandom` | 0.2 | `Cargo.toml` |
+| `nom` | 7.1 | `Cargo.toml` |
+| `socket2` | 0.5 | `Cargo.toml` |
+| `clap` | 4.5 | `Cargo.toml` |
+| `nix` | 0.29 (Linux only) | `Cargo.toml` |
+| `caps` | 0.5 (Linux only) | `Cargo.toml` |
+| `tracing` | 0.1 | `Cargo.toml` |
+| `webpki` | 0.22 (feature-gated; **unmaintained** per finding `Cargo.toml:129`) | `Cargo.toml` |
+| `serde_json` | 1.0 | `Cargo.toml` |
+| `proptest` (dev) | 1.6 | `Cargo.toml` |
+| `criterion` (dev) | 0.5 | `Cargo.toml` |
+| Python (for gate verification) | 3.x | system |
+| `file` (for encoding check) | system default | system |
+
+### Appendix E — Environment Variable Reference
+
+**For the audit deliverable:** None. The audit is read-only static analysis and the deliverable is a local file.
+
+**For the dnsmasq daemon (informational, not exercised by audit):**
+
+| Variable | Purpose | Notes |
+|----------|---------|-------|
+| Lease-script env (helper scripts) | Pass DHCP context to operator scripts | Hex-encoded by `build_environment` in `src/util/helpers.rs:962-1047` to prevent shell metachar injection; **two findings flag raw fields** — see `src/util/helpers.rs:993` and `src/dhcp/lease/script_hooks.rs:422` |
+| `LISTEN_FDS`, `LISTEN_PID` | systemd socket activation | Consumed by `src/platform/systemd.rs`; partial-write findings flag at `src/platform/systemd.rs:646,711` |
+| `NOTIFY_SOCKET` | systemd readiness notification | Consumed by `sd_notify` path |
+
+### Appendix F — Developer Tools Guide
+
+| Tool | Use Case | Invocation |
+|------|----------|-----------|
+| `cargo` | Build/test/lint orchestration | `cargo check --offline`, `cargo test --offline`, `cargo clippy --offline --no-deps` |
+| `rustfmt` | Code formatting | `cargo fmt -- --check` (not modified by audit) |
+| `python3` | Audit-artifact validation | `python3 -m json.tool < findings-config-a.json` |
+| `file` | Encoding detection | `file --mime-encoding findings-config-a.json` |
+| `wc` | Line counting | `wc -l < findings-config-a.json` |
+| `git` | Repository inspection | `git log --oneline`, `git diff --name-status` |
+| `od` | Byte-level inspection (for trailing-newline confirmation) | `od -c findings-config-a.json \| tail -1` |
+| `jq` (optional) | Alternative JSON inspection | Not required; `python3 -m json.tool` is the canonical gate |
+
+### Appendix G — Glossary
+
+| Term | Definition |
+|------|------------|
+| **AAP** | Agent Action Plan — the primary directive document for this work |
+| **Config A** | The bare-baseline measurement leg of the multi-config security-tool comparison study; uses only native agent analysis |
+| **CWE** | Common Weakness Enumeration — MITRE's taxonomy of software weakness types, formatted as `CWE-<integer>` |
+| **CVSS** | Common Vulnerability Scoring System — used here only for qualitative severity bands (critical / high / medium / low) |
+| **DNSSEC** | DNS Security Extensions — cryptographic signing/validation of DNS responses |
+| **DUID** | DHCP Unique Identifier — DHCPv6 client identifier |
+| **EDNS0** | Extension Mechanisms for DNS, version 0 — UDP payload size, client subnet, etc. |
+| **FFI** | Foreign Function Interface — Rust calling C libraries (libnftables, libubus, libc functions) |
+| **FTABSIZ** | Forward Table Size — dnsmasq's resource cap for outstanding DNS queries (150 in `src/constants.rs`) |
+| **MITRE CWE** | The Common Weakness Enumeration maintained by MITRE Corp. |
+| **NSEC3** | DNSSEC denial-of-existence record with hashed names |
+| **RA** | Router Advertisement — IPv6 protocol for SLAAC |
+| **RELRO** | RELocation Read-Only — linker hardening that makes the GOT read-only after relocation |
+| **SLAAC** | StateLess Address AutoConfiguration — IPv6 host address derivation from RA |
+| **SURF** | The 32-round constant-time RNG used in dnsmasq (djbdns-1.05 derived) |
+| **TFTP** | Trivial File Transfer Protocol — used by network-boot clients; access control in `src/tftp/server.rs::check_tftp_fileperm` |
+| **TOCTOU** | Time-Of-Check to Time-Of-Use — race-condition class where a check and a use happen non-atomically |
+| **Path-to-production** | Standard activities (review, integration verification, deployment) required to make an AAP deliverable production-ready, even if not specified verbatim in the AAP |
+| **Pass/fail gate** | A binary verification criterion the agent runs against the deliverable before declaring completion |
+| **Gap-finding pass** | The second audit sweep performed after the initial pass to identify findings missed in the first walk |
