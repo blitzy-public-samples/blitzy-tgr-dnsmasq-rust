@@ -49,7 +49,7 @@ Each subsection below corresponds to one row of the Decision Table. The decision
 
 ### Narrative — How to scan Cargo dependencies
 
-The literal user directive `snyk test --json > results-snyk-deps.json` is attempted first. For a Rust-only project, this command returns exit code 3 with the body `{"ok":false,"error":"Could not detect supported target files in .. ..."}` because `snyk test`'s Cargo manifest support is not part of the default language matrix. The fallback path generates a CycloneDX 1.4 SBOM with `cargo cyclonedx --format json --all --target all --override-filename sbom.cdx`, then runs `snyk sbom test --file=sbom.cdx.json --json > results-snyk-deps.json`. The output schema is identical in both paths: an object containing a `vulnerabilities` array, which the downstream normalizer consumes blindly. The Snyk Open Source documentation lists `snyk sbom test` as the canonical entry point for SBOM-driven dependency scanning at https://docs.snyk.io/snyk-cli/commands/sbom-test, and the Rust language and package manager matrix is published at https://docs.snyk.io/scan-with-snyk/snyk-open-source/language-and-package-manager-support.
+The literal user directive `snyk test --json > results-snyk-deps.json` is attempted first. For a Rust-only project, this command returns exit code 3 with the body `{"ok":false,"error":"Could not detect supported target files in .. ..."}` because `snyk test`'s Cargo manifest support is not part of the default language matrix. The fallback path generates a CycloneDX 1.4 SBOM with `cargo cyclonedx --format json --all --target all --override-filename sbom.cdx`, then runs `snyk sbom test --file=sbom.cdx.json --json > results-snyk-deps.json`. The output schema is identical in both paths: an object containing a `vulnerabilities` array, which the downstream normalizer consumes blindly. The Snyk Open Source documentation lists `snyk sbom test` as the canonical entry point for SBOM-driven dependency scanning at https://docs.snyk.io/snyk-cli/commands/sbom-test, and the Rust language and package manager matrix is published at https://docs.snyk.io/supported-languages/supported-languages-package-managers-and-frameworks.
 
 The trade-off is execution time. The fallback adds a one-time `cargo install cargo-cyclonedx` step (1–3 minutes on a cold cache) plus a SBOM generation round-trip to `api.snyk.io`. The benefit is correct, complete dependency coverage backed by Snyk's Rust advisory database, which mirrors the RustSec Advisory Database at https://rustsec.org/.
 
@@ -129,7 +129,7 @@ Risk: none. The encoding is determined entirely by the user's directive and the 
 
 ### Narrative — Rust SAST gating
 
-When `snyk code test` returns "language not supported" because the active Snyk account does not have Rust enabled in the Early Access tier, the pipeline writes a synthesized SARIF v2.1.0 document with empty `rules[]` and empty `results[]` arrays in place of the missing CLI output. The downstream normalizer treats this as the empty SAST contribution, and the Stage 4 output remains schema-valid. The Snyk Code language support matrix is published at https://docs.snyk.io/scan-with-snyk/snyk-code/snyk-code-language-and-framework-support; Rust is listed as Early Access at the time of this scan.
+When `snyk code test` returns "language not supported" because the active Snyk account does not have Rust enabled in the Early Access tier, the pipeline writes a synthesized SARIF v2.1.0 document with empty `rules[]` and empty `results[]` arrays in place of the missing CLI output. The downstream normalizer treats this as the empty SAST contribution, and the Stage 4 output remains schema-valid. The Snyk Code language support matrix is published at https://docs.snyk.io/supported-languages/supported-languages-package-managers-and-frameworks; Rust is listed as Early Access at the time of this scan.
 
 The trade-off is between hard-failing the pipeline and producing a deliverable with the dependency contribution but no SAST contribution. Hard-failing would deny the user the deps findings as well, which is disproportionate to the SAST gating cause. Synthesizing the empty SARIF skeleton lets the pipeline converge while preserving the user's gates.
 
@@ -179,7 +179,7 @@ This section captures the runtime evidence Directives 2 and 3 require: exit code
 - Wall-clock duration: `1.105 s` (real time, measured with `time -p`)
 - SARIF JSON parses: `yes` (the file `results-snyk-code.sarif` is a valid SARIF v2.1.0 document; verified with `python3 -c "import json; json.load(open('results-snyk-code.sarif'))"`)
 - Finding count: `0`
-- Notes: The Snyk CLI returned `SNYK-0005 Authentication error / 401 Unauthorized` because `SNYK_TOKEN` was not present in the process environment and `snyk auth check` did not complete an interactive OAuth flow (the harness is non-interactive). Per Decision 11, an empty SARIF skeleton (`{"runs":[{"tool":{"driver":{"name":"SnykCode","semanticVersion":"0.0.0","rules":[]}},"results":[]}], "version":"2.1.0", ...}`) was synthesized so the downstream normalizer treats the SAST contribution as the empty set `[]`. When this stage is re-run in an authenticated environment with Rust SAST entitlement, the synthesized file is overwritten by the real CLI output and the exit code becomes `0` (no findings) or `1` (findings found).
+- Notes: The Snyk CLI returned `SNYK-0005 Authentication error / 401 Unauthorized` because `SNYK_TOKEN` was not present in the process environment and `snyk auth check` did not complete an interactive OAuth flow (the harness is non-interactive). Per Decision 12 (network and authentication unavailability — the proximate cause at this checkpoint), an empty SARIF skeleton (`{"runs":[{"tool":{"driver":{"name":"SnykCode","semanticVersion":"0.0.0","rules":[]}},"results":[]}], "version":"2.1.0", ...}`) was synthesized so the downstream normalizer treats the SAST contribution as the empty set `[]`. Decision 11 (Rust SAST language gating) prescribes the same fallback behavior and would apply in parallel if the Snyk account also lacked Rust Early Access entitlement; the two decisions overlap in the observable outcome but distinguish the cause for audit. When this stage is re-run in an authenticated environment with Rust SAST entitlement, the synthesized file is overwritten by the real CLI output and the exit code becomes `0` (no findings) or `1` (findings found).
 
 ### Stage 3 — Dependency scan execution
 
@@ -224,8 +224,7 @@ When the pipeline is re-run with real SAST or dependency findings, the all-field
 ## References
 
 - Snyk CLI documentation: https://docs.snyk.io/snyk-cli
-- Snyk Code (SAST) language and framework support: https://docs.snyk.io/scan-with-snyk/snyk-code/snyk-code-language-and-framework-support
-- Snyk Open Source language and package manager support: https://docs.snyk.io/scan-with-snyk/snyk-open-source/language-and-package-manager-support
+- Snyk Code (SAST) and Snyk Open Source language, package manager, and framework support: https://docs.snyk.io/supported-languages/supported-languages-package-managers-and-frameworks
 - Snyk CLI `snyk test` command reference: https://docs.snyk.io/snyk-cli/commands/test
 - Snyk CLI `snyk sbom test` command reference: https://docs.snyk.io/snyk-cli/commands/sbom-test
 - Snyk Error Catalog (SNYK-0005 Authentication error): https://docs.snyk.io/scan-with-snyk/error-catalog
