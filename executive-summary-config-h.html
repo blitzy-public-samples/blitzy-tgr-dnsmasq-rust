@@ -8,10 +8,9 @@
 
   <!-- Google Fonts: Inter (body), Space Grotesk (headings), Fira Code (mono) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
 
-  <!-- reveal.js 5.1.0 stylesheet + white theme as base (overridden below) -->
+  <!-- reveal.js 5.1.0 stylesheet and white theme -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
 
@@ -177,9 +176,6 @@
       min-height: 80px;
     }
     .reveal .mermaid-compact { max-width: 800px; }
-    /* Force the rendered Mermaid SVG to fit the container regardless of
-       whether the SVG was sized correctly at render time (Reveal.js hides
-       non-present slides with display:none which collapses container width). */
     .reveal .mermaid > svg {
       max-width: 100% !important;
       width: 100% !important;
@@ -203,8 +199,6 @@
     .reveal .slide-closing .caption { color: rgba(255, 255, 255, 0.85); }
 
     .reveal .footer-text {
-      /* Flow naturally as the last child of title/closing slides so it cannot
-         collide with the vertically-centered content above it. */
       text-align: center;
       font-family: var(--font-heading);
       font-size: 0.5em;
@@ -236,7 +230,7 @@
       margin: 0.4rem auto 0;
     }
 
-    /* Suppress reveal's default uppercase headings explicitly */
+    /* Heading text-transform override */
     .reveal h1, .reveal h2 { text-transform: none; }
   </style>
 </head>
@@ -300,11 +294,11 @@ graph LR
 
       <!-- Slide 5 of 16: DIVIDER -->
       <section class="slide-divider">
-        <h2>What We Found</h2>
+        <h2>Findings Summary</h2>
         <i data-lucide="search" class="icon-large" aria-hidden="true"></i>
       </section>
 
-      <!-- Slide 6 of 16: CONTENT — Headline KPIs (from findings-config-h.json which is the empty array []) -->
+      <!-- Slide 6 of 16: CONTENT — Headline KPIs -->
       <section>
         <h2>Findings at a glance</h2>
         <div class="kpi-grid">
@@ -424,7 +418,7 @@ flowchart LR
         </ul>
       </section>
 
-      <!-- Slide 13 of 16: CONTENT — What Risks Exist (intro-flavor content, amber triangle-alert) -->
+      <!-- Slide 13 of 16: CONTENT — What Risks Exist -->
       <section>
         <h2 style="text-align: center;">What Risks Exist</h2>
         <i data-lucide="triangle-alert" class="icon-large icon-amber" aria-hidden="true"></i>
@@ -478,12 +472,10 @@ flowchart LR
   <!-- Lucide 0.460.0 (UMD) -->
   <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
 
-  <!-- Mermaid 11.4.0 (ESM) + Reveal/Lucide/Mermaid wiring -->
+  <!-- Mermaid 11.15.0 (ESM) + Reveal/Lucide/Mermaid wiring -->
   <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs';
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs';
 
-    // Initialize Mermaid with startOnLoad disabled; Blitzy palette mapped into theme variables.
-    // useMaxWidth forces the SVG to expand to its container width when rendered.
     mermaid.initialize({
       startOnLoad: false,
       theme: 'base',
@@ -508,11 +500,6 @@ flowchart LR
       }
     });
 
-    // Post-processing fix: Mermaid sizes foreignObject boxes using its internal text
-    // measurement, which can be slightly narrower than the actual rendered width once
-    // Inter loads. This helper widens any foreignObject whose child content overflows,
-    // and adjusts the parent node's <rect> so the box visually contains the label.
-    // Also widens edge labels (in g.edgeLabel containers).
     function fitMermaidLabels(scope) {
       const root = scope && scope.querySelectorAll ? scope : document;
       root.querySelectorAll('.mermaid svg').forEach((svg) => {
@@ -522,7 +509,6 @@ flowchart LR
         const scale = viewBox.width / svgRect.width;
         const buffer = 8;
 
-        // Pass 1: widen node-label foreignObjects and their wrapping <rect>s.
         svg.querySelectorAll('g.node foreignObject').forEach((fo) => {
           const child = fo.firstElementChild;
           if (!child) return;
@@ -548,8 +534,6 @@ flowchart LR
           }
         });
 
-        // Pass 2: widen edge-label foreignObjects (e.g., "supports", "Rust" arrow labels)
-        // so their text is not clipped at the boundary.
         svg.querySelectorAll('g.edgeLabel foreignObject, .edgeLabel foreignObject').forEach((fo) => {
           const child = fo.firstElementChild;
           if (!child) return;
@@ -569,14 +553,10 @@ flowchart LR
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-      // Initial pass: instantiate Lucide icons across the whole document.
-      // Mermaid is intentionally NOT run here; Reveal.js hides non-present slides
-      // with display:none which collapses container width and yields empty SVGs.
       if (window.lucide && typeof window.lucide.createIcons === 'function') {
         window.lucide.createIcons();
       }
 
-      // Initialize Reveal.js with the mandatory configuration keys.
       Reveal.initialize({
         hash: true,
         transition: 'slide',
@@ -588,10 +568,6 @@ flowchart LR
         plugins: []
       });
 
-      // After Reveal lays out the first slide, render any Mermaid diagrams it contains.
-      // We wait for web fonts to finish loading so Mermaid measures node text widths
-      // with the final font (Inter) rather than the fallback (which would yield
-      // narrower boxes and visually clipped labels).
       Reveal.on('ready', async (event) => {
         if (window.lucide && typeof window.lucide.createIcons === 'function') {
           window.lucide.createIcons();
@@ -603,13 +579,10 @@ flowchart LR
         const pending = slide.querySelectorAll('.mermaid:not([data-processed="true"])');
         if (pending.length > 0) {
           await mermaid.run({ nodes: Array.from(pending) });
-          // Defer the label-fit pass to next frame so the SVG has been measured.
           requestAnimationFrame(() => fitMermaidLabels(slide));
         }
       });
 
-      // On each slide change, refresh Lucide icons and render any not-yet-processed
-      // Mermaid diagrams on the newly-shown slide (where containers now have width).
       Reveal.on('slidechanged', async (event) => {
         if (window.lucide && typeof window.lucide.createIcons === 'function') {
           window.lucide.createIcons();
@@ -623,8 +596,6 @@ flowchart LR
           await mermaid.run({ nodes: Array.from(pending) });
           requestAnimationFrame(() => fitMermaidLabels(slide));
         } else {
-          // Previously-rendered diagrams may still have clipped labels if fonts
-          // arrived after the first render — re-fit on every navigation.
           requestAnimationFrame(() => fitMermaidLabels(slide));
         }
       });
