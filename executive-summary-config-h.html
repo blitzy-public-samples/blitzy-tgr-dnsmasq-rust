@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="Executive summary for Config H — Snyk CLI scan of blitzy-tgr-dnsmasq-rust">
+  <title>Config H — Snyk Scan of blitzy-tgr-dnsmasq-rust</title>
+
+  <!-- Google Fonts: Inter (body), Space Grotesk (headings), Fira Code (mono) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
+
+  <!-- reveal.js 5.1.0 stylesheet + white theme as base (overridden below) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+
+  <style>
+    /* Blitzy brand palette as CSS custom properties on :root */
+    :root {
+      --blitzy-purple-1: #7A6DEC;
+      --blitzy-purple-2: #5B39F3;
+      --blitzy-purple-3: #4101DB;
+      --blitzy-ink: #0E0B1F;
+      --blitzy-paper: #FFFFFF;
+      --blitzy-mist: #F4F2FB;
+      --blitzy-fog:  #DCD7F2;
+      --blitzy-edge: #2A2350;
+      --blitzy-accent-mint: #58E5C0;
+      --blitzy-accent-amber: #F5B65A;
+      --blitzy-accent-rose: #F26D8E;
+      --blitzy-hero-gradient: linear-gradient(68deg, #7A6DEC 15.56%, #5B39F3 62.74%, #4101DB 84.44%);
+      --font-heading: 'Space Grotesk', 'Inter', system-ui, -apple-system, sans-serif;
+      --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-mono: 'Fira Code', 'SF Mono', 'Consolas', monospace;
+    }
+
+    /* Reveal.js typography overrides */
+    .reveal { font-family: var(--font-body); color: var(--blitzy-ink); }
+    .reveal h1, .reveal h2, .reveal h3, .reveal h4 {
+      font-family: var(--font-heading);
+      color: var(--blitzy-edge);
+      letter-spacing: -0.01em;
+      text-transform: none;
+      font-weight: 600;
+      line-height: 1.1;
+    }
+    .reveal p, .reveal li { line-height: 1.45; font-weight: 400; }
+    .reveal code, .reveal pre, .reveal kbd {
+      font-family: var(--font-mono);
+      background: var(--blitzy-mist);
+      color: var(--blitzy-edge);
+      padding: 0.08em 0.35em;
+      border-radius: 4px;
+      font-size: 0.88em;
+    }
+    .reveal a { color: var(--blitzy-purple-2); }
+
+    /* Slide-type classes */
+    .reveal .slide-title {
+      background: var(--blitzy-hero-gradient);
+      color: var(--blitzy-paper);
+    }
+    .reveal .slide-title h1,
+    .reveal .slide-title h2,
+    .reveal .slide-title p { color: var(--blitzy-paper); }
+    .reveal .slide-title .footer-text { color: rgba(255, 255, 255, 0.85); }
+
+    .reveal .slide-divider {
+      background: var(--blitzy-edge);
+      color: var(--blitzy-paper);
+    }
+    .reveal .slide-divider h2 { color: var(--blitzy-paper); }
+
+    .reveal .slide-closing {
+      background: var(--blitzy-ink);
+      color: var(--blitzy-paper);
+    }
+    .reveal .slide-closing h2,
+    .reveal .slide-closing p { color: var(--blitzy-paper); }
+    .reveal .slide-closing .gradient-bar {
+      height: 6px; width: 240px; margin: 1.5rem auto 0;
+      background: var(--blitzy-hero-gradient); border-radius: 3px;
+    }
+
+    /* Lucide icon sizing classes */
+    .reveal .icon-hero {
+      width: 96px; height: 96px; stroke-width: 1.5;
+      color: var(--blitzy-accent-mint);
+      margin: 1.2rem auto; display: block;
+    }
+    .reveal .icon-large {
+      width: 192px; height: 192px; stroke-width: 1.5;
+      margin: 1.8rem auto 0.8rem; display: block;
+    }
+    .reveal .slide-divider .icon-large { color: var(--blitzy-paper); }
+    .reveal .icon-amber { color: var(--blitzy-accent-amber); }
+    .reveal .icon-bullet {
+      width: 36px; height: 36px; stroke-width: 1.75;
+      color: var(--blitzy-purple-2);
+      flex: 0 0 36px;
+    }
+
+    /* Icon-bullet list */
+    .reveal .icon-list { list-style: none; padding: 0; margin: 1.4rem 0 0; }
+    .reveal .icon-list li {
+      display: flex; align-items: center; gap: 1rem;
+      padding: 0.7rem 0;
+      font-size: 0.92em;
+      line-height: 1.45;
+    }
+    .reveal .icon-list li > .text { flex: 1; }
+    .reveal .icon-list-three li { padding: 0.85rem 0; }
+
+    /* KPI tiles (slide 6) */
+    .reveal .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.25rem;
+      margin: 1.5rem 0 1rem;
+    }
+    .reveal .kpi-tile {
+      padding: 2rem 1.25rem;
+      border-radius: 12px;
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(14, 11, 31, 0.06);
+    }
+    .reveal .kpi-tile .kpi-label {
+      font-family: var(--font-heading);
+      font-size: 0.62em;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      opacity: 0.92;
+    }
+    .reveal .kpi-tile .kpi-value {
+      font-family: var(--font-heading);
+      font-size: 3.4em;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .reveal .kpi-critical { background: var(--blitzy-accent-rose); color: var(--blitzy-paper); }
+    .reveal .kpi-high     { background: var(--blitzy-accent-amber); color: var(--blitzy-ink); }
+    .reveal .kpi-medium   { background: var(--blitzy-mist); color: var(--blitzy-edge); border: 1px solid var(--blitzy-fog); }
+    .reveal .kpi-low      { background: var(--blitzy-accent-mint); color: var(--blitzy-ink); }
+
+    /* Field-name badge row (slide 10) */
+    .reveal .badge-row {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin: 1.8rem 0 1.2rem;
+    }
+    .reveal .field-badge {
+      font-family: var(--font-mono);
+      font-size: 1em;
+      padding: 0.7rem 1.2rem;
+      border-radius: 999px;
+      background: var(--blitzy-mist);
+      color: var(--blitzy-edge);
+      border: 1px solid var(--blitzy-fog);
+      font-weight: 500;
+    }
+
+    /* Mermaid containers */
+    .reveal .mermaid {
+      background: var(--blitzy-paper);
+      padding: 1.2rem;
+      border-radius: 12px;
+      border: 1px solid var(--blitzy-fog);
+      margin: 1rem auto;
+      max-width: 1500px;
+      display: flex;
+      justify-content: center;
+      min-height: 80px;
+    }
+    .reveal .mermaid-compact { max-width: 800px; }
+    /* Force the rendered Mermaid SVG to fit the container regardless of
+       whether the SVG was sized correctly at render time (Reveal.js hides
+       non-present slides with display:none which collapses container width). */
+    .reveal .mermaid > svg {
+      max-width: 100% !important;
+      width: 100% !important;
+      height: auto !important;
+    }
+
+    /* Layout helpers */
+    .reveal section { text-align: left; }
+    .reveal section.slide-title,
+    .reveal section.slide-divider,
+    .reveal section.slide-closing { text-align: center; }
+    .reveal section h1, .reveal section h2 { margin-bottom: 0.55em; }
+
+    .reveal .caption {
+      color: rgba(14, 11, 31, 0.7);
+      font-size: 0.78em;
+      margin-top: 0.8rem;
+    }
+    .reveal .slide-title .caption,
+    .reveal .slide-divider .caption,
+    .reveal .slide-closing .caption { color: rgba(255, 255, 255, 0.85); }
+
+    .reveal .footer-text {
+      /* Flow naturally as the last child of title/closing slides so it cannot
+         collide with the vertically-centered content above it. */
+      text-align: center;
+      font-family: var(--font-heading);
+      font-size: 0.5em;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      opacity: 0.92;
+      margin-top: 2.2rem;
+      margin-bottom: 0;
+    }
+    .reveal .slide-closing .footer-text { margin-top: 1.4rem; }
+
+    .reveal .hero-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.5em;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      margin-bottom: 0.7rem;
+      opacity: 0.92;
+    }
+    .reveal section h1.hero-headline { font-size: 1.75em; line-height: 1.05; }
+    .reveal .subhead { font-size: 0.78em; opacity: 0.92; margin-top: 0.4rem; }
+
+    /* Slide 13 risks intro caption */
+    .reveal .caption-centered {
+      text-align: center;
+      color: var(--blitzy-edge);
+      font-size: 0.88em;
+      max-width: 900px;
+      margin: 0.4rem auto 0;
+    }
+
+    /* Suppress reveal's default uppercase headings explicitly */
+    .reveal h1, .reveal h2 { text-transform: none; }
+  </style>
+</head>
+<body>
+  <div class="reveal">
+    <div class="slides">
+
+      <!-- Slide 1 of 16: TITLE -->
+      <section class="slide-title">
+        <i data-lucide="shield-check" class="icon-hero" aria-hidden="true"></i>
+        <div class="hero-eyebrow">Snyk CLI security scan</div>
+        <h1 class="hero-headline">Config H — Snyk Scan</h1>
+        <p class="subhead">blitzy-tgr-dnsmasq-rust security findings inventory</p>
+        <p class="footer-text">Multi-config comparison • Config H of N</p>
+      </section>
+
+      <!-- Slide 2 of 16: DIVIDER -->
+      <section class="slide-divider">
+        <h2>What Was Done</h2>
+        <i data-lucide="play-circle" class="icon-large" aria-hidden="true"></i>
+      </section>
+
+      <!-- Slide 3 of 16: CONTENT — Mission summary -->
+      <section>
+        <h2>Four directives, one deliverable</h2>
+        <ul class="icon-list">
+          <li>
+            <i data-lucide="download" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text">Install and authenticate the Snyk CLI.</span>
+          </li>
+          <li>
+            <i data-lucide="scan-line" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text">Run the SAST scan via <code>snyk code test</code>.</span>
+          </li>
+          <li>
+            <i data-lucide="package-search" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text">Run the dependency scan via <code>snyk test</code>, with SBOM fallback.</span>
+          </li>
+          <li>
+            <i data-lucide="file-json" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text">Normalize the two artifacts into <code>findings-config-h.json</code>.</span>
+          </li>
+        </ul>
+      </section>
+
+      <!-- Slide 4 of 16: CONTENT — Pipeline architecture (Mermaid graph LR) -->
+      <section>
+        <h2>End-to-end pipeline</h2>
+        <pre class="mermaid">
+graph LR
+  A[Install + Auth] --&gt; B[SAST: snyk code test]
+  A --&gt; C[Deps: snyk test / sbom test]
+  B --&gt; D[SARIF]
+  C --&gt; E[Snyk JSON]
+  D --&gt; F[jq normalize]
+  E --&gt; F
+  F --&gt; G[findings-config-h.json]
+        </pre>
+        <p class="caption">Two parallel scans converge into one minified JSON deliverable.</p>
+      </section>
+
+      <!-- Slide 5 of 16: DIVIDER -->
+      <section class="slide-divider">
+        <h2>What We Found</h2>
+        <i data-lucide="search" class="icon-large" aria-hidden="true"></i>
+      </section>
+
+      <!-- Slide 6 of 16: CONTENT — Headline KPIs (from findings-config-h.json which is the empty array []) -->
+      <section>
+        <h2>Findings at a glance</h2>
+        <div class="kpi-grid">
+          <div class="kpi-tile kpi-critical">
+            <div class="kpi-label">Critical</div>
+            <div class="kpi-value">0</div>
+          </div>
+          <div class="kpi-tile kpi-high">
+            <div class="kpi-label">High</div>
+            <div class="kpi-value">0</div>
+          </div>
+          <div class="kpi-tile kpi-medium">
+            <div class="kpi-label">Medium</div>
+            <div class="kpi-value">0</div>
+          </div>
+          <div class="kpi-tile kpi-low">
+            <div class="kpi-label">Low</div>
+            <div class="kpi-value">0</div>
+          </div>
+        </div>
+        <p class="caption">Zero findings reflects either a clean scan or an unauthenticated scan; see the decisions log.</p>
+      </section>
+
+      <!-- Slide 7 of 16: CONTENT — Scan scope -->
+      <section>
+        <h2>Scope of the scan</h2>
+        <ul class="icon-list">
+          <li>
+            <i data-lucide="folder-tree" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text"><code>src/</code>: 63 Rust files across nine subsystems.</span>
+          </li>
+          <li>
+            <i data-lucide="file-code" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text"><code>build.rs</code>: the build script.</span>
+          </li>
+          <li>
+            <i data-lucide="file-text" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text"><code>Cargo.toml</code> plus <code>Cargo.lock</code>: the dependency manifest.</span>
+          </li>
+          <li>
+            <i data-lucide="file-cog" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text"><code>tests/</code>, <code>benches/</code>, <code>examples/</code>: per Snyk Code defaults.</span>
+          </li>
+        </ul>
+      </section>
+
+      <!-- Slide 8 of 16: DIVIDER -->
+      <section class="slide-divider">
+        <h2>Why This Approach</h2>
+        <i data-lucide="lightbulb" class="icon-large" aria-hidden="true"></i>
+      </section>
+
+      <!-- Slide 9 of 16: CONTENT — Rust-specific deviations + small Mermaid flowchart -->
+      <section>
+        <h2>Rust meets Snyk: two deviations</h2>
+        <ul class="icon-list icon-list-three">
+          <li>
+            <i data-lucide="git-branch" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text">SBOM fallback: <code>cargo cyclonedx</code> plus <code>snyk sbom test</code>. Cargo manifests are not natively supported.</span>
+          </li>
+          <li>
+            <i data-lucide="flag-triangle-right" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text">SAST gating: Rust on Snyk Code is Early Access. Without entitlement, the SAST contribution is <code>[]</code>.</span>
+          </li>
+          <li>
+            <i data-lucide="compass" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text">Both deviations are deterministic and documented in <code>decisions-config-h.md</code>.</span>
+          </li>
+        </ul>
+        <pre class="mermaid mermaid-compact">
+flowchart LR
+  A{snyk test} --&gt;|supports| B[Native scan]
+  A --&gt;|Rust| C[cargo cyclonedx]
+  C --&gt; D[snyk sbom test]
+        </pre>
+      </section>
+
+      <!-- Slide 10 of 16: CONTENT — Schema fidelity (five field badges) -->
+      <section>
+        <h2>Five fields, every time</h2>
+        <div class="badge-row">
+          <span class="field-badge">file</span>
+          <span class="field-badge">line</span>
+          <span class="field-badge">severity</span>
+          <span class="field-badge">cwe</span>
+          <span class="field-badge">description</span>
+        </div>
+        <p class="caption">Single-line minified UTF-8 JSON. Descriptions truncated to 200 Unicode scalars. Severity union is closed.</p>
+      </section>
+
+      <!-- Slide 11 of 16: DIVIDER -->
+      <section class="slide-divider">
+        <h2>What Changed Architecturally</h2>
+        <i data-lucide="git-pull-request-arrow" class="icon-large" aria-hidden="true"></i>
+      </section>
+
+      <!-- Slide 12 of 16: CONTENT — Repository impact -->
+      <section>
+        <h2>Zero source-tree modifications</h2>
+        <ul class="icon-list">
+          <li>
+            <i data-lucide="lock" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text"><code>src/</code>, <code>tests/</code>, <code>benches/</code>, <code>examples/</code> untouched.</span>
+          </li>
+          <li>
+            <i data-lucide="lock" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text"><code>Cargo.toml</code>, <code>Cargo.lock</code>, <code>build.rs</code> untouched.</span>
+          </li>
+          <li>
+            <i data-lucide="file-plus" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text">Six new artifacts written at the workspace root.</span>
+          </li>
+          <li>
+            <i data-lucide="terminal" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text">Host state: Snyk CLI installed globally only.</span>
+          </li>
+        </ul>
+      </section>
+
+      <!-- Slide 13 of 16: CONTENT — What Risks Exist (intro-flavor content, amber triangle-alert) -->
+      <section>
+        <h2 style="text-align: center;">What Risks Exist</h2>
+        <i data-lucide="triangle-alert" class="icon-large icon-amber" aria-hidden="true"></i>
+        <p class="caption-centered">The deliverable lists findings. Reading it requires understanding the scan's authentication state and the truncation rules.</p>
+      </section>
+
+      <!-- Slide 14 of 16: CONTENT — Operational considerations -->
+      <section>
+        <h2>Constraints to know</h2>
+        <ul class="icon-list">
+          <li>
+            <i data-lucide="wifi" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text">Snyk requires network access; no offline mode.</span>
+          </li>
+          <li>
+            <i data-lucide="key-round" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text"><code>SNYK_TOKEN</code> must be present in the runtime environment.</span>
+          </li>
+          <li>
+            <i data-lucide="clock" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text">Exit codes and wall-clock durations are recorded in <code>decisions-config-h.md</code>.</span>
+          </li>
+          <li>
+            <i data-lucide="eye" class="icon-bullet" aria-hidden="true"></i>
+            <span class="text">Per-config result; no cross-tool reconciliation in scope.</span>
+          </li>
+        </ul>
+      </section>
+
+      <!-- Slide 15 of 16: DIVIDER -->
+      <section class="slide-divider">
+        <h2>How the Team Onboards</h2>
+        <i data-lucide="book-open-check" class="icon-large" aria-hidden="true"></i>
+      </section>
+
+      <!-- Slide 16 of 16: CLOSING -->
+      <section class="slide-closing">
+        <i data-lucide="circle-check-big" class="icon-hero" aria-hidden="true"></i>
+        <h2>Reproducible. Auditable. One file.</h2>
+        <p class="subhead" style="max-width: 1300px; margin: 0.5rem auto 0;">Re-run the harness; same inputs yield byte-identical outputs. The decisions log explains every deviation.</p>
+        <div class="gradient-bar"></div>
+        <p class="footer-text">Config H • blitzy-tgr-dnsmasq-rust</p>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- reveal.js 5.1.0 (UMD) -->
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+
+  <!-- Lucide 0.460.0 (UMD) -->
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
+
+  <!-- Mermaid 11.4.0 (ESM) + Reveal/Lucide/Mermaid wiring -->
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs';
+
+    // Initialize Mermaid with startOnLoad disabled; Blitzy palette mapped into theme variables.
+    // useMaxWidth forces the SVG to expand to its container width when rendered.
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'base',
+      securityLevel: 'loose',
+      fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+      flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis', padding: 16 },
+      themeVariables: {
+        primaryColor:        '#F4F2FB',
+        primaryTextColor:    '#2A2350',
+        primaryBorderColor:  '#5B39F3',
+        lineColor:           '#4101DB',
+        secondaryColor:      '#DCD7F2',
+        secondaryTextColor:  '#2A2350',
+        secondaryBorderColor:'#7A6DEC',
+        tertiaryColor:       '#FFFFFF',
+        tertiaryTextColor:   '#2A2350',
+        tertiaryBorderColor: '#DCD7F2',
+        clusterBkg:          '#F4F2FB',
+        clusterBorder:       '#5B39F3',
+        edgeLabelBackground: '#FFFFFF',
+        fontSize:            '15px'
+      }
+    });
+
+    // Post-processing fix: Mermaid sizes foreignObject boxes using its internal text
+    // measurement, which can be slightly narrower than the actual rendered width once
+    // Inter loads. This helper widens any foreignObject whose child content overflows,
+    // and adjusts the parent node's <rect> so the box visually contains the label.
+    // Also widens edge labels (in g.edgeLabel containers).
+    function fitMermaidLabels(scope) {
+      const root = scope && scope.querySelectorAll ? scope : document;
+      root.querySelectorAll('.mermaid svg').forEach((svg) => {
+        const viewBox = svg.viewBox && svg.viewBox.baseVal;
+        const svgRect = svg.getBoundingClientRect();
+        if (!viewBox || !svgRect.width || !viewBox.width) return;
+        const scale = viewBox.width / svgRect.width;
+        const buffer = 8;
+
+        // Pass 1: widen node-label foreignObjects and their wrapping <rect>s.
+        svg.querySelectorAll('g.node foreignObject').forEach((fo) => {
+          const child = fo.firstElementChild;
+          if (!child) return;
+          const childRect = child.getBoundingClientRect();
+          if (!childRect.width) return;
+          const childWidthSvg = childRect.width * scale;
+          const foWidth = parseFloat(fo.getAttribute('width')) || 0;
+          if (childWidthSvg + buffer > foWidth) {
+            const newWidth = childWidthSvg + buffer;
+            const delta = newWidth - foWidth;
+            const foX = parseFloat(fo.getAttribute('x')) || 0;
+            fo.setAttribute('width', String(newWidth));
+            fo.setAttribute('x', String(foX - delta / 2));
+            const parentG = fo.closest('g.node');
+            if (parentG) {
+              parentG.querySelectorAll('rect').forEach((rect) => {
+                const rectWidth = parseFloat(rect.getAttribute('width')) || 0;
+                const rectX = parseFloat(rect.getAttribute('x')) || 0;
+                rect.setAttribute('width', String(rectWidth + delta));
+                rect.setAttribute('x', String(rectX - delta / 2));
+              });
+            }
+          }
+        });
+
+        // Pass 2: widen edge-label foreignObjects (e.g., "supports", "Rust" arrow labels)
+        // so their text is not clipped at the boundary.
+        svg.querySelectorAll('g.edgeLabel foreignObject, .edgeLabel foreignObject').forEach((fo) => {
+          const child = fo.firstElementChild;
+          if (!child) return;
+          const childRect = child.getBoundingClientRect();
+          if (!childRect.width) return;
+          const childWidthSvg = childRect.width * scale;
+          const foWidth = parseFloat(fo.getAttribute('width')) || 0;
+          if (childWidthSvg + buffer > foWidth) {
+            const newWidth = childWidthSvg + buffer;
+            const delta = newWidth - foWidth;
+            const foX = parseFloat(fo.getAttribute('x')) || 0;
+            fo.setAttribute('width', String(newWidth));
+            fo.setAttribute('x', String(foX - delta / 2));
+          }
+        });
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // Initial pass: instantiate Lucide icons across the whole document.
+      // Mermaid is intentionally NOT run here; Reveal.js hides non-present slides
+      // with display:none which collapses container width and yields empty SVGs.
+      if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+      }
+
+      // Initialize Reveal.js with the mandatory configuration keys.
+      Reveal.initialize({
+        hash: true,
+        transition: 'slide',
+        controlsTutorial: false,
+        width: 1920,
+        height: 1080,
+        margin: 0.06,
+        slideNumber: 'c/t',
+        plugins: []
+      });
+
+      // After Reveal lays out the first slide, render any Mermaid diagrams it contains.
+      // We wait for web fonts to finish loading so Mermaid measures node text widths
+      // with the final font (Inter) rather than the fallback (which would yield
+      // narrower boxes and visually clipped labels).
+      Reveal.on('ready', async (event) => {
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+          window.lucide.createIcons();
+        }
+        if (document.fonts && document.fonts.ready) {
+          try { await document.fonts.ready; } catch (_e) { /* ignore */ }
+        }
+        const slide = (event && event.currentSlide) || document.querySelector('section.present') || document;
+        const pending = slide.querySelectorAll('.mermaid:not([data-processed="true"])');
+        if (pending.length > 0) {
+          await mermaid.run({ nodes: Array.from(pending) });
+          // Defer the label-fit pass to next frame so the SVG has been measured.
+          requestAnimationFrame(() => fitMermaidLabels(slide));
+        }
+      });
+
+      // On each slide change, refresh Lucide icons and render any not-yet-processed
+      // Mermaid diagrams on the newly-shown slide (where containers now have width).
+      Reveal.on('slidechanged', async (event) => {
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+          window.lucide.createIcons();
+        }
+        if (document.fonts && document.fonts.ready) {
+          try { await document.fonts.ready; } catch (_e) { /* ignore */ }
+        }
+        const slide = (event && event.currentSlide) || document.querySelector('section.present') || document;
+        const pending = slide.querySelectorAll('.mermaid:not([data-processed="true"])');
+        if (pending.length > 0) {
+          await mermaid.run({ nodes: Array.from(pending) });
+          requestAnimationFrame(() => fitMermaidLabels(slide));
+        } else {
+          // Previously-rendered diagrams may still have clipped labels if fonts
+          // arrived after the first render — re-fit on every navigation.
+          requestAnimationFrame(() => fitMermaidLabels(slide));
+        }
+      });
+    });
+  </script>
+</body>
+</html>
