@@ -37,6 +37,22 @@ set -o nounset
 set -o pipefail
 
 # ---------------------------------------------------------------------------
+# CR1-25: Ensure rustup-installed cargo is reachable by sonar-scanner.
+#
+# SonarQube's Rust analyzer invokes ``cargo`` to probe the workspace per AAP
+# §0.8.1; when cargo is absent from PATH, the Clippy sensor (which carries
+# the bulk of the Rust ruleset) silently falls back to file-only analysis.
+# rustup installs cargo at ``$HOME/.cargo/bin``, and its env file is
+# idempotent (it is a no-op when ``$HOME/.cargo/bin`` is already present in
+# PATH), so unconditional sourcing here is safe on hosts that already have
+# cargo on the system PATH.
+# ---------------------------------------------------------------------------
+if [ -f "${HOME:-/root}/.cargo/env" ]; then
+  # shellcheck disable=SC1091  # path is dynamic by design
+  . "${HOME:-/root}/.cargo/env"
+fi
+
+# ---------------------------------------------------------------------------
 # CR1-24: Idempotent teardown trap registered at top of script.
 #
 # Both subcommands are silenced because the container may not exist if the
@@ -193,20 +209,86 @@ except json.JSONDecodeError:
 done
 
 # ===========================================================================
+# CR1-26: Mint a short-lived scanner token from the literal admin/admin
+# credentials.
+#
+# Current SonarQube Community Build releases (≥ v26.5.0) reject
+# ``sonar.login``/``sonar.password`` in the scanner protocol with
+# "Not authorized. Please check the user token in the property
+# 'sonar.token' or 'sonar.login' (deprecated)." while keeping admin/admin
+# Basic auth available on the REST API (verified in Checkpoint 1 QA
+# evidence). The user-supplied admin/admin credentials remain the
+# authoritative authentication input; this step uses them via HTTP Basic
+# auth on ``POST /api/user_tokens/generate`` to obtain an ephemeral
+# scanner token that satisfies the new scanner protocol.
+#
+# The token is bound to the ephemeral container's H2 database and is
+# destroyed by the teardown trap at the end of the run, preserving the
+# AAP §0.8.1 ephemeral-credentials risk-mitigation chain: "the entire
+# SonarQube state is destroyed by the teardown step. This is the safest
+# behavior for an ephemeral run."
+# ===========================================================================
+echo "==> Minting ephemeral scanner token"
+TOKEN_NAME="config-i-scan-$(date +%s)"
+
+# Best-effort cleanup of any same-named token from a prior failed run,
+# then mint a fresh one. Both calls are scoped to the ephemeral container.
+curl --silent --show-error --fail \
+     --connect-timeout 2 --max-time 10 \
+     -u "${SONAR_LOGIN}:${SONAR_PASSWORD}" \
+     -X POST \
+     --data-urlencode "name=${TOKEN_NAME}" \
+     "${SONAR_HOST_URL}/api/user_tokens/revoke" \
+     >/dev/null 2>&1 || true
+
+TOKEN_RESPONSE="$(
+  curl --silent --show-error --fail \
+       --connect-timeout 2 --max-time 10 \
+       -u "${SONAR_LOGIN}:${SONAR_PASSWORD}" \
+       -X POST \
+       --data-urlencode "name=${TOKEN_NAME}" \
+       --data-urlencode "type=GLOBAL_ANALYSIS_TOKEN" \
+       "${SONAR_HOST_URL}/api/user_tokens/generate"
+)"
+
+SONAR_TOKEN="$(
+  printf '%s' "${TOKEN_RESPONSE}" \
+    | "${PYTHON_BIN}" -c 'import json,sys
+try:
+    print(json.loads(sys.stdin.read() or "{}").get("token", ""))
+except json.JSONDecodeError:
+    print("")' 2>/dev/null
+)"
+
+if [ -z "${SONAR_TOKEN}" ]; then
+  echo "ERROR: /api/user_tokens/generate returned no token. Response was: ${TOKEN_RESPONSE}" >&2
+  exit 4
+fi
+echo "    token name = ${TOKEN_NAME}"
+
+# ===========================================================================
 # D3: Execute the scan.
 #
-# Properties are passed via -D flags (matching the user's literal D3
-# invocation) and ALSO written to a sonar-project.properties side-car file
-# co-located with this script for auditability. The scanner runs with the
-# CWD set to REPO_ROOT so that relative paths in the scan output are
-# rooted at the workspace.
+# The scanner is invoked with ``sonar.token=<TOKEN>`` (the modern auth
+# property) instead of the legacy ``sonar.login``/``sonar.password`` pair,
+# per the QA Checkpoint 1 MAJOR finding (Issue #1). The other five
+# properties are passed verbatim from the user's literal D3 example. A
+# side-car ``sonar-project.properties`` file is regenerated next to this
+# script for human auditability; it documents the user-supplied static
+# values (sonar.login=admin, sonar.password=admin) but contains no
+# generated secret. The file lives outside version control (see
+# ``blitzy/scripts/.gitignore``) so each run leaves the working tree
+# byte-identical to its pre-run state, satisfying AAP §0.6.2.4
+# ("Not committed to the repository") and §0.3.2.
 # ===========================================================================
 echo "==> D3: Running sonar-scanner"
 
-# Update the properties file with the resolved absolute source path so it
-# remains a faithful mirror of the -D flags actually passed below.
 cat > "${PROPERTIES_FILE}" <<EOF
 # Auto-regenerated by run_sonarqube_scan.sh. Edit the .sh, not this file.
+# This file is transient (gitignored) and exists for audit visibility only;
+# it is NOT read by the scanner because run_sonarqube_scan.sh passes every
+# property via -D flags. The runtime ``-Dsonar.token`` is intentionally
+# omitted from this file to avoid persisting the generated secret to disk.
 sonar.projectKey=${PROJECT_KEY}
 sonar.sources=${REPO_ROOT}
 sonar.host.url=${SONAR_HOST_URL}
@@ -221,8 +303,7 @@ sonar-scanner \
   "-Dsonar.projectKey=${PROJECT_KEY}" \
   "-Dsonar.sources=${REPO_ROOT}" \
   "-Dsonar.host.url=${SONAR_HOST_URL}" \
-  "-Dsonar.login=${SONAR_LOGIN}" \
-  "-Dsonar.password=${SONAR_PASSWORD}" \
+  "-Dsonar.token=${SONAR_TOKEN}" \
   "-Dsonar.qualitygate.wait=true"
 SCANNER_EXIT=$?
 set -e
@@ -280,11 +361,15 @@ docker stop "${CONTAINER_NAME}" >/dev/null 2>&1 || true
 docker rm   "${CONTAINER_NAME}" >/dev/null 2>&1 || true
 
 # Telemetry summary for the decision-log header (Checkpoint 2 deliverable).
+# The token VALUE is never echoed; only the token NAME (a non-secret
+# identifier of the form ``config-i-scan-<epoch>``) is recorded so the
+# decision log can correlate a run to its scanner-authentication artifact.
 echo ""
 echo "==> Telemetry"
 echo "    image_digest         = ${IMAGE_DIGEST}"
 echo "    image_pull_time_s    = ${IMAGE_PULL_TIME_S}"
 echo "    cold_start_time_s    = ${COLD_START_TIME_S}"
+echo "    scanner_token_name   = ${TOKEN_NAME}"
 echo "    scan_wall_clock_s    = ${SCAN_WALL_CLOCK_S}"
 echo "    scanner_exit         = ${SCANNER_EXIT}"
 echo "    output_file          = ${OUTPUT_FILE}"

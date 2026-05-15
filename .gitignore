@@ -28,3 +28,13 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# SonarQube scanner runtime artifacts (see blitzy/scripts/run_sonarqube_scan.sh).
+# The scanner writes its workspace cache under ``.scannerwork/`` in its CWD
+# (which is REPO_ROOT for our driver), and a transient sonar-project.properties
+# may be regenerated at runtime. Both are gitignored here so each scan leaves
+# the working tree byte-identical to its pre-run state, per AAP §0.3.2 and
+# §0.6.2.4. The user-named deliverable ``findings-config-i.json`` is the only
+# scanner artifact that IS committed and is excluded from these rules.
+.scannerwork/
+sonar-project.properties
