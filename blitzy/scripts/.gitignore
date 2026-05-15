@@ -1,0 +1,10 @@
+# Python build artifacts (sonar_pipeline.py is invoked directly; never commit caches)
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime artifacts produced by run_sonarqube_scan.sh that must never be committed.
+# The driver may write transient debug dumps and a regenerated properties file
+# next to itself; these are reproducible from a fresh run.
+sonar-issues-raw.json
+sonar-scanner-output.log
