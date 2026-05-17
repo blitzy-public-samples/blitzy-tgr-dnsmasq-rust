@@ -1,9 +1,10 @@
 {
   "bomFormat": "CycloneDX",
-  "specVersion": "1.4",
+  "specVersion": "1.5",
   "version": 1,
+  "serialNumber": "urn:uuid:2ca9d2bd-5c0a-4a40-9d4b-c35257d649e9",
   "metadata": {
-    "timestamp": "2023-11-14T22:13:20.000000000Z",
+    "timestamp": "2026-05-17T16:52:53.353687979Z",
     "tools": [
       {
         "vendor": "CycloneDX",
@@ -18,7 +19,7 @@
     ],
     "component": {
       "type": "application",
-      "bom-ref": "path+file:%SRCROOT%#dnsmasq@2.92.0",
+      "bom-ref": "path+file:///tmp/blitzy/blitzy-tgr-dnsmasq-rust/blitzy-d26589a1-12ea-4a87-8155-b16ae267b3f4_e58384#dnsmasq@2.92.0",
       "author": "Dnsmasq Contributors",
       "name": "dnsmasq",
       "version": "2.92.0",
@@ -39,14 +40,14 @@
       "components": [
         {
           "type": "library",
-          "bom-ref": "path+file:%SRCROOT%#dnsmasq@2.92.0 bin-target-0",
+          "bom-ref": "path+file:///tmp/blitzy/blitzy-tgr-dnsmasq-rust/blitzy-d26589a1-12ea-4a87-8155-b16ae267b3f4_e58384#dnsmasq@2.92.0 bin-target-0",
           "name": "dnsmasq",
           "version": "2.92.0",
           "purl": "pkg:cargo/dnsmasq@2.92.0?download_url=file://.#src/lib.rs"
         },
         {
           "type": "application",
-          "bom-ref": "path+file:%SRCROOT%#dnsmasq@2.92.0 bin-target-1",
+          "bom-ref": "path+file:///tmp/blitzy/blitzy-tgr-dnsmasq-rust/blitzy-d26589a1-12ea-4a87-8155-b16ae267b3f4_e58384#dnsmasq@2.92.0 bin-target-1",
           "name": "dnsmasq",
           "version": "2.92.0",
           "purl": "pkg:cargo/dnsmasq@2.92.0?download_url=file://.#src/main.rs"
@@ -7234,7 +7235,7 @@
   ],
   "dependencies": [
     {
-      "ref": "path+file:%SRCROOT%#dnsmasq@2.92.0",
+      "ref": "path+file:///tmp/blitzy/blitzy-tgr-dnsmasq-rust/blitzy-d26589a1-12ea-4a87-8155-b16ae267b3f4_e58384#dnsmasq@2.92.0",
       "dependsOn": [
         "registry+https://github.com/rust-lang/crates.io-index#ahash@0.8.12",
         "registry+https://github.com/rust-lang/crates.io-index#anyhow@1.0.100",

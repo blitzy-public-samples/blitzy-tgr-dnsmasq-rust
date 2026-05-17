@@ -143,8 +143,11 @@ SAST_FINDINGS="$(
 # --------------------------------------------------------------------------------------------
 #
 # Per AAP §0.6.3 mapping table:
-#   file        = vulnerabilities[].from[0] (typically the manifest path that introduced the
-#                 vulnerable package); falls back to .packageManager; falls back to "Cargo.toml".
+#   file        = "Cargo.toml" — the canonical relative dependency manifest path for Rust
+#                 projects. The AAP §0.4.1 mapping designates `Cargo.toml` as the `file` value
+#                 for dependency findings; `vulnerabilities[].from[0]` (e.g., "dnsmasq@2.92.0")
+#                 is a package identifier rather than a manifest path and therefore does not
+#                 satisfy the schema requirement.
 #   line        = always 0 (integer) per the user directive — Snyk OSS findings have no natural
 #                 line origin.
 #   severity    = vulnerabilities[].severity, passed through unchanged.
@@ -166,13 +169,7 @@ DEPS_FINDINGS="$(
       [
         (.vulnerabilities // []) | .[]? as $v |
         {
-          file:
-            (
-              if   (($v.from // []) | length) > 0 then ($v.from[0])
-              elif ($v.packageManager // "") != "" then ($v.packageManager)
-              else                                       "Cargo.toml"
-              end
-            ),
+          file: "Cargo.toml",
           line: 0,
           severity:
             (

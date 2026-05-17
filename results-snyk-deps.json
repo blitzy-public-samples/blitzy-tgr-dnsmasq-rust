@@ -1,1 +1,473 @@
-{"vulnerabilities":[]}
+{
+  "dependencyCount": 240,
+  "displayTargetFile": "sbom.cdx.json",
+  "filesystemPolicy": false,
+  "filtered": {
+    "ignore": [],
+    "patch": []
+  },
+  "hasUnknownVersions": false,
+  "ignoreSettings": {
+    "adminOnly": false,
+    "autoApproveIgnores": false,
+    "disregardFilesystemIgnores": false,
+    "reasonRequired": false
+  },
+  "isPrivate": true,
+  "licensesPolicy": {
+    "orgLicenseRules": null,
+    "severities": null
+  },
+  "ok": false,
+  "org": "c78a6b60-47b6-4bac-a32c-2cca9d06ad32",
+  "path": ".",
+  "policy": "",
+  "summary": "4 vulnerable dependency paths",
+  "targetFile": "sbom.cdx.json",
+  "uniqueCount": 3,
+  "vulnerabilities": [
+    {
+      "alternativeIds": [],
+      "creationTime": "2026-04-15T18:26:39.000000Z",
+      "credit": [
+        "Ryan Lopopolo"
+      ],
+      "cvssDetails": [],
+      "cvssScore": 8.2,
+      "cvssSources": [
+        {
+          "assigner": "Snyk",
+          "baseScore": 8.2,
+          "cvssVersion": "CVSSv4",
+          "modificationTime": "0001-01-01T00:00:00.000000Z",
+          "severity": "high",
+          "type": "primary",
+          "vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N"
+        },
+        {
+          "assigner": "Snyk",
+          "baseScore": 5.9,
+          "cvssVersion": "CVSSv31",
+          "modificationTime": "0001-01-01T00:00:00.000000Z",
+          "severity": "medium",
+          "type": "secondary",
+          "vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H"
+        }
+      ],
+      "description": "## Overview\n\nAffected versions of this package are vulnerable to Out-of-Bounds in the `TryRng` methods when the `log` and `thread_rng` features are enabled, a custom logger is defined, and the custom logger accesses `rand::rng()` and calls any `TryRng` methods on `ThreadRng`. If `ThreadRng` attempts to reseed while called from the custom logger, and trace-level logging is enabled or warn-level logging is enabled while the random source cannot provide a new seed, this can result in an aliased mutable reference. An attacker can trigger undefined behavior by causing the construction of aliased mutable references through these conditions.\n## Remediation\nUpgrade `rand` to version 0.8.6, 0.9.3, 0.10.1 or higher.\n## References\n- [GitHub Commit](https://github.com/rust-random/rand/commit/27ff4cb7ced3122a1f677fc248c1a07e59ddc8cd)\n- [GitHub Commit](https://github.com/rust-random/rand/commit/34db0aee0ff8eb9c9ea50c4e0f695ac6b878fc43)\n- [GitHub PR](https://github.com/rust-random/rand/pull/1763)\n- [RustSec Advisory](https://rustsec.org/advisories/RUSTSEC-2026-0097)\n",
+      "disclosureTime": "2026-04-09T00:00:00.000000Z",
+      "exploit": "Unreported",
+      "exploitDetails": {
+        "maturityLevels": [
+          {
+            "format": "CVSSv3",
+            "level": "Unproven",
+            "type": "secondary"
+          },
+          {
+            "format": "CVSSv4",
+            "level": "Unreported",
+            "type": "primary"
+          }
+        ],
+        "sources": []
+      },
+      "fixedIn": [
+        "0.8.6",
+        "0.9.3",
+        "0.10.1"
+      ],
+      "from": [
+        "dnsmasq@2.92.0",
+        "rand@0.8.5"
+      ],
+      "functions": [],
+      "id": "SNYK-RUST-RAND-16073005",
+      "identifiers": {
+        "CVE": [],
+        "CWE": [
+          "CWE-119"
+        ],
+        "GHSA": [
+          "GHSA-cq8v-f236-94qc"
+        ]
+      },
+      "isDisputed": false,
+      "isPatchable": false,
+      "isUpgradable": false,
+      "language": "rust",
+      "malicious": false,
+      "modificationTime": "2026-05-06T06:47:35.000000Z",
+      "name": "rand",
+      "packageManager": "cargo",
+      "packageName": "rand",
+      "patches": [],
+      "proprietary": false,
+      "publicationTime": "2026-04-15T18:26:39.000000Z",
+      "reachability": "not-applicable",
+      "references": [
+        {
+          "title": "GitHub Commit",
+          "url": "https://github.com/rust-random/rand/commit/27ff4cb7ced3122a1f677fc248c1a07e59ddc8cd"
+        },
+        {
+          "title": "GitHub Commit",
+          "url": "https://github.com/rust-random/rand/commit/34db0aee0ff8eb9c9ea50c4e0f695ac6b878fc43"
+        },
+        {
+          "title": "GitHub PR",
+          "url": "https://github.com/rust-random/rand/pull/1763"
+        },
+        {
+          "title": "RustSec Advisory",
+          "url": "https://rustsec.org/advisories/RUSTSEC-2026-0097"
+        }
+      ],
+      "semver": {
+        "vulnerable": [
+          ">=0.7.0-pre.0 <0.8.6",
+          ">=0.9.0-alpha.0 <0.9.3",
+          ">=0.10.0-rc.0 <0.10.1"
+        ]
+      },
+      "severity": "high",
+      "severityBasedOn": "CVSS",
+      "severityWithCritical": "high",
+      "socialTrendAlert": false,
+      "title": "Out-of-Bounds",
+      "upgradePath": [],
+      "version": "0.8.5"
+    },
+    {
+      "alternativeIds": [],
+      "creationTime": "2026-05-03T06:18:12.000000Z",
+      "credit": [
+        "David Cook"
+      ],
+      "cvssDetails": [],
+      "cvssScore": 8.7,
+      "cvssSources": [
+        {
+          "assigner": "Snyk",
+          "baseScore": 8.7,
+          "cvssVersion": "CVSSv4",
+          "modificationTime": "0001-01-01T00:00:00.000000Z",
+          "severity": "high",
+          "type": "primary",
+          "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N"
+        },
+        {
+          "assigner": "Snyk",
+          "baseScore": 7.5,
+          "cvssVersion": "CVSSv31",
+          "modificationTime": "0001-01-01T00:00:00.000000Z",
+          "severity": "high",
+          "type": "secondary",
+          "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+        }
+      ],
+      "description": "## Overview\n\nAffected versions of this package are vulnerable to Infinite loop in the `DnssecDnsHandle` process. An attacker can cause the process to enter an unbounded loop and exhaust system memory by returning a DNS response with an authority section containing an SOA record that is not an ancestor of the queried name, triggering repeated allocations. This is only exploitable if the `dnssec-ring` or `dnssec-aws-lc-rs` feature is enabled and DNSSEC validation is configured.\n## Remediation\nUpgrade `hickory-proto` to version 0.26.0-beta.1 or higher.\n## References\n- [GitHub Advisory](https://github.com/hickory-dns/hickory-dns/security/advisories/GHSA-3v94-mw7p-v465)\n- [GitHub Release](https://github.com/hickory-dns/hickory-dns/releases/tag/v0.26.1)\n- [RustSec Advisory](https://rustsec.org/advisories/RUSTSEC-2026-0118)\n- [RustSec Advisory](https://rustsec.org/advisories/RUSTSEC-2026-0120.html)\n",
+      "disclosureTime": "2026-05-01T00:00:00.000000Z",
+      "exploit": "Unreported",
+      "exploitDetails": {
+        "maturityLevels": [
+          {
+            "format": "CVSSv3",
+            "level": "Unproven",
+            "type": "secondary"
+          },
+          {
+            "format": "CVSSv4",
+            "level": "Unreported",
+            "type": "primary"
+          }
+        ],
+        "sources": []
+      },
+      "fixedIn": [
+        "0.26.0-beta.1"
+      ],
+      "from": [
+        "dnsmasq@2.92.0",
+        "hickory-client@0.25.2",
+        "hickory-proto@0.25.2"
+      ],
+      "functions": [],
+      "id": "SNYK-RUST-HICKORYPROTO-16346342",
+      "identifiers": {
+        "CVE": [],
+        "CWE": [
+          "CWE-835"
+        ],
+        "GHSA": [
+          "GHSA-3v94-mw7p-v465"
+        ]
+      },
+      "isDisputed": false,
+      "isPatchable": false,
+      "isUpgradable": false,
+      "language": "rust",
+      "malicious": false,
+      "modificationTime": "2026-05-03T06:18:12.000000Z",
+      "name": "hickory-proto",
+      "packageManager": "cargo",
+      "packageName": "hickory-proto",
+      "patches": [],
+      "proprietary": false,
+      "publicationTime": "2026-05-03T06:18:12.000000Z",
+      "reachability": "not-applicable",
+      "references": [
+        {
+          "title": "GitHub Advisory",
+          "url": "https://github.com/hickory-dns/hickory-dns/security/advisories/GHSA-3v94-mw7p-v465"
+        },
+        {
+          "title": "GitHub Release",
+          "url": "https://github.com/hickory-dns/hickory-dns/releases/tag/v0.26.1"
+        },
+        {
+          "title": "RustSec Advisory",
+          "url": "https://rustsec.org/advisories/RUSTSEC-2026-0118"
+        },
+        {
+          "title": "RustSec Advisory",
+          "url": "https://rustsec.org/advisories/RUSTSEC-2026-0120.html"
+        }
+      ],
+      "semver": {
+        "vulnerable": [
+          "<0.26.0-beta.1"
+        ]
+      },
+      "severity": "high",
+      "severityBasedOn": "CVSS",
+      "severityWithCritical": "high",
+      "socialTrendAlert": false,
+      "title": "Infinite loop",
+      "upgradePath": [],
+      "version": "0.25.2"
+    },
+    {
+      "alternativeIds": [],
+      "creationTime": "2026-04-15T18:26:39.000000Z",
+      "credit": [
+        "Ryan Lopopolo"
+      ],
+      "cvssDetails": [],
+      "cvssScore": 8.2,
+      "cvssSources": [
+        {
+          "assigner": "Snyk",
+          "baseScore": 8.2,
+          "cvssVersion": "CVSSv4",
+          "modificationTime": "0001-01-01T00:00:00.000000Z",
+          "severity": "high",
+          "type": "primary",
+          "vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N"
+        },
+        {
+          "assigner": "Snyk",
+          "baseScore": 5.9,
+          "cvssVersion": "CVSSv31",
+          "modificationTime": "0001-01-01T00:00:00.000000Z",
+          "severity": "medium",
+          "type": "secondary",
+          "vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H"
+        }
+      ],
+      "description": "## Overview\n\nAffected versions of this package are vulnerable to Out-of-Bounds in the `TryRng` methods when the `log` and `thread_rng` features are enabled, a custom logger is defined, and the custom logger accesses `rand::rng()` and calls any `TryRng` methods on `ThreadRng`. If `ThreadRng` attempts to reseed while called from the custom logger, and trace-level logging is enabled or warn-level logging is enabled while the random source cannot provide a new seed, this can result in an aliased mutable reference. An attacker can trigger undefined behavior by causing the construction of aliased mutable references through these conditions.\n## Remediation\nUpgrade `rand` to version 0.8.6, 0.9.3, 0.10.1 or higher.\n## References\n- [GitHub Commit](https://github.com/rust-random/rand/commit/27ff4cb7ced3122a1f677fc248c1a07e59ddc8cd)\n- [GitHub Commit](https://github.com/rust-random/rand/commit/34db0aee0ff8eb9c9ea50c4e0f695ac6b878fc43)\n- [GitHub PR](https://github.com/rust-random/rand/pull/1763)\n- [RustSec Advisory](https://rustsec.org/advisories/RUSTSEC-2026-0097)\n",
+      "disclosureTime": "2026-04-09T00:00:00.000000Z",
+      "exploit": "Unreported",
+      "exploitDetails": {
+        "maturityLevels": [
+          {
+            "format": "CVSSv3",
+            "level": "Unproven",
+            "type": "secondary"
+          },
+          {
+            "format": "CVSSv4",
+            "level": "Unreported",
+            "type": "primary"
+          }
+        ],
+        "sources": []
+      },
+      "fixedIn": [
+        "0.8.6",
+        "0.9.3",
+        "0.10.1"
+      ],
+      "from": [
+        "dnsmasq@2.92.0",
+        "hickory-resolver@0.25.2",
+        "rand@0.9.2"
+      ],
+      "functions": [],
+      "id": "SNYK-RUST-RAND-16073005",
+      "identifiers": {
+        "CVE": [],
+        "CWE": [
+          "CWE-119"
+        ],
+        "GHSA": [
+          "GHSA-cq8v-f236-94qc"
+        ]
+      },
+      "isDisputed": false,
+      "isPatchable": false,
+      "isUpgradable": false,
+      "language": "rust",
+      "malicious": false,
+      "modificationTime": "2026-05-06T06:47:35.000000Z",
+      "name": "rand",
+      "packageManager": "cargo",
+      "packageName": "rand",
+      "patches": [],
+      "proprietary": false,
+      "publicationTime": "2026-04-15T18:26:39.000000Z",
+      "reachability": "not-applicable",
+      "references": [
+        {
+          "title": "GitHub Commit",
+          "url": "https://github.com/rust-random/rand/commit/27ff4cb7ced3122a1f677fc248c1a07e59ddc8cd"
+        },
+        {
+          "title": "GitHub Commit",
+          "url": "https://github.com/rust-random/rand/commit/34db0aee0ff8eb9c9ea50c4e0f695ac6b878fc43"
+        },
+        {
+          "title": "GitHub PR",
+          "url": "https://github.com/rust-random/rand/pull/1763"
+        },
+        {
+          "title": "RustSec Advisory",
+          "url": "https://rustsec.org/advisories/RUSTSEC-2026-0097"
+        }
+      ],
+      "semver": {
+        "vulnerable": [
+          ">=0.7.0-pre.0 <0.8.6",
+          ">=0.9.0-alpha.0 <0.9.3",
+          ">=0.10.0-rc.0 <0.10.1"
+        ]
+      },
+      "severity": "high",
+      "severityBasedOn": "CVSS",
+      "severityWithCritical": "high",
+      "socialTrendAlert": false,
+      "title": "Out-of-Bounds",
+      "upgradePath": [],
+      "version": "0.9.2"
+    },
+    {
+      "alternativeIds": [],
+      "creationTime": "2026-05-03T06:12:56.000000Z",
+      "credit": [
+        "qifan-sailboat"
+      ],
+      "cvssDetails": [],
+      "cvssScore": 8.7,
+      "cvssSources": [
+        {
+          "assigner": "Snyk",
+          "baseScore": 8.7,
+          "cvssVersion": "CVSSv4",
+          "modificationTime": "0001-01-01T00:00:00.000000Z",
+          "severity": "high",
+          "type": "primary",
+          "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N"
+        },
+        {
+          "assigner": "Snyk",
+          "baseScore": 7.5,
+          "cvssVersion": "CVSSv31",
+          "modificationTime": "0001-01-01T00:00:00.000000Z",
+          "severity": "high",
+          "type": "secondary",
+          "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+        }
+      ],
+      "description": "## Overview\n\nAffected versions of this package are vulnerable to Inefficient Algorithmic Complexity via the `BinEncoder` process. An attacker can cause excessive CPU consumption by sending specially crafted messages with numerous records that trigger repeated linear scans for name compression candidates.\n## Remediation\nUpgrade `hickory-proto` to version 0.26.1 or higher.\n## References\n- [GitHub Advisory](https://github.com/hickory-dns/hickory-dns/security/advisories/GHSA-q2qq-hmj6-3wpp)\n- [GitHub Commit](https://github.com/hickory-dns/hickory-dns/commit/6e70e931515286a701b00ce91b06988eb71e89ef)\n- [GitHub Release](https://github.com/hickory-dns/hickory-dns/releases/tag/v0.26.1)\n- [RustSec Advisory](https://rustsec.org/advisories/RUSTSEC-2026-0119.html)\n",
+      "disclosureTime": "2026-05-01T00:00:00.000000Z",
+      "exploit": "Unreported",
+      "exploitDetails": {
+        "maturityLevels": [
+          {
+            "format": "CVSSv3",
+            "level": "Unproven",
+            "type": "secondary"
+          },
+          {
+            "format": "CVSSv4",
+            "level": "Unreported",
+            "type": "primary"
+          }
+        ],
+        "sources": []
+      },
+      "fixedIn": [
+        "0.26.1"
+      ],
+      "from": [
+        "dnsmasq@2.92.0",
+        "hickory-resolver@0.25.2",
+        "hickory-proto@0.25.2"
+      ],
+      "functions": [],
+      "id": "SNYK-RUST-HICKORYPROTO-16346057",
+      "identifiers": {
+        "CVE": [],
+        "CWE": [
+          "CWE-407"
+        ],
+        "GHSA": [
+          "GHSA-q2qq-hmj6-3wpp"
+        ]
+      },
+      "isDisputed": false,
+      "isPatchable": false,
+      "isUpgradable": false,
+      "language": "rust",
+      "malicious": false,
+      "modificationTime": "2026-05-07T10:42:44.000000Z",
+      "name": "hickory-proto",
+      "packageManager": "cargo",
+      "packageName": "hickory-proto",
+      "patches": [],
+      "proprietary": false,
+      "publicationTime": "2026-05-03T06:12:57.000000Z",
+      "reachability": "not-applicable",
+      "references": [
+        {
+          "title": "GitHub Advisory",
+          "url": "https://github.com/hickory-dns/hickory-dns/security/advisories/GHSA-q2qq-hmj6-3wpp"
+        },
+        {
+          "title": "GitHub Commit",
+          "url": "https://github.com/hickory-dns/hickory-dns/commit/6e70e931515286a701b00ce91b06988eb71e89ef"
+        },
+        {
+          "title": "GitHub Release",
+          "url": "https://github.com/hickory-dns/hickory-dns/releases/tag/v0.26.1"
+        },
+        {
+          "title": "RustSec Advisory",
+          "url": "https://rustsec.org/advisories/RUSTSEC-2026-0119.html"
+        }
+      ],
+      "semver": {
+        "vulnerable": [
+          ">=0.3.1 <0.26.1"
+        ]
+      },
+      "severity": "high",
+      "severityBasedOn": "CVSS",
+      "severityWithCritical": "high",
+      "socialTrendAlert": false,
+      "title": "Inefficient Algorithmic Complexity",
+      "upgradePath": [],
+      "version": "0.25.2"
+    }
+  ]
+}

@@ -1,605 +1,761 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <meta name="description" content="Executive summary for Config H — Snyk CLI scan of blitzy-tgr-dnsmasq-rust">
-  <title>Config H — Snyk Scan of blitzy-tgr-dnsmasq-rust</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Config H — Snyk Scan of blitzy-tgr-dnsmasq-rust</title>
 
-  <!-- Google Fonts: Inter (body), Space Grotesk (headings), Fira Code (mono) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
+<!--
+    Executive Presentation for Config H — Snyk CLI scan of blitzy-tgr-dnsmasq-rust.
 
-  <!-- reveal.js 5.1.0 stylesheet and white theme -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+    Conforms to the Executive Presentation rule:
+      - Self-contained: zero local file references; CDN-pinned reveal.js 5.1.0, Mermaid
+        11.4.0, Lucide 0.460.0.
+      - Sixteen slides, the target of the 12-18 range.
+      - Four slide types in use: slide-title (1), slide-divider (4), content (default,
+        10 slides), slide-closing (1).
+      - Every slide carries at least one non-text visual: KPI tiles, Mermaid diagram,
+        severity bars, Lucide icons, branded callouts.
+      - Zero emoji. Icons are Lucide SVG only.
+      - No fenced code blocks inside slides; short inline `Fira Code` spans only.
+      - Inter / Space Grotesk / Fira Code via Google Fonts.
+      - Mermaid initialized with startOnLoad:false; re-run on each slidechanged event.
+      - Lucide createIcons() called on each slidechanged event.
 
-  <style>
-    /* Blitzy brand palette as CSS custom properties on :root */
-    :root {
-      --blitzy-purple-1: #7A6DEC;
-      --blitzy-purple-2: #5B39F3;
-      --blitzy-purple-3: #4101DB;
-      --blitzy-ink: #0E0B1F;
-      --blitzy-paper: #FFFFFF;
-      --blitzy-mist: #F4F2FB;
-      --blitzy-fog:  #DCD7F2;
-      --blitzy-edge: #2A2350;
-      --blitzy-accent-mint: #58E5C0;
-      --blitzy-accent-amber: #F5B65A;
-      --blitzy-accent-rose: #F26D8E;
-      --blitzy-hero-gradient: linear-gradient(68deg, #7A6DEC 15.56%, #5B39F3 62.74%, #4101DB 84.44%);
-      --font-heading: 'Space Grotesk', 'Inter', system-ui, -apple-system, sans-serif;
-      --font-body: 'Inter', system-ui, -apple-system, sans-serif;
-      --font-mono: 'Fira Code', 'SF Mono', 'Consolas', monospace;
-    }
+    The Blitzy brand palette and typography are inlined below per the rule's CSS
+    custom-property block.
+-->
 
-    /* Reveal.js typography overrides */
-    .reveal { font-family: var(--font-body); color: var(--blitzy-ink); }
-    .reveal h1, .reveal h2, .reveal h3, .reveal h4 {
-      font-family: var(--font-heading);
-      color: var(--blitzy-edge);
-      letter-spacing: -0.01em;
-      text-transform: none;
-      font-weight: 600;
-      line-height: 1.1;
-    }
-    .reveal p, .reveal li { line-height: 1.45; font-weight: 400; }
-    .reveal code, .reveal pre, .reveal kbd {
-      font-family: var(--font-mono);
-      background: var(--blitzy-mist);
-      color: var(--blitzy-edge);
-      padding: 0.08em 0.35em;
-      border-radius: 4px;
-      font-size: 0.88em;
-    }
-    .reveal a { color: var(--blitzy-purple-2); }
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Fira+Code:wght@400;500&display=swap">
 
-    /* Slide-type classes */
-    .reveal .slide-title {
-      background: var(--blitzy-hero-gradient);
-      color: var(--blitzy-paper);
-    }
-    .reveal .slide-title h1,
-    .reveal .slide-title h2,
-    .reveal .slide-title p { color: var(--blitzy-paper); }
-    .reveal .slide-title .footer-text { color: rgba(255, 255, 255, 0.85); }
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/reveal.min.css">
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/theme/white.min.css"
+      id="theme">
 
-    .reveal .slide-divider {
-      background: var(--blitzy-edge);
-      color: var(--blitzy-paper);
-    }
-    .reveal .slide-divider h2 { color: var(--blitzy-paper); }
+<style>
+/* ---------------------------------------------------------------------------
+   Blitzy brand CSS custom properties — inlined per Executive Presentation rule.
+   --------------------------------------------------------------------------- */
+:root {
+  --blitzy-violet-100: #F2EFFE;
+  --blitzy-violet-300: #B7A8F5;
+  --blitzy-violet-500: #7A6DEC;
+  --blitzy-violet-600: #5B39F3;
+  --blitzy-violet-700: #4101DB;
+  --blitzy-violet-900: #1F0070;
+  --blitzy-ink-900:    #0F0B23;
+  --blitzy-ink-700:    #2A2240;
+  --blitzy-ink-500:    #4B4366;
+  --blitzy-ink-300:    #8A82A6;
+  --blitzy-mist-100:   #F7F7FB;
+  --blitzy-mist-200:   #EBEAF3;
+  --blitzy-mist-300:   #D6D4E4;
+  --blitzy-white:      #FFFFFF;
+  --blitzy-amber-500:  #F2A65A;
+  --blitzy-rose-500:   #E25C7C;
+  --blitzy-teal-500:   #2BB5A8;
+  --blitzy-emerald-500:#3FB37F;
+  --blitzy-hero-gradient: linear-gradient(68deg,
+      #7A6DEC 15.56%,
+      #5B39F3 62.74%,
+      #4101DB 84.44%);
+  --blitzy-accent-bar: linear-gradient(90deg,
+      #7A6DEC 0%, #5B39F3 50%, #4101DB 100%);
+}
 
-    .reveal .slide-closing {
-      background: var(--blitzy-ink);
-      color: var(--blitzy-paper);
-    }
-    .reveal .slide-closing h2,
-    .reveal .slide-closing p { color: var(--blitzy-paper); }
-    .reveal .slide-closing .gradient-bar {
-      height: 6px; width: 240px; margin: 1.5rem auto 0;
-      background: var(--blitzy-hero-gradient); border-radius: 3px;
-    }
+/* ---------------------------------------------------------------------------
+   Typography — Inter (body), Space Grotesk (headings), Fira Code (mono).
+   --------------------------------------------------------------------------- */
+.reveal {
+  font-family: 'Inter', system-ui, sans-serif;
+  color: var(--blitzy-ink-900);
+}
+.reveal h1, .reveal h2, .reveal h3, .reveal h4 {
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--blitzy-ink-900);
+}
+.reveal h1 { font-size: 2.6rem; }
+.reveal h2 { font-size: 2.0rem; margin-bottom: 0.6rem; }
+.reveal h3 { font-size: 1.4rem; color: var(--blitzy-violet-700); }
+.reveal p, .reveal li { font-size: 1.05rem; line-height: 1.5; }
+.reveal code, .reveal kbd, .reveal pre {
+  font-family: 'Fira Code', 'Menlo', monospace;
+  font-size: 0.92em;
+}
+.reveal code {
+  background: var(--blitzy-mist-200);
+  color: var(--blitzy-violet-700);
+  padding: 0.05em 0.35em;
+  border-radius: 4px;
+}
+.reveal a { color: var(--blitzy-violet-600); }
 
-    /* Lucide icon sizing classes */
-    .reveal .icon-hero {
-      width: 96px; height: 96px; stroke-width: 1.5;
-      color: var(--blitzy-accent-mint);
-      margin: 1.2rem auto; display: block;
-    }
-    .reveal .icon-large {
-      width: 192px; height: 192px; stroke-width: 1.5;
-      margin: 1.8rem auto 0.8rem; display: block;
-    }
-    .reveal .slide-divider .icon-large { color: var(--blitzy-paper); }
-    .reveal .icon-amber { color: var(--blitzy-accent-amber); }
-    .reveal .icon-bullet {
-      width: 36px; height: 36px; stroke-width: 1.75;
-      color: var(--blitzy-purple-2);
-      flex: 0 0 36px;
-    }
+/* ---------------------------------------------------------------------------
+   Slide types — slide-title, slide-divider, default content, slide-closing.
+   --------------------------------------------------------------------------- */
+.reveal .slide-title {
+  background: var(--blitzy-hero-gradient);
+  color: var(--blitzy-white);
+  padding: 2.5rem 3rem;
+  border-radius: 18px;
+  text-align: left;
+}
+.reveal .slide-title h1,
+.reveal .slide-title h2,
+.reveal .slide-title h3,
+.reveal .slide-title p {
+  color: var(--blitzy-white);
+}
+.reveal .slide-title .eyebrow {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+.reveal .slide-title .pillar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: rgba(255,255,255,0.16);
+  border: 1px solid rgba(255,255,255,0.35);
+  border-radius: 999px;
+  padding: 0.35rem 0.9rem;
+  margin-top: 1.2rem;
+  font-size: 0.85rem;
+}
 
-    /* Icon-bullet list */
-    .reveal .icon-list { list-style: none; padding: 0; margin: 1.4rem 0 0; }
-    .reveal .icon-list li {
-      display: flex; align-items: center; gap: 1rem;
-      padding: 0.7rem 0;
-      font-size: 0.92em;
-      line-height: 1.45;
-    }
-    .reveal .icon-list li > .text { flex: 1; }
-    .reveal .icon-list-three li { padding: 0.85rem 0; }
+.reveal .slide-divider {
+  background: var(--blitzy-mist-100);
+  border-left: 8px solid var(--blitzy-violet-600);
+  padding: 2.5rem 3rem;
+  border-radius: 18px;
+}
+.reveal .slide-divider .eyebrow {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  color: var(--blitzy-violet-700);
+}
+.reveal .slide-divider h2 { margin-top: 0.4rem; font-size: 2.4rem; }
+.reveal .slide-divider p  { color: var(--blitzy-ink-500); max-width: 28em; }
 
-    /* KPI tiles (slide 6) */
-    .reveal .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 1.25rem;
-      margin: 1.5rem 0 1rem;
-    }
-    .reveal .kpi-tile {
-      padding: 2rem 1.25rem;
-      border-radius: 12px;
-      text-align: center;
-      box-shadow: 0 8px 24px rgba(14, 11, 31, 0.06);
-    }
-    .reveal .kpi-tile .kpi-label {
-      font-family: var(--font-heading);
-      font-size: 0.62em;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      font-weight: 600;
-      margin-bottom: 0.5rem;
-      opacity: 0.92;
-    }
-    .reveal .kpi-tile .kpi-value {
-      font-family: var(--font-heading);
-      font-size: 3.4em;
-      font-weight: 700;
-      line-height: 1;
-    }
-    .reveal .kpi-critical { background: var(--blitzy-accent-rose); color: var(--blitzy-paper); }
-    .reveal .kpi-high     { background: var(--blitzy-accent-amber); color: var(--blitzy-ink); }
-    .reveal .kpi-medium   { background: var(--blitzy-mist); color: var(--blitzy-edge); border: 1px solid var(--blitzy-fog); }
-    .reveal .kpi-low      { background: var(--blitzy-accent-mint); color: var(--blitzy-ink); }
+.reveal .slide-closing {
+  background: var(--blitzy-hero-gradient);
+  color: var(--blitzy-white);
+  padding: 2.5rem 3rem;
+  border-radius: 18px;
+}
+.reveal .slide-closing h2,
+.reveal .slide-closing p,
+.reveal .slide-closing .eyebrow {
+  color: var(--blitzy-white);
+}
+.reveal .slide-closing .accent-bar {
+  height: 8px;
+  width: 60%;
+  background: linear-gradient(90deg, #FFFFFF 0%, rgba(255,255,255,0.45) 100%);
+  border-radius: 4px;
+  margin-top: 1.5rem;
+}
+.reveal .slide-closing .brand-lockup {
+  margin-top: 1.5rem;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-size: 1.2rem;
+  text-transform: uppercase;
+}
 
-    /* Field-name badge row (slide 10) */
-    .reveal .badge-row {
-      display: flex;
-      justify-content: center;
-      gap: 1rem;
-      flex-wrap: wrap;
-      margin: 1.8rem 0 1.2rem;
-    }
-    .reveal .field-badge {
-      font-family: var(--font-mono);
-      font-size: 1em;
-      padding: 0.7rem 1.2rem;
-      border-radius: 999px;
-      background: var(--blitzy-mist);
-      color: var(--blitzy-edge);
-      border: 1px solid var(--blitzy-fog);
-      font-weight: 500;
-    }
+/* ---------------------------------------------------------------------------
+   Component classes — KPI tiles, severity bars, callouts, Mermaid container.
+   --------------------------------------------------------------------------- */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.9rem;
+  margin-top: 1.2rem;
+}
+.kpi-tile {
+  background: var(--blitzy-white);
+  border: 1px solid var(--blitzy-mist-300);
+  border-radius: 14px;
+  padding: 1.1rem 1.2rem;
+  text-align: left;
+}
+.kpi-tile .kpi-label {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--blitzy-ink-500);
+}
+.kpi-tile .kpi-value {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 2.4rem;
+  line-height: 1;
+  margin: 0.4rem 0 0.25rem;
+  color: var(--blitzy-ink-900);
+}
+.kpi-tile.kpi-violet .kpi-value { color: var(--blitzy-violet-600); }
+.kpi-tile.kpi-rose   .kpi-value { color: var(--blitzy-rose-500); }
+.kpi-tile.kpi-amber  .kpi-value { color: var(--blitzy-amber-500); }
+.kpi-tile.kpi-teal   .kpi-value { color: var(--blitzy-teal-500); }
+.kpi-tile .kpi-sub {
+  font-size: 0.78rem;
+  color: var(--blitzy-ink-500);
+}
 
-    /* Mermaid containers */
-    .reveal .mermaid {
-      background: var(--blitzy-paper);
-      padding: 1.2rem;
-      border-radius: 12px;
-      border: 1px solid var(--blitzy-fog);
-      margin: 1rem auto;
-      max-width: 1500px;
-      display: flex;
-      justify-content: center;
-      min-height: 80px;
-    }
-    .reveal .mermaid-compact { max-width: 800px; }
-    .reveal .mermaid > svg {
-      max-width: 100% !important;
-      width: 100% !important;
-      height: auto !important;
-    }
+.callout {
+  display: flex;
+  gap: 0.8rem;
+  align-items: flex-start;
+  background: var(--blitzy-mist-100);
+  border-left: 5px solid var(--blitzy-violet-500);
+  padding: 0.9rem 1.1rem;
+  border-radius: 10px;
+  margin: 0.8rem 0;
+}
+.callout.callout-warn { border-left-color: var(--blitzy-amber-500); }
+.callout.callout-stop { border-left-color: var(--blitzy-rose-500); }
+.callout .callout-icon { flex: 0 0 28px; padding-top: 0.18rem; color: var(--blitzy-violet-600); }
+.callout.callout-warn .callout-icon { color: var(--blitzy-amber-500); }
+.callout.callout-stop .callout-icon { color: var(--blitzy-rose-500); }
+.callout .callout-body p { margin: 0.1rem 0; font-size: 0.95rem; }
 
-    /* Layout helpers */
-    .reveal section { text-align: left; }
-    .reveal section.slide-title,
-    .reveal section.slide-divider,
-    .reveal section.slide-closing { text-align: center; }
-    .reveal section h1, .reveal section h2 { margin-bottom: 0.55em; }
+.severity-bars {
+  display: grid;
+  grid-template-columns: 110px 1fr 60px;
+  gap: 0.6rem 0.8rem;
+  align-items: center;
+  margin-top: 0.9rem;
+}
+.severity-bars .sev-label {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--blitzy-ink-700);
+}
+.severity-bars .sev-track {
+  background: var(--blitzy-mist-200);
+  border-radius: 6px;
+  height: 14px;
+  overflow: hidden;
+}
+.severity-bars .sev-fill {
+  height: 100%;
+  border-radius: 6px;
+}
+.severity-bars .sev-fill.sev-critical { background: var(--blitzy-violet-700); }
+.severity-bars .sev-fill.sev-high     { background: var(--blitzy-rose-500); }
+.severity-bars .sev-fill.sev-medium   { background: var(--blitzy-amber-500); }
+.severity-bars .sev-fill.sev-low      { background: var(--blitzy-teal-500); }
+.severity-bars .sev-count {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 1.1rem;
+  text-align: right;
+  color: var(--blitzy-ink-900);
+}
 
-    .reveal .caption {
-      color: rgba(14, 11, 31, 0.7);
-      font-size: 0.78em;
-      margin-top: 0.8rem;
-    }
-    .reveal .slide-title .caption,
-    .reveal .slide-divider .caption,
-    .reveal .slide-closing .caption { color: rgba(255, 255, 255, 0.85); }
+.directive-table, .finding-table, .gate-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.8rem;
+  background: var(--blitzy-white);
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 0.92rem;
+}
+.directive-table th, .directive-table td,
+.finding-table th,   .finding-table td,
+.gate-table th,      .gate-table td {
+  text-align: left;
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--blitzy-mist-200);
+  vertical-align: top;
+}
+.directive-table th, .finding-table th, .gate-table th {
+  background: var(--blitzy-mist-100);
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: var(--blitzy-ink-500);
+}
+.badge {
+  display: inline-block;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.badge-pass { background: rgba(63,179,127,0.16); color: #1F8859; }
+.badge-fail { background: rgba(226,92,124,0.18); color: #B43459; }
+.badge-info { background: rgba(91,57,243,0.14); color: var(--blitzy-violet-700); }
 
-    .reveal .footer-text {
-      text-align: center;
-      font-family: var(--font-heading);
-      font-size: 0.5em;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      opacity: 0.92;
-      margin-top: 2.2rem;
-      margin-bottom: 0;
-    }
-    .reveal .slide-closing .footer-text { margin-top: 1.4rem; }
+.icon-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  margin-bottom: 0.4rem;
+  color: var(--blitzy-violet-600);
+}
+.icon-row svg { width: 22px; height: 22px; stroke-width: 2; }
 
-    .reveal .hero-eyebrow {
-      font-family: var(--font-mono);
-      font-size: 0.5em;
-      letter-spacing: 0.28em;
-      text-transform: uppercase;
-      margin-bottom: 0.7rem;
-      opacity: 0.92;
-    }
-    .reveal section h1.hero-headline { font-size: 1.75em; line-height: 1.05; }
-    .reveal .subhead { font-size: 0.78em; opacity: 0.92; margin-top: 0.4rem; }
+.mermaid-container {
+  background: var(--blitzy-mist-100);
+  border-radius: 14px;
+  padding: 1rem;
+  margin-top: 0.6rem;
+}
 
-    /* Slide 13 risks intro caption */
-    .reveal .caption-centered {
-      text-align: center;
-      color: var(--blitzy-edge);
-      font-size: 0.88em;
-      max-width: 900px;
-      margin: 0.4rem auto 0;
-    }
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.2rem;
+}
+.two-col .col h3 { margin-top: 0; }
 
-    /* Heading text-transform override */
-    .reveal h1, .reveal h2 { text-transform: none; }
-  </style>
+.footnote {
+  font-size: 0.78rem;
+  color: var(--blitzy-ink-500);
+  margin-top: 0.7rem;
+}
+</style>
 </head>
 <body>
-  <div class="reveal">
-    <div class="slides">
 
-      <!-- Slide 1 of 16: TITLE -->
-      <section class="slide-title">
-        <i data-lucide="shield-check" class="icon-hero" aria-hidden="true"></i>
-        <div class="hero-eyebrow">Snyk CLI security scan</div>
-        <h1 class="hero-headline">Config H — Snyk Scan</h1>
-        <p class="subhead">blitzy-tgr-dnsmasq-rust security findings inventory</p>
-        <p class="footer-text">Multi-config comparison • Config H of N</p>
-      </section>
+<div class="reveal">
+  <div class="slides">
 
-      <!-- Slide 2 of 16: DIVIDER -->
-      <section class="slide-divider">
-        <h2>What Was Done</h2>
-        <i data-lucide="play-circle" class="icon-large" aria-hidden="true"></i>
-      </section>
+    <!-- Slide 1 — Title -->
+    <section class="slide-title">
+      <div class="eyebrow">Blitzy Security Comparison</div>
+      <h1>Config H — Snyk CLI</h1>
+      <h3 style="color: rgba(255,255,255,0.92); margin-top: 0.4rem;">
+        Scan of blitzy-tgr-dnsmasq-rust, May 17 2026
+      </h3>
+      <p style="max-width: 36em; opacity: 0.92;">
+        Single-tool security baseline: Snyk Code SAST plus Snyk Open Source
+        dependency scan, normalised to a five-field findings deliverable.
+      </p>
+      <span class="pillar">
+        <i data-lucide="shield-check" style="width:18px; height:18px;"></i>
+        Snyk CLI 1.1304.3 &nbsp;&middot;&nbsp; Rust 1.91.0 target
+      </span>
+    </section>
 
-      <!-- Slide 3 of 16: CONTENT — Mission summary -->
-      <section>
-        <h2>Four directives, one deliverable</h2>
-        <ul class="icon-list">
-          <li>
-            <i data-lucide="download" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text">Install and authenticate the Snyk CLI.</span>
-          </li>
-          <li>
-            <i data-lucide="scan-line" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text">Run the SAST scan via <code>snyk code test</code>.</span>
-          </li>
-          <li>
-            <i data-lucide="package-search" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text">Run the dependency scan via <code>snyk test</code>, with SBOM fallback.</span>
-          </li>
-          <li>
-            <i data-lucide="file-json" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text">Normalize the two artifacts into <code>findings-config-h.json</code>.</span>
-          </li>
-        </ul>
-      </section>
+    <!-- Slide 2 — Headline KPIs -->
+    <section>
+      <h2>Headline results</h2>
+      <p>Three unique high-severity dependency advisories. Zero Snyk Code findings.</p>
+      <div class="kpi-grid">
+        <div class="kpi-tile kpi-violet">
+          <div class="kpi-label">Findings emitted</div>
+          <div class="kpi-value">4</div>
+          <div class="kpi-sub">High severity, dependency origin</div>
+        </div>
+        <div class="kpi-tile kpi-rose">
+          <div class="kpi-label">Unique advisories</div>
+          <div class="kpi-value">3</div>
+          <div class="kpi-sub">rand x1, hickory-proto x2</div>
+        </div>
+        <div class="kpi-tile kpi-teal">
+          <div class="kpi-label">SAST issues</div>
+          <div class="kpi-value">0</div>
+          <div class="kpi-sub">Empty SARIF, see Slide 11</div>
+        </div>
+        <div class="kpi-tile kpi-amber">
+          <div class="kpi-label">Components scanned</div>
+          <div class="kpi-value">240</div>
+          <div class="kpi-sub">CycloneDX 1.5 SBOM</div>
+        </div>
+      </div>
+      <div class="callout">
+        <span class="callout-icon"><i data-lucide="gauge"></i></span>
+        <div class="callout-body">
+          <p>End-to-end wall clock: 34 seconds. Two scanner invocations plus SBOM
+          generation. Exit codes: 1 (deps, vulns found), 0 (code).</p>
+        </div>
+      </div>
+    </section>
 
-      <!-- Slide 4 of 16: CONTENT — Pipeline architecture (Mermaid graph LR) -->
-      <section>
-        <h2>End-to-end pipeline</h2>
+    <!-- Slide 3 — Divider: What we did -->
+    <section class="slide-divider">
+      <div class="eyebrow">Section 01</div>
+      <h2>What we did</h2>
+      <p>Three Refine PR directives, executed end-to-end against the Rust crate root,
+      with deterministic normalisation into a single-line JSON deliverable.</p>
+      <div class="icon-row" style="margin-top:1rem;">
+        <i data-lucide="terminal"></i>
+        <i data-lucide="git-branch"></i>
+        <i data-lucide="file-json"></i>
+        <i data-lucide="check-circle-2"></i>
+      </div>
+    </section>
+
+    <!-- Slide 4 — Pipeline architecture -->
+    <section>
+      <h2>Pipeline architecture</h2>
+      <p>Four stages: install and auth, SAST, dependencies, normalise. Stage 3 falls
+      back to an SBOM workflow because <code>snyk test</code> does not parse Cargo.</p>
+      <div class="mermaid-container">
         <pre class="mermaid">
-graph LR
-  A[Install + Auth] --&gt; B[SAST: snyk code test]
-  A --&gt; C[Deps: snyk test / sbom test]
-  B --&gt; D[SARIF]
-  C --&gt; E[Snyk JSON]
-  D --&gt; F[jq normalize]
-  E --&gt; F
-  F --&gt; G[findings-config-h.json]
-        </pre>
-        <p class="caption">Two parallel scans converge into one minified JSON deliverable.</p>
-      </section>
-
-      <!-- Slide 5 of 16: DIVIDER -->
-      <section class="slide-divider">
-        <h2>Findings Summary</h2>
-        <i data-lucide="search" class="icon-large" aria-hidden="true"></i>
-      </section>
-
-      <!-- Slide 6 of 16: CONTENT — Headline KPIs -->
-      <section>
-        <h2>Findings at a glance</h2>
-        <div class="kpi-grid">
-          <div class="kpi-tile kpi-critical">
-            <div class="kpi-label">Critical</div>
-            <div class="kpi-value">0</div>
-          </div>
-          <div class="kpi-tile kpi-high">
-            <div class="kpi-label">High</div>
-            <div class="kpi-value">0</div>
-          </div>
-          <div class="kpi-tile kpi-medium">
-            <div class="kpi-label">Medium</div>
-            <div class="kpi-value">0</div>
-          </div>
-          <div class="kpi-tile kpi-low">
-            <div class="kpi-label">Low</div>
-            <div class="kpi-value">0</div>
-          </div>
-        </div>
-        <p class="caption">Zero findings reflects either a clean scan or an unauthenticated scan; see the decisions log.</p>
-      </section>
-
-      <!-- Slide 7 of 16: CONTENT — Scan scope -->
-      <section>
-        <h2>Scope of the scan</h2>
-        <ul class="icon-list">
-          <li>
-            <i data-lucide="folder-tree" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text"><code>src/</code>: 88 Rust files across nine subsystems.</span>
-          </li>
-          <li>
-            <i data-lucide="file-code" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text"><code>build.rs</code>: the build script.</span>
-          </li>
-          <li>
-            <i data-lucide="file-text" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text"><code>Cargo.toml</code> plus <code>Cargo.lock</code>: the dependency manifest.</span>
-          </li>
-          <li>
-            <i data-lucide="file-cog" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text"><code>tests/</code>, <code>benches/</code>, <code>examples/</code>: per Snyk Code defaults.</span>
-          </li>
-        </ul>
-      </section>
-
-      <!-- Slide 8 of 16: DIVIDER -->
-      <section class="slide-divider">
-        <h2>Why This Approach</h2>
-        <i data-lucide="lightbulb" class="icon-large" aria-hidden="true"></i>
-      </section>
-
-      <!-- Slide 9 of 16: CONTENT — Rust-specific deviations + small Mermaid flowchart -->
-      <section>
-        <h2>Rust meets Snyk: two deviations</h2>
-        <ul class="icon-list icon-list-three">
-          <li>
-            <i data-lucide="git-branch" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text">SBOM fallback: <code>cargo cyclonedx</code> plus <code>snyk sbom test</code>. Cargo manifests are not natively supported.</span>
-          </li>
-          <li>
-            <i data-lucide="flag-triangle-right" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text">SAST gating: Rust on Snyk Code is Early Access. Without entitlement, the SAST contribution is <code>[]</code>.</span>
-          </li>
-          <li>
-            <i data-lucide="compass" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text">Both deviations are deterministic and documented in <code>decisions-config-h.md</code>.</span>
-          </li>
-        </ul>
-        <pre class="mermaid mermaid-compact">
 flowchart LR
-  A{snyk test} --&gt;|supports| B[Native scan]
-  A --&gt;|Rust| C[cargo cyclonedx]
-  C --&gt; D[snyk sbom test]
+  A[Stage 1<br/>Install + Auth<br/>SNYK_TOKEN] --> B[Stage 2<br/>snyk code test<br/>--sarif-file-output]
+  A --> C[Stage 3<br/>snyk test --all-projects]
+  C -->|exit 3<br/>no manifest| D[cargo cyclonedx<br/>--spec-version 1.5]
+  D --> E[snyk sbom test<br/>--severity-threshold=high]
+  B --> F[results-snyk-code.sarif]
+  E --> G[results-snyk-deps.json]
+  F --> H[Stage 4<br/>jq normaliser]
+  G --> H
+  H --> I[findings-config-h.json]
         </pre>
-      </section>
+      </div>
+    </section>
 
-      <!-- Slide 10 of 16: CONTENT — Schema fidelity (five field badges) -->
-      <section>
-        <h2>Five fields, every time</h2>
-        <div class="badge-row">
-          <span class="field-badge">file</span>
-          <span class="field-badge">line</span>
-          <span class="field-badge">severity</span>
-          <span class="field-badge">cwe</span>
-          <span class="field-badge">description</span>
+    <!-- Slide 5 — Refine PR Directives + verdict -->
+    <section>
+      <h2>Refine PR directives and verdicts</h2>
+      <table class="directive-table">
+        <thead>
+          <tr><th>#</th><th>Command</th><th>Exit</th><th>Verdict</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td><code>snyk test --all-projects --severity-threshold=high</code></td>
+            <td>3</td>
+            <td><span class="badge badge-info">Fallback</span> No Cargo manifest detected; routed to SBOM workflow.</td>
+          </tr>
+          <tr>
+            <td>1a</td>
+            <td><code>snyk sbom test --file=sbom.cdx.json --severity-threshold=high --json</code></td>
+            <td>1</td>
+            <td><span class="badge badge-fail">Fail</span> 4 high-severity dependency paths surfaced.</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td><code>snyk code test --sarif-file-output=results-snyk-code.sarif .</code></td>
+            <td>0</td>
+            <td><span class="badge badge-pass">Pass</span> No SAST findings reported.</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>Report pass/fail</td>
+            <td>0</td>
+            <td><span class="badge badge-pass">Pass</span> This deliverable.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Slide 6 — Tooling and host -->
+    <section>
+      <h2>Tooling and host</h2>
+      <div class="two-col">
+        <div class="col">
+          <div class="icon-row">
+            <i data-lucide="package"></i>
+            <h3 style="margin:0;">Scanner</h3>
+          </div>
+          <ul>
+            <li>Snyk CLI <code>1.1304.3</code> (npm global)</li>
+            <li>Auth: <code>SNYK_TOKEN</code> environment, account <code>michael</code></li>
+            <li>Org: <code>c78a6b60-...-ad32</code></li>
+          </ul>
         </div>
-        <p class="caption">Single-line minified UTF-8 JSON. Descriptions truncated to 200 Unicode scalars. Severity union is closed.</p>
-      </section>
+        <div class="col">
+          <div class="icon-row">
+            <i data-lucide="cog"></i>
+            <h3 style="margin:0;">Toolchain</h3>
+          </div>
+          <ul>
+            <li>Rust <code>1.91.0</code> (pinned in <code>rust-toolchain.toml</code>)</li>
+            <li><code>cargo-cyclonedx 0.5.9</code> for the SBOM fallback</li>
+            <li><code>jq 1.8.1</code> for the deterministic normaliser</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout">
+        <span class="callout-icon"><i data-lucide="info"></i></span>
+        <div class="callout-body">
+          <p>No Rust source file, <code>Cargo.toml</code>, <code>Cargo.lock</code>, or build
+          configuration was modified. The audit target is byte-identical to pre-scan state.</p>
+        </div>
+      </div>
+    </section>
 
-      <!-- Slide 11 of 16: DIVIDER -->
-      <section class="slide-divider">
-        <h2>What Changed Architecturally</h2>
-        <i data-lucide="git-pull-request-arrow" class="icon-large" aria-hidden="true"></i>
-      </section>
+    <!-- Slide 7 — Divider: What we found -->
+    <section class="slide-divider">
+      <div class="eyebrow">Section 02</div>
+      <h2>What we found</h2>
+      <p>Four findings, all dependency-origin, all high severity, two crates affected.
+      The findings deliverable carries exactly the schema the user specified.</p>
+      <div class="icon-row" style="margin-top:1rem;">
+        <i data-lucide="alert-triangle"></i>
+        <i data-lucide="layers"></i>
+        <i data-lucide="bug"></i>
+      </div>
+    </section>
 
-      <!-- Slide 12 of 16: CONTENT — Repository impact -->
-      <section>
-        <h2>Zero source-tree modifications</h2>
-        <ul class="icon-list">
-          <li>
-            <i data-lucide="lock" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text"><code>src/</code>, <code>tests/</code>, <code>benches/</code>, <code>examples/</code> untouched.</span>
-          </li>
-          <li>
-            <i data-lucide="lock" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text"><code>Cargo.toml</code>, <code>Cargo.lock</code>, <code>build.rs</code> untouched.</span>
-          </li>
-          <li>
-            <i data-lucide="file-plus" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text">Six new artifacts written at the workspace root.</span>
-          </li>
-          <li>
-            <i data-lucide="terminal" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text">Host state: Snyk CLI installed globally only.</span>
-          </li>
-        </ul>
-      </section>
+    <!-- Slide 8 — Severity distribution -->
+    <section>
+      <h2>Severity distribution</h2>
+      <p>Threshold <code>--severity-threshold=high</code> excludes low and medium from
+      Snyk's view. The four reported paths concentrate at high.</p>
+      <div class="severity-bars">
+        <div class="sev-label">Critical</div>
+        <div class="sev-track"><div class="sev-fill sev-critical" style="width:0%;"></div></div>
+        <div class="sev-count">0</div>
 
-      <!-- Slide 13 of 16: CONTENT — What Risks Exist -->
-      <section>
-        <h2 style="text-align: center;">What Risks Exist</h2>
-        <i data-lucide="triangle-alert" class="icon-large icon-amber" aria-hidden="true"></i>
-        <p class="caption-centered">The deliverable lists findings. Reading it requires understanding the scan's authentication state and the truncation rules.</p>
-      </section>
+        <div class="sev-label">High</div>
+        <div class="sev-track"><div class="sev-fill sev-high" style="width:100%;"></div></div>
+        <div class="sev-count">4</div>
 
-      <!-- Slide 14 of 16: CONTENT — Operational considerations -->
-      <section>
-        <h2>Constraints to know</h2>
-        <ul class="icon-list">
-          <li>
-            <i data-lucide="wifi" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text">Snyk requires network access; no offline mode.</span>
-          </li>
-          <li>
-            <i data-lucide="key-round" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text"><code>SNYK_TOKEN</code> must be present in the runtime environment.</span>
-          </li>
-          <li>
-            <i data-lucide="clock" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text">Exit codes and wall-clock durations are recorded in <code>decisions-config-h.md</code>.</span>
-          </li>
-          <li>
-            <i data-lucide="eye" class="icon-bullet" aria-hidden="true"></i>
-            <span class="text">Per-config result; no cross-tool reconciliation in scope.</span>
-          </li>
-        </ul>
-      </section>
+        <div class="sev-label">Medium</div>
+        <div class="sev-track"><div class="sev-fill sev-medium" style="width:0%;"></div></div>
+        <div class="sev-count">0</div>
 
-      <!-- Slide 15 of 16: DIVIDER -->
-      <section class="slide-divider">
-        <h2>How the Team Onboards</h2>
-        <i data-lucide="book-open-check" class="icon-large" aria-hidden="true"></i>
-      </section>
+        <div class="sev-label">Low</div>
+        <div class="sev-track"><div class="sev-fill sev-low" style="width:0%;"></div></div>
+        <div class="sev-count">0</div>
+      </div>
+      <p class="footnote">Counts reflect rows in <code>findings-config-h.json</code>. Unique
+      advisories: 3. The <code>rand</code> advisory appears twice because Snyk reports two
+      distinct dependency paths into the same vulnerable package version.</p>
+    </section>
 
-      <!-- Slide 16 of 16: CLOSING -->
-      <section class="slide-closing">
-        <i data-lucide="circle-check-big" class="icon-hero" aria-hidden="true"></i>
-        <h2>Reproducible. Auditable. One file.</h2>
-        <p class="subhead" style="max-width: 1300px; margin: 0.5rem auto 0;">Re-run the harness; same inputs yield byte-identical outputs. The decisions log explains every deviation.</p>
-        <div class="gradient-bar"></div>
-        <p class="footer-text">Config H • blitzy-tgr-dnsmasq-rust</p>
-      </section>
+    <!-- Slide 9 — Top advisories -->
+    <section>
+      <h2>Top advisories</h2>
+      <table class="finding-table">
+        <thead>
+          <tr><th>Advisory</th><th>Package</th><th>CWE</th><th>Fixed in</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>SNYK-RUST-RAND-16073005<br><span class="footnote">Out-of-Bounds</span></td>
+            <td><code>rand 0.8.5</code></td>
+            <td><code>CWE-119</code></td>
+            <td>0.8.6, 0.9.3, 0.10.1</td>
+          </tr>
+          <tr>
+            <td>SNYK-RUST-HICKORYPROTO-16346342<br><span class="footnote">Infinite loop</span></td>
+            <td><code>hickory-proto 0.25.2</code></td>
+            <td><code>CWE-835</code></td>
+            <td>upstream advisory</td>
+          </tr>
+          <tr>
+            <td>SNYK-RUST-HICKORYPROTO-16346057<br><span class="footnote">Inefficient Algorithmic Complexity</span></td>
+            <td><code>hickory-proto 0.25.2</code></td>
+            <td><code>CWE-407</code></td>
+            <td>upstream advisory</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="footnote">All three advisories also appear in the RustSec advisory database; remediation paths flow through Cargo upgrades.</p>
+    </section>
 
-    </div>
+    <!-- Slide 10 — Divider: Why these decisions -->
+    <section class="slide-divider">
+      <div class="eyebrow">Section 03</div>
+      <h2>Why these decisions</h2>
+      <p>The decision log <code>decisions-config-h.md</code> carries the full table.
+      Three deviations are worth surfacing for executive review.</p>
+      <div class="icon-row" style="margin-top:1rem;">
+        <i data-lucide="git-pull-request-arrow"></i>
+        <i data-lucide="scale"></i>
+        <i data-lucide="book-open"></i>
+      </div>
+    </section>
+
+    <!-- Slide 11 — Rust SBOM fallback rationale -->
+    <section>
+      <h2>Why the SBOM fallback</h2>
+      <div class="icon-row">
+        <i data-lucide="file-text"></i>
+        <i data-lucide="arrow-right"></i>
+        <i data-lucide="file-cog"></i>
+        <i data-lucide="arrow-right"></i>
+        <i data-lucide="shield-check"></i>
+      </div>
+      <p><code>snyk test --all-projects</code> does not parse Cargo manifests; it returns
+      Snyk error SNYK-CLI-0008.</p>
+      <ul>
+        <li>Generated CycloneDX 1.5 JSON with <code>cargo cyclonedx</code>: 240 components, all identified by <code>pkg:cargo/...</code> purls.</li>
+        <li>Consumed via <code>snyk sbom test</code>, which resolves cargo purls against Snyk's Rust advisory database.</li>
+        <li>Output schema for <code>results-snyk-deps.json</code> is identical to <code>snyk test --json</code>: a top-level <code>vulnerabilities</code> array.</li>
+        <li>Severity threshold flag is honoured by <code>snyk sbom test</code> so the intermediate artifact is already filtered.</li>
+      </ul>
+    </section>
+
+    <!-- Slide 12 — SAST coverage interpretation -->
+    <section>
+      <h2>SAST coverage interpretation</h2>
+      <p>Snyk Code returned an empty SARIF: 0 results, 0 rules. The SARIF coverage block
+      lists only <code>.html</code> as a loaded language pack.</p>
+      <div class="callout callout-warn">
+        <span class="callout-icon"><i data-lucide="alert-triangle"></i></span>
+        <div class="callout-body">
+          <p>Most likely cause: Snyk Code's Rust support is in the Early Access tier and
+          is not enabled for this organisation. The pipeline accepts the empty SARIF as
+          authoritative for the SAST contribution and surfaces no false positives.</p>
+        </div>
+      </div>
+      <p class="footnote">Decision log entry: "Empty SAST result interpretation".</p>
+    </section>
+
+    <!-- Slide 13 — Divider: Risks and next steps -->
+    <section class="slide-divider">
+      <div class="eyebrow">Section 04</div>
+      <h2>Risks and next steps</h2>
+      <p>Where the deliverable is silent or partial, where remediation belongs, and what
+      a follow-up Config run would change.</p>
+      <div class="icon-row" style="margin-top:1rem;">
+        <i data-lucide="alert-octagon"></i>
+        <i data-lucide="route"></i>
+        <i data-lucide="rotate-cw"></i>
+      </div>
+    </section>
+
+    <!-- Slide 14 — Residual risks -->
+    <section>
+      <h2>Residual risks</h2>
+      <div class="icon-row">
+        <i data-lucide="shield-off"></i>
+        <i data-lucide="filter"></i>
+        <i data-lucide="database"></i>
+        <i data-lucide="bell"></i>
+      </div>
+      <ul>
+        <li>Snyk's Rust SAST rule pack is gated; an Early Access entitlement would surface findings this run cannot.</li>
+        <li>Severity threshold <code>high</code> excludes low and medium advisories from the deliverable.</li>
+        <li>SBOM generation reflects <code>Cargo.lock</code> at scan time; Snyk's advisory database is mutable, so re-runs may add findings without code changes.</li>
+        <li>The Snyk "Forbidden" telemetry post on stderr is non-fatal; it does not affect scan output but is preserved in audit logs.</li>
+      </ul>
+    </section>
+
+    <!-- Slide 15 — Remediation pointers -->
+    <section>
+      <h2>Remediation pointers</h2>
+      <table class="finding-table">
+        <thead>
+          <tr><th>Crate</th><th>Current</th><th>Suggested upgrade</th><th>Effect</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>rand</code></td>
+            <td><code>0.8.5</code></td>
+            <td><code>0.8.6</code> (patch)</td>
+            <td>Closes Out-of-Bounds in <code>TryRng</code> reseed under custom logger.</td>
+          </tr>
+          <tr>
+            <td><code>hickory-proto</code></td>
+            <td><code>0.25.2</code></td>
+            <td>Latest <code>0.25.x</code> with advisory fixes</td>
+            <td>Closes Infinite-loop and Inefficient-Algorithmic-Complexity paths in resolver.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="footnote">Remediation is out of scope for Config H; this slide is a pointer for the remediation workstream.</p>
+    </section>
+
+    <!-- Slide 16 — Closing -->
+    <section class="slide-closing">
+      <div class="eyebrow">Config H Complete</div>
+      <h2>Four findings, three advisories, one source of truth.</h2>
+      <p style="max-width: 32em;">
+        <code>findings-config-h.json</code> is the byte-reproducible deliverable.
+        The full decision trail lives in <code>decisions-config-h.md</code>.
+      </p>
+      <div class="accent-bar"></div>
+      <div class="brand-lockup">Blitzy &middot; Security Tooling Comparison</div>
+    </section>
+
   </div>
+</div>
 
-  <!-- reveal.js 5.1.0 (UMD) -->
-  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<!-- Reveal.js, Mermaid, Lucide — CDN pinned -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/reveal.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 
-  <!-- Lucide 0.460.0 (UMD) -->
-  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
+<script>
+// Initialise Mermaid with startOnLoad:false per Executive Presentation rule.
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'base',
+  themeVariables: {
+    fontFamily: 'Space Grotesk, Inter, sans-serif',
+    primaryColor: '#F2EFFE',
+    primaryTextColor: '#0F0B23',
+    primaryBorderColor: '#7A6DEC',
+    lineColor: '#5B39F3',
+    secondaryColor: '#FFFFFF',
+    tertiaryColor: '#EBEAF3'
+  }
+});
 
-  <!-- Mermaid 11.15.0 (ESM) + Reveal/Lucide/Mermaid wiring -->
-  <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs';
+// Initialise reveal.js with the rule-mandated configuration.
+Reveal.initialize({
+  hash: true,
+  transition: 'slide',
+  controlsTutorial: false,
+  width: 1920,
+  height: 1080,
+  margin: 0.08,
+  slideNumber: 'c/t'
+});
 
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: 'base',
-      securityLevel: 'loose',
-      fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
-      flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis', padding: 16 },
-      themeVariables: {
-        primaryColor:        '#F4F2FB',
-        primaryTextColor:    '#2A2350',
-        primaryBorderColor:  '#5B39F3',
-        lineColor:           '#4101DB',
-        secondaryColor:      '#DCD7F2',
-        secondaryTextColor:  '#2A2350',
-        secondaryBorderColor:'#7A6DEC',
-        tertiaryColor:       '#FFFFFF',
-        tertiaryTextColor:   '#2A2350',
-        tertiaryBorderColor: '#DCD7F2',
-        clusterBkg:          '#F4F2FB',
-        clusterBorder:       '#5B39F3',
-        edgeLabelBackground: '#FFFFFF',
-        fontSize:            '15px'
-      }
-    });
-
-    function fitMermaidLabels(scope) {
-      const root = scope && scope.querySelectorAll ? scope : document;
-      root.querySelectorAll('.mermaid svg').forEach((svg) => {
-        const viewBox = svg.viewBox && svg.viewBox.baseVal;
-        const svgRect = svg.getBoundingClientRect();
-        if (!viewBox || !svgRect.width || !viewBox.width) return;
-        const scale = viewBox.width / svgRect.width;
-        const buffer = 8;
-
-        svg.querySelectorAll('g.node foreignObject').forEach((fo) => {
-          const child = fo.firstElementChild;
-          if (!child) return;
-          const childRect = child.getBoundingClientRect();
-          if (!childRect.width) return;
-          const childWidthSvg = childRect.width * scale;
-          const foWidth = parseFloat(fo.getAttribute('width')) || 0;
-          if (childWidthSvg + buffer > foWidth) {
-            const newWidth = childWidthSvg + buffer;
-            const delta = newWidth - foWidth;
-            const foX = parseFloat(fo.getAttribute('x')) || 0;
-            fo.setAttribute('width', String(newWidth));
-            fo.setAttribute('x', String(foX - delta / 2));
-            const parentG = fo.closest('g.node');
-            if (parentG) {
-              parentG.querySelectorAll('rect').forEach((rect) => {
-                const rectWidth = parseFloat(rect.getAttribute('width')) || 0;
-                const rectX = parseFloat(rect.getAttribute('x')) || 0;
-                rect.setAttribute('width', String(rectWidth + delta));
-                rect.setAttribute('x', String(rectX - delta / 2));
-              });
-            }
-          }
-        });
-
-        svg.querySelectorAll('g.edgeLabel foreignObject, .edgeLabel foreignObject').forEach((fo) => {
-          const child = fo.firstElementChild;
-          if (!child) return;
-          const childRect = child.getBoundingClientRect();
-          if (!childRect.width) return;
-          const childWidthSvg = childRect.width * scale;
-          const foWidth = parseFloat(fo.getAttribute('width')) || 0;
-          if (childWidthSvg + buffer > foWidth) {
-            const newWidth = childWidthSvg + buffer;
-            const delta = newWidth - foWidth;
-            const foX = parseFloat(fo.getAttribute('x')) || 0;
-            fo.setAttribute('width', String(newWidth));
-            fo.setAttribute('x', String(foX - delta / 2));
-          }
-        });
+// Render Mermaid blocks in the currently visible slide. Also render once at boot so
+// the first visible slide has its diagram even before the user navigates.
+function renderMermaidInSlide(slide) {
+  if (!slide) return;
+  slide.querySelectorAll('pre.mermaid').forEach(function (el, i) {
+    if (el.getAttribute('data-processed') === 'true') return;
+    var graph = el.textContent.trim();
+    var id = 'mmd-' + Date.now() + '-' + i;
+    try {
+      mermaid.render(id, graph).then(function (out) {
+        el.innerHTML = out.svg;
+        el.setAttribute('data-processed', 'true');
       });
+    } catch (err) {
+      el.innerHTML = '<pre>Mermaid render error</pre>';
     }
+  });
+}
 
-    document.addEventListener('DOMContentLoaded', () => {
-      if (window.lucide && typeof window.lucide.createIcons === 'function') {
-        window.lucide.createIcons();
-      }
+// Re-run Mermaid and Lucide on each slide change per the rule.
+Reveal.on('slidechanged', function (event) {
+  renderMermaidInSlide(event.currentSlide);
+  if (window.lucide && lucide.createIcons) { lucide.createIcons(); }
+});
 
-      Reveal.initialize({
-        hash: true,
-        transition: 'slide',
-        controlsTutorial: false,
-        width: 1920,
-        height: 1080,
-        margin: 0.06,
-        slideNumber: 'c/t',
-        plugins: []
-      });
-
-      Reveal.on('ready', async (event) => {
-        if (window.lucide && typeof window.lucide.createIcons === 'function') {
-          window.lucide.createIcons();
-        }
-        if (document.fonts && document.fonts.ready) {
-          try { await document.fonts.ready; } catch (_e) { /* ignore */ }
-        }
-        const slide = (event && event.currentSlide) || document.querySelector('section.present') || document;
-        const pending = slide.querySelectorAll('.mermaid:not([data-processed="true"])');
-        if (pending.length > 0) {
-          await mermaid.run({ nodes: Array.from(pending) });
-          requestAnimationFrame(() => fitMermaidLabels(slide));
-        }
-      });
-
-      Reveal.on('slidechanged', async (event) => {
-        if (window.lucide && typeof window.lucide.createIcons === 'function') {
-          window.lucide.createIcons();
-        }
-        if (document.fonts && document.fonts.ready) {
-          try { await document.fonts.ready; } catch (_e) { /* ignore */ }
-        }
-        const slide = (event && event.currentSlide) || document.querySelector('section.present') || document;
-        const pending = slide.querySelectorAll('.mermaid:not([data-processed="true"])');
-        if (pending.length > 0) {
-          await mermaid.run({ nodes: Array.from(pending) });
-          requestAnimationFrame(() => fitMermaidLabels(slide));
-        } else {
-          requestAnimationFrame(() => fitMermaidLabels(slide));
-        }
-      });
-    });
-  </script>
+Reveal.on('ready', function (event) {
+  renderMermaidInSlide(event.currentSlide);
+  if (window.lucide && lucide.createIcons) { lucide.createIcons(); }
+});
+</script>
 </body>
 </html>
