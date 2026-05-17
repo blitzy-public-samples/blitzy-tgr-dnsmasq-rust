@@ -1,1304 +1,557 @@
-# DNSMASQ C-TO-RUST REFACTORING - COMPREHENSIVE PROJECT GUIDE
-
-## Executive Summary
-
-### Project Status: 90.0% Complete (950 hours completed / 1056 total hours)
-
-The dnsmasq C-to-Rust refactoring has achieved **production-ready status** with comprehensive validation confirming full functional equivalence and memory safety. The Rust implementation successfully transforms the entire C codebase into a memory-safe, modern implementation while maintaining 100% backward compatibility.
-
-**Based on detailed analysis: 950 hours of engineering work have been completed out of an estimated 1,056 total project hours, representing 90.0% project completion.**
-
-### Key Accomplishments
-
-**Code Implementation (Complete):**
-- ✅ 88 Rust source files created (~86,000 lines in src/)
-- ✅ 5 comprehensive integration test suites (~8,000 lines)
-- ✅ 3 performance benchmark suites (~2,000 lines)
-- ✅ 2 example implementations (~1,000 lines)
-- ✅ **Total: ~97,000 lines of production-quality Rust code**
-
-**Validation Results (All Passing):**
-- ✅ **592/592 tests passing (100% pass rate)**
-  - 485 unit tests passing
-  - 107 integration tests passing (config: 46, DHCP: 18, DNS: 20, DNSSEC: 23)
-- ✅ Zero compilation errors
-- ✅ Zero clippy warnings (strict mode)
-- ✅ All code properly formatted
-- ✅ 6.1MB optimized release binary functional
-
-**Functional Coverage (Complete):**
-- ✅ DNS forwarding and caching with DNSSEC validation
-- ✅ DHCPv4 and DHCPv6 server with lease management
-- ✅ IPv6 Router Advertisement (SLAAC)
-- ✅ TFTP server for network boot
-- ✅ Platform integration (D-Bus, systemd, signals)
-- ✅ ~350 configuration directives fully compatible
-- ✅ Command-line interface identical to C version
-
-**Quality Metrics (Excellent):**
-- ✅ Memory safety guaranteed by Rust compiler
-- ✅ Type-safe error handling throughout
-- ✅ Async I/O with tokio runtime
-- ✅ Cross-platform support (Linux, BSD, macOS)
-- ✅ 272 git commits documenting development
-- ✅ Clean working tree (all changes committed)
-
-### What's Remaining (10% - 106 hours)
-
-The remaining work focuses on final production hardening, deployment validation, and operational readiness:
-
-1. **Performance Validation** (12 hours) - Comprehensive benchmark validation against C version
-2. **Extended Integration Testing** (16 hours) - Real-world infrastructure testing
-3. **Production Deployment Guides** (8 hours) - Systemd, Docker, package deployment
-4. **Security Audit Review** (16 hours) - Third-party security assessment
-5. **Load Testing Validation** (12 hours) - High-traffic stress testing
-6. **Documentation Enhancement** (8 hours) - Operational guides and troubleshooting
-7. **Monitoring Setup Guidance** (8 hours) - Observability and metrics configuration
-
-With enterprise multipliers (1.15x compliance, 1.15x uncertainty buffer) applied: **106 hours remaining**
+# Blitzy Project Guide — Config H — Snyk CLI Scan of `blitzy-tgr-dnsmasq-rust`
 
 ---
 
-## Visual Progress Overview
+## 1. Executive Summary
+
+### 1.1 Project Overview
+
+Config H is one entry in a multi-config security tool comparison run against `blitzy-tgr-dnsmasq-rust`, a Rust 2021 reimplementation of dnsmasq v2.92.0 pinned to Rust 1.91.0. The objective was to execute the Snyk CLI (SAST + dependency) against the codebase and emit a normalized single-line findings inventory conforming to a strict five-field schema (`file`, `line`, `severity`, `cwe`, `description`), plus two rule-mandated companion artifacts: a Markdown decision log (Explainability rule) and a self-contained reveal.js leadership deck (Executive Presentation rule). The target Rust codebase is the read-only subject of the scan and is never modified.
+
+### 1.2 Completion Status
 
 ```mermaid
-pie title Project Hours Breakdown (Total: 1056 hours)
-    "Completed Work" : 950
-    "Remaining Work" : 106
+%%{init: {'pie': {'textPosition': 0.5}, 'themeVariables': {'pie1': '#5B39F3', 'pie2': '#FFFFFF', 'pieOuterStrokeColor': '#0F0B23', 'pieStrokeWidth': '2', 'pieSectionTextColor': '#0F0B23', 'pieLegendTextColor': '#0F0B23'}}}%%
+pie showData
+    title Config H Completion (91.4% complete)
+    "Completed (Dark Blue #5B39F3)" : 32
+    "Remaining (White #FFFFFF)" : 3
 ```
 
-The project has achieved 90.0% completion with all core functionality implemented, tested, and validated.
+| Metric | Value |
+|---|---|
+| **Total Project Hours** | **35** |
+| Completed Hours (AI + Manual) | 32 |
+| Remaining Hours | 3 |
+| **Percent Complete** | **91.4%** |
+
+Calculation: 32 / (32 + 3) = 32 / 35 = 0.9143 → 91.4%.
+
+### 1.3 Key Accomplishments
+
+- [x] **Directive 1 (Install + Auth)**: Snyk CLI 1.1304.3 installed via `npm install -g snyk`; `SNYK_TOKEN` validated via `snyk whoami` (returned account identifier `michael`).
+- [x] **Directive 2 (SAST)**: `snyk code test --sarif-file-output=results-snyk-code.sarif .` executed, exit 0, wall-clock 19s, valid SARIF v2.1.0 emitted.
+- [x] **Directive 3 (Deps)**: Literal `snyk test --all-projects` returned `SNYK-CLI-0008` (exit 3) as documented for Rust-only projects; AAP §0.3.1 fallback (`cargo cyclonedx --spec-version 1.5` → `snyk sbom test`) ran successfully (exit 1 = vulns found, wall-clock 10s).
+- [x] **Directive 4 (Normalize + Merge)**: POSIX `sh` + `jq` normalizer at `scripts/normalize-findings-config-h.sh` produced `findings-config-h.json` — single line, valid JSON, four entries, all five schema fields populated, max description 46 chars (≤ 200 cap), severity union closed.
+- [x] **14/14 verification gates PASS** — re-executed live during this project guide assembly.
+- [x] **Rule 1 (Explainability)** satisfied: `decisions-config-h.md` (17 KB, 11 decisions, full Decision / Alternatives / Chosen / Rationale / Risks columns, run inventory, pass/fail table, reproducibility command).
+- [x] **Rule 2 (Executive Presentation)** satisfied: `executive-summary-config-h.html` (27 KB, 16 slides, four slide types in use, Mermaid 11.4.0 + Lucide 0.460.0 + reveal.js 5.1.0 CDN-pinned, full Blitzy brand palette inlined, zero emoji, zero fenced code blocks inside slides).
+- [x] **Rule 3 (Prose)** satisfied: Vonnegut/Asimov voice applied across both companions.
+- [x] **CycloneDX 1.5 SBOM** produced for fallback path: 240 components, every component identified by `pkg:cargo/...` purl.
+- [x] **Audit target byte-identical to pre-scan state** — `git diff origin/main...HEAD -- src/ tests/ benches/ examples/ build.rs Cargo.toml Cargo.lock rust-toolchain.toml rustfmt.toml clippy.toml .cargo/ docs/ README.md` returns zero rows.
+- [x] **Normalizer is idempotent and byte-reproducible** — fresh re-run against the same inputs yields a byte-identical `findings-config-h.json`.
+- [x] **Visual verification in headless Chrome at 1920×1080**: six screenshots saved to `blitzy/screenshots/`; zero console errors; Mermaid diagram renders after `slidechanged`; Lucide icons re-rendered on every slide change.
+
+### 1.4 Critical Unresolved Issues
+
+The four advisories surfaced by Config H are findings **in the audit target's dependency tree**, not blockers in the Config H deliverable itself. Per AAP §0.5.2, remediation of surfaced findings is **explicitly out of Config H scope** ("The deliverable is the findings inventory; fixes are a separate workstream."). They are listed here for downstream visibility:
+
+| Issue | Impact | Owner | ETA |
+|---|---|---|---|
+| SNYK-RUST-RAND-16073005 — Out-of-Bounds (CWE-119) in `rand 0.8.5` (also surfaces under `rand 0.9.2` per a second dependency path) | High | Downstream Rust workstream | Out of Config H scope — separate ticket |
+| SNYK-RUST-HICKORYPROTO-16346342 — Infinite loop (CWE-835) in `hickory-proto 0.25.2` | High | Downstream Rust workstream | Out of Config H scope — separate ticket |
+| SNYK-RUST-HICKORYPROTO-16346057 — Inefficient Algorithmic Complexity (CWE-407) in `hickory-proto 0.25.2` | High | Downstream Rust workstream | Out of Config H scope — separate ticket |
+| Snyk Code Rust SAST coverage gap — rule pack gated by Early Access tier; empty SARIF accepted as authoritative per AAP §0.7.3 | Medium (potential blind spot, not a deliverable blocker) | Security org / Snyk account admin | 2h decision (see Section 2.2) |
+
+**No issues block release of the Config H deliverable itself.** All 14 verification gates pass.
+
+### 1.5 Access Issues
+
+| System / Resource | Type of Access | Issue Description | Resolution Status | Owner |
+|---|---|---|---|---|
+| Snyk Code Rust rule pack | Read (entitlement) | Active Snyk organization (`c78a6b60-47b6-4bac-a32c-2cca9d06ad32`) does not have Snyk Code Rust enabled; SARIF coverage block lists only `.html` as supported language. Handled per AAP §0.7.3 — empty SARIF accepted as authoritative. Does **not** block the deliverable but limits SAST coverage of Rust files. | Open — organizational decision required | Snyk account admin |
+| `api.snyk.io` outbound HTTPS | Network | Required at scan time; reached successfully during the run. No persistent issue. | Resolved | Run-time operator |
+| `crates.io` outbound HTTPS | Network | Required for `cargo install cargo-cyclonedx` (fallback path); reached successfully during the run. No persistent issue. | Resolved | Run-time operator |
+
+### 1.6 Recommended Next Steps
+
+1. **[High]** Acceptance review of `findings-config-h.json` — confirm the four-row deliverable is consumable by the downstream multi-config aggregator. *Effort: 1h.*
+2. **[High]** Open downstream Rust workstream tickets for the three unique advisories (rand CWE-119, hickory-proto CWE-835, hickory-proto CWE-407) — these are surfaced by Config H but explicitly out of its scope. *Effort: outside Config H — track separately.*
+3. **[Medium]** Decide whether to obtain Snyk Code Rust Early Access entitlement so future re-runs exercise the Rust SAST rule pack rather than accepting an empty SARIF baseline. *Effort: 2h decision + procurement.*
+4. **[Medium]** Distribute the deliverable bundle (`findings-config-h.json` + `decisions-config-h.md` + `executive-summary-config-h.html`) to the multi-config comparison harness. *Effort: outside Config H — track separately.*
+5. **[Low]** Establish a re-scan cadence — Snyk's advisory database is mutable, so re-runs may surface new findings against the same `Cargo.lock` without code changes. *Effort: outside Config H — track separately.*
 
 ---
 
-## Detailed Validation Results
+## 2. Project Hours Breakdown
 
-### Compilation Status: ✅ 100% Successful
+### 2.1 Completed Work Detail
 
-**Build Commands Verified:**
-```bash
-✅ cargo check                           # 0 errors, 0 warnings
-✅ cargo build --release --all-features  # Success in 1m 45s
-✅ cargo clippy --all-features           # 0 warnings (strict mode)
-✅ cargo fmt -- --check                  # All code formatted
-✅ cargo bench --no-run                  # All benchmarks compile
-✅ cargo build --examples                # All examples compile
-```
+Every component below traces to a specific AAP requirement or path-to-production activity.
 
-**Binary Details:**
-- **Location:** `target/release/dnsmasq`
-- **Size:** 6.1MB (optimized, stripped)
-- **Features:** DHCP, DHCPv6, IPv6, DNSSEC, DBus, IDN, Lua, TFTP, conntrack, ipset, nftset
+| Component | Hours | Description |
+|---|---|---|
+| Repository scope discovery (AAP §0.2) | 2.0 | Inventoried 137 files, 88 Rust source files; confirmed no pre-existing security tooling, `.snyk`, SARIF, or workflow files; captured Cargo.toml dependencies, toolchain pin, and audit-target structure. |
+| Stage 1 — Install + authenticate Snyk CLI (Directive 1) | 1.0 | `npm install -g snyk` against pre-existing Node v22.22.2 / npm 11.1.0; `SNYK_TOKEN` consumed from environment; verified with `snyk whoami` (exit 0) and `snyk --version` (1.1304.3). |
+| Stage 2 — SAST scan execution + SARIF validation (Directive 2) | 1.5 | `snyk code test --sarif-file-output=results-snyk-code.sarif .` — exit 0, wall-clock 19s, valid SARIF v2.1.0 (0 results, 0 rules; coverage block lists `.html` as only supported language for active org). |
+| Stage 3 — Dependency scan literal + SBOM fallback (Directive 3) | 3.0 | Literal `snyk test --all-projects --severity-threshold=high` → exit 3 `SNYK-CLI-0008`, wall-clock 4s. AAP §0.3.1 fallback: `cargo cyclonedx --format json --spec-version 1.5 --all --target all` produced 240-component SBOM, then `snyk sbom test --file=sbom.cdx.json --severity-threshold=high --json` → exit 1 (4 vulns), wall-clock 10s. Non-fatal "Forbidden" telemetry post on stderr documented. |
+| Stage 4 — Normalizer implementation (Directive 4) | 4.0 | `scripts/normalize-findings-config-h.sh` (9 KB, 227 lines): POSIX `sh` + `jq` pipeline, scalar-based UTF-8-safe truncation, prefix-before-truncation, SAST-first ordering, empty-set newline convention, four documented exit codes. Includes the agent's correctness fix to emit `Cargo.toml` (not `vulnerabilities[].from[0]`) as the `.file` value for dependency findings per AAP §0.4.1. |
+| Primary deliverable emission + 14-gate verification | 1.0 | `findings-config-h.json` produced (451 bytes, single line, 4 entries, max desc 46 chars). All 14 verification gates executed and PASS. |
+| `decisions-config-h.md` authoring (Rule 1 — Explainability) | 4.0 | 17 KB Markdown (121 lines): run inventory table, pass/fail report, 11 decisions with full `Decision | Alternatives | Chosen | Rationale | Risks` columns, empty-SAST interpretation, verification-gates appendix, files-emitted manifest, reproducibility command. Vonnegut/Asimov prose voice applied per Rule 3. |
+| `executive-summary-config-h.html` authoring (Rule 2 — Executive Presentation) | 8.0 | 27 KB single self-contained HTML (761 lines): 16-slide reveal.js 5.1.0 deck, 4 slide types in use (1 title, 4 dividers, 10 content, 1 closing), Mermaid 11.4.0 pipeline diagram, Lucide 0.460.0 icon system (19 references), Blitzy brand palette inlined as CSS custom properties, Inter / Space Grotesk / Fira Code typography via Google Fonts, hero gradient `linear-gradient(68deg, #7A6DEC, #5B39F3, #4101DB)`, zero emoji, zero in-slide code fences. Reveal config: `hash:true, transition:'slide', controlsTutorial:false, width:1920, height:1080`. |
+| Multi-checkpoint QA cycles + cross-artifact hardening | 5.0 | Fifteen commits visible on branch: Checkpoint 1, 2, 6 review fixes; Mermaid CDN upgrade to 11.4.0 (and later jq mitigation for QA Checkpoint 6 CVE); cross-artifact hallucination fix; Snyk doc URL corrections; restructure to match AAP spec; decision-log refinement (Decision 11/12). |
+| Visual verification in headless Chrome at 1920×1080 | 1.0 | Six PNG screenshots saved to `blitzy/screenshots/` covering title, headline KPIs, Mermaid pipeline, severity bars, residual risks, closing slide. Zero console errors. Mermaid renders post-`slidechanged`; Lucide re-renders on every slide change. |
+| Project Guide + Technical Specifications consolidation | 1.5 | Two structural updates to `blitzy/documentation/` repurposing the spec tree for the Config H deliverable; non-target docs, not source code. |
+| **Total Completed** | **32.0** | **Sum of all rows above = Section 1.2 Completed Hours.** |
 
-### Test Execution: ✅ 100% Pass Rate (592/592)
+### 2.2 Remaining Work Detail
 
-**Unit Tests:**
-- **485 tests PASSED** ✅
-- **0 tests FAILED** ✅
-- **2 tests ignored** (intentional doc-test placeholders)
-- **Execution time:** 98.30 seconds
+Each row below is either an AAP path-to-production gap or a path-to-production handoff. Vulnerability remediation surfaced by the scan is **not** listed here because AAP §0.5.2 explicitly excludes it from Config H scope.
 
-**Integration Tests:**
-| Test Suite | Tests Passed | Status |
-|-----------|--------------|--------|
-| Configuration Tests | 46/46 | ✅ PASS |
-| DHCP Integration | 18/18 | ✅ PASS |
-| DNS Integration | 20/20 | ✅ PASS |
-| DNSSEC Validation | 23/23 | ✅ PASS |
-| **Total Integration** | **107/107** | ✅ **PASS** |
+| Category | Hours | Priority |
+|---|---|---|
+| Human acceptance review of `findings-config-h.json` and the two companion artifacts (path-to-production handoff) | 1.0 | High |
+| Organizational decision on Snyk Code Rust Early Access entitlement to remove the SAST coverage gap (path-to-production gap surfaced by Directive 2) | 2.0 | Medium |
+| **Total Remaining** | **3.0** | — |
 
-**Test Coverage:**
-- Comprehensive coverage across all modules
-- DNS protocol parsing and caching
-- DHCPv4/v6 message handling and lease management
-- DNSSEC signature verification
-- Configuration file parsing (all 350+ options)
-- Platform-specific code paths
+Cross-section integrity check: Section 2.1 (32.0) + Section 2.2 (3.0) = 35.0 = Total Project Hours stated in Section 1.2. ✅
 
-### Runtime Validation: ✅ Fully Functional
+### 2.3 Notes
 
-**Binary Execution Tests:**
-```bash
-# Version information
-$ ./target/release/dnsmasq --version
-dnsmasq version 2.92  Copyright (c) 2000-2025 Simon Kelley
-Compile time options: DHCP DHCPv6 IPv6 DNSSEC DBus IDN Lua TFTP conntrack ipset nftset
-✅ SUCCESS
-
-# Configuration validation
-$ ./target/release/dnsmasq --test --conf-file=/etc/dnsmasq.conf
-dnsmasq: syntax check OK
-✅ SUCCESS
-
-# Help documentation
-$ ./target/release/dnsmasq --help
-[Complete CLI documentation displayed]
-✅ SUCCESS
-```
-
-**All functional components verified working:**
-- DNS query forwarding and response caching
-- DHCP lease allocation and renewal
-- Configuration file parsing and validation
-- Command-line argument processing
-- Signal handling (SIGHUP, SIGTERM, SIGUSR1, SIGUSR2)
-
-### Code Quality: ✅ Excellent
-
-**Quality Metrics:**
-- **Total Lines of Code:** 96,995 lines of Rust
-  - Source files: ~86,000 lines (88 files)
-  - Test files: ~8,000 lines (5 files)
-  - Benchmarks: ~2,000 lines (3 files)
-  - Examples: ~1,000 lines (2 files)
-- **Source Files:** 88 Rust modules in src/
-- **Commits:** 272 commits documenting complete development
-- **Warnings:** 0 clippy warnings in strict mode
-- **Formatting:** 100% compliant with rustfmt
-
-**Memory Safety:**
-- ✅ Zero unsafe blocks in core logic
-- ✅ Ownership system eliminates use-after-free
-- ✅ Borrow checker prevents data races
-- ✅ Compile-time bounds checking eliminates buffer overflows
-
-### Dependency Status: ✅ 100% Resolved
-
-**Total Dependencies:** 200+ crates from crates.io, all resolved without conflicts
-
-**Key Dependencies Verified:**
-| Dependency | Version | Purpose |
-|-----------|---------|---------|
-| tokio | 1.48.0 | Async runtime (replaces poll loop) |
-| hickory-proto | 0.25.2 | DNS protocol implementation |
-| hickory-server | 0.25.2 | DNS server components |
-| ring | 0.17.14 | DNSSEC cryptography |
-| nix | 0.29.0 | POSIX/UNIX system APIs |
-| rtnetlink | 0.15.0 | Linux netlink interface |
-| caps | 0.5.5 | Linux capability management |
-| clap | 4.5.52 | CLI argument parsing |
-| zbus | 5.12.0 | D-Bus integration |
-
-**Rust Toolchain:**
-- **Version:** 1.91.0 (stable)
-- **Edition:** 2021
-- **Cargo Version:** 1.91.0
+- Vulnerability remediation for the three unique advisories surfaced in Section 1.4 is **not** counted toward Config H remaining hours per AAP §0.5.2. Those tasks belong to the downstream Rust workstream and are tracked separately.
+- Multi-config aggregation (combining Config H output with Configs A–G) is **not** counted per AAP §0.5.2 ("Cross-config aggregation or comparison reports … are out of scope.").
+- CI/CD pipeline integration is **not** counted per AAP §0.5.2 ("No `.github/workflows/*`, `.gitlab-ci.yml`, Jenkinsfile, or equivalent is created.").
 
 ---
 
-## Completed Work Breakdown (950 Hours)
+## 3. Test Results
 
-### Core System Implementation (40 hours)
-**Files:** `src/main.rs`, `src/lib.rs`, `src/types.rs`, `src/error.rs`, `src/constants.rs`
-- Binary entry point with tokio runtime setup
-- Library root with public API surface
-- Core type definitions with ownership semantics
-- Comprehensive error types using thiserror
-- Global constants and feature flags
+All tests below originated from Blitzy's autonomous validation logs for this project. Two suites apply: the 14 deliverable-conformance gates (executed by the validation pipeline) and the pre-scan Rust unit test suite (executed by the setup agent before any Snyk activity, included here as a sanity confirmation that Config H made no Rust source changes).
 
-### Configuration Module (60 hours)
-**Files:** 6 files in `src/config/`
-- Complete dnsmasq.conf parser (350+ directives)
-- Command-line argument parsing with clap
-- Configuration validation logic
-- SIGHUP reload handling
-- Type-safe configuration structures
-
-### DNS Subsystem (160 hours)
-**Files:** 19 files in `src/dns/`, `src/dns/protocol/`, `src/dns/dnssec/`
-
-**Protocol Implementation (50 hours):**
-- DNS message parsing with nom combinators
-- Domain name handling and compression
-- Resource record types and encoding
-- Wire format serialization
-
-**DNSSEC Validation (40 hours):**
-- Signature verification with ring cryptography
-- Trust anchor management
-- Validation chain building
-- Crypto operations (RSA, ECDSA, EdDSA)
-
-**Core DNS Logic (70 hours):**
-- Query forwarding with upstream selection
-- DNS cache with LRU eviction
-- Authoritative zone answering
-- EDNS0 option handling
-- RR filtering and domain matching
-
-### DHCP Subsystem (140 hours)
-**Files:** 18 files in `src/dhcp/`, `src/dhcp/v4/`, `src/dhcp/v6/`, `src/dhcp/lease/`
-
-**DHCPv4 Implementation (50 hours):**
-- DISCOVER/OFFER/REQUEST/ACK state machine
-- Message parsing and serialization
-- Option encoding/decoding
-- Protocol compliance (RFC 2131)
-
-**DHCPv6 Implementation (50 hours):**
-- SOLICIT/ADVERTISE/REQUEST/REPLY flows
-- IA_NA and IA_PD handling
-- Option serialization
-- Protocol compliance (RFC 3315)
-
-**Lease Management (30 hours):**
-- Lease database with persistence
-- DNS integration for hostname registration
-- Helper script execution
-- Async file I/O with tokio
-
-**Shared Utilities (10 hours):**
-- Common DHCPv4/v6 functions
-- MAC address handling
-- Transaction ID generation
-
-### Network Layer (130 hours)
-**Files:** 16 files in `src/network/`, `src/network/platform/`, `src/network/firewall/`
-
-**Core Networking (50 hours):**
-- Socket creation and management with tokio
-- Interface enumeration
-- Cross-platform abstractions
-- UDP/TCP socket handling
-
-**Platform-Specific Code (50 hours):**
-- Linux netlink integration (rtnetlink)
-- BSD BPF support (nix crate)
-- macOS-specific networking
-- Common platform traits
-
-**Firewall Integration (30 hours):**
-- Linux ipset support
-- nftables integration (nftnl)
-- BSD PF tables
-- Connection tracking
-
-### Router Advertisement (30 hours)
-**Files:** 3 files in `src/radv/`
-- ICMPv6 Router Advertisement generation
-- SLAAC duplicate address detection
-- RA protocol implementation (RFC 4861)
-
-### TFTP Server (25 hours)
-**Files:** 3 files in `src/tftp/`
-- TFTP protocol implementation
-- File transfer state machine
-- Async file I/O for reads
-- PXE network boot support
-
-### Platform Integration (60 hours)
-**Files:** 7 files in `src/platform/`
-- POSIX signal handling (tokio::signal)
-- Privilege dropping with capabilities (Linux)
-- D-Bus interface implementation (zbus)
-- OpenWrt ubus integration
-- File monitoring (notify crate)
-- systemd socket activation
-
-### Runtime & Async (40 hours)
-**Files:** 4 files in `src/runtime/`
-- Main event loop with tokio::select!
-- I/O multiplexing (replaces poll)
-- Background task management
-- Async executor configuration
-
-### Utilities (50 hours)
-**Files:** 7 files in `src/util/`
-- Structured logging with tracing
-- Metrics collection and reporting
-- Helper script execution
-- Pattern matching utilities
-- Random number generation (SURF)
-- Packet capture (pcap dump)
-
-### Testing Infrastructure (85 hours)
-**Files:** 5 integration test files (~8,000 lines)
-
-**Test Development:**
-- Configuration parsing tests (46 tests) - 15 hours
-- DHCP integration tests (18 tests) - 20 hours
-- DNS integration tests (20 tests) - 20 hours
-- DNSSEC validation tests (23 tests) - 20 hours
-- Test infrastructure and fixtures - 10 hours
-
-**Test Coverage:**
-- All major functionality exercised
-- Edge cases and error conditions
-- Configuration compatibility validation
-- Protocol compliance verification
-
-### Benchmarks (20 hours)
-**Files:** 3 benchmark files
-- DNS query performance benchmarks
-- Cache operation benchmarks (insert, lookup, eviction)
-- DHCP lease allocation benchmarks
-
-### Examples (10 hours)
-**Files:** 2 example programs
-- Simple DNS forwarder example
-- Minimal DHCP server example
-
-### Build Configuration & Tooling (20 hours)
-- Cargo.toml with 200+ dependencies
-- rust-toolchain.toml specification
-- rustfmt.toml and clippy.toml configuration
-- Feature flags matching C HAVE_* options
-- CI/CD configuration considerations
-
-### Validation, Debugging & Fixes (80 hours)
-- 272 git commits documenting iterative development
-- Compilation error resolution
-- Test failure debugging and fixes
-- Performance optimization
-- Code review and cleanup
-- Documentation of unsafe code
-- Integration testing and validation
+| Test Category | Framework | Total Tests | Passed | Failed | Coverage % | Notes |
+|---|---|---|---|---|---|---|
+| Deliverable schema validation | `python3 -m json.tool`, `jq` | 5 | 5 | 0 | 100% | (1) `wc -l = 1`; (2) valid JSON; (3) all five fields present per row; (4) severity union closed to `{critical,high,medium,low}`; (5) max description length 46 (≤ 200 cap). |
+| Deliverable field-type validation | Python | 4 | 4 | 0 | 100% | (6) `.file` non-empty strings; (7) `.line` integers; (8) `.cwe` strings; (9) `.severity` membership. |
+| Encoding + format validation | `file -bi`, byte inspection | 1 | 1 | 0 | 100% | (10) UTF-8 (reported `charset=us-ascii`, a strict subset of UTF-8); single-line minified with one trailing `\n`. |
+| Intermediate artifact validation | Python / `jq` | 2 | 2 | 0 | 100% | (11) `results-snyk-code.sarif` parses as JSON, SARIF v2.1.0 schema URL present; (12) `results-snyk-deps.json` contains `vulnerabilities` array with 4 entries. |
+| Companion artifact validation | `grep`, structural inspection | 2 | 2 | 0 | 100% | (13) `decisions-config-h.md` starts with `#` heading, well-formed Markdown; (14) `executive-summary-config-h.html` contains `<!DOCTYPE html>` and `</html>`. |
+| Read-only target audit | `git diff origin/main...HEAD --` | 1 | 1 | 0 | 100% | Zero modifications under `src/`, `tests/`, `benches/`, `examples/`, `build.rs`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `rustfmt.toml`, `clippy.toml`, `.cargo/`, `docs/`, `README.md`. |
+| Normalizer idempotency check | `diff` of fresh re-run vs committed deliverable | 1 | 1 | 0 | 100% | Byte-identical output on re-execution. |
+| Reveal.js visual verification (UI) | Headless Chrome at 1920×1080 | 6 | 6 | 0 | n/a | Six PNG screenshots (slides 1, 2, 4, 8, 14, 16) captured; zero console errors; Mermaid renders post-`slidechanged`; Lucide re-rendered on every slide change. |
+| Rust unit test baseline (pre-scan, set by setup agent) | `cargo test` (offline) | 644 | 644 | 0 | n/a — Config H made no Rust source changes | Documented in setup status log. Re-running `cargo build --offline` returned exit 0. Since Config H modifies no Rust file, these results stand unchanged. |
+| **Aggregate (autonomous validation)** | — | **666** | **666** | **0** | **100%** | 14 deliverable-gate tests + 6 UI screenshots + 6 normalizer/audit checks + 644 pre-scan Rust unit tests; no failures observed by any autonomous test. |
 
 ---
 
-## Remaining Tasks (106 Hours)
+## 4. Runtime Validation & UI Verification
 
-### Task Breakdown with Detailed Action Steps
+Runtime health and UI verification results from the autonomous validation logs:
 
-| Priority | Task | Hours | Severity | Action Steps |
-|----------|------|-------|----------|--------------|
-| **HIGH** | **Performance Benchmark Validation** | 12 | Medium | 1. Run criterion benchmarks against C dnsmasq<br>2. Compare DNS query latency (target: ≤ C version)<br>3. Compare DHCP allocation time<br>4. Measure memory footprint under load<br>5. Document performance characteristics<br>6. Identify any performance gaps |
-| **HIGH** | **Extended Integration Testing** | 16 | Medium | 1. Deploy in test environment with real DNS/DHCP clients<br>2. Test with production dnsmasq.conf files<br>3. Validate D-Bus interface with real consumers<br>4. Test systemd socket activation<br>5. Verify helper script execution in real scenarios<br>6. Test configuration reload (SIGHUP) under load<br>7. Document any integration issues found |
-| **HIGH** | **Security Audit Review** | 16 | High | 1. Run cargo-audit for dependency vulnerabilities<br>2. Review all unsafe code blocks (should be minimal)<br>3. Conduct DNSSEC validation security review<br>4. Review privilege dropping implementation<br>5. Test network input validation (fuzzing)<br>6. Document security considerations<br>7. Address any findings |
-| **MEDIUM** | **Load Testing Validation** | 12 | Medium | 1. Set up load testing environment<br>2. Generate high DNS query volume (10K+ qps)<br>3. Generate high DHCP request volume<br>4. Monitor memory usage and leak detection<br>5. Test cache performance under pressure<br>6. Verify graceful degradation<br>7. Document load test results |
-| **MEDIUM** | **Production Deployment Guides** | 8 | Low | 1. Document systemd service deployment<br>2. Create Docker deployment guide<br>3. Document configuration migration steps<br>4. Write troubleshooting guide<br>5. Create monitoring setup guide<br>6. Document rollback procedures |
-| **MEDIUM** | **Documentation Enhancement** | 8 | Low | 1. Generate cargo doc HTML documentation<br>2. Write operational runbook<br>3. Document performance tuning options<br>4. Create FAQ for common issues<br>5. Write security best practices guide<br>6. Document platform-specific considerations |
-| **LOW** | **Monitoring Setup Guidance** | 8 | Low | 1. Document metrics endpoint configuration<br>2. Create Prometheus exporter guide (if applicable)<br>3. Write logging configuration guide<br>4. Document tracing integration<br>5. Create sample dashboards<br>6. Write alerting recommendations |
-
-**Subtotal:** 80 hours  
-**Enterprise Multipliers Applied:**
-- Compliance/Security Review: 1.15x
-- Uncertainty Buffer: 1.15x
-- **Total Remaining:** 80 × 1.15 × 1.15 = **106 hours**
-
----
-
-## Risk Assessment
-
-### Technical Risks
-
-| Risk | Severity | Impact | Likelihood | Mitigation |
-|------|----------|--------|------------|------------|
-| Performance regression vs C version | Medium | High | Low | Run comprehensive benchmarks; optimize hot paths if needed; tokio runtime provides excellent performance |
-| Undiscovered edge cases in protocol handling | Medium | Medium | Medium | Extensive integration testing; run against C test suite; real-world deployment validation |
-| Platform-specific bugs on BSD/macOS | Low | Medium | Low | Platform-specific code uses well-tested nix crate; compile-test on all platforms |
-
-### Security Risks
-
-| Risk | Severity | Impact | Likelihood | Mitigation |
-|------|----------|--------|------------|------------|
-| Dependency vulnerabilities | Medium | High | Low | Regular cargo-audit runs; automated dependency updates; all deps from crates.io |
-| Privilege escalation in privilege drop code | High | Critical | Very Low | Uses well-audited caps crate; follows security best practices; limited unsafe code |
-| Network input validation gaps | Medium | High | Low | All parsing uses safe Rust; nom combinators for protocol parsing; bounds checking enforced |
-
-### Operational Risks
-
-| Risk | Severity | Impact | Likelihood | Mitigation |
-|------|----------|--------|------------|------------|
-| Insufficient monitoring in production | Medium | Medium | Medium | Implement comprehensive tracing; provide metrics endpoints; document monitoring setup |
-| Configuration incompatibilities | Low | High | Very Low | 100% backward compatible parser; all 350+ options tested; extensive config tests passing |
-| Upgrade path complexity | Low | Medium | Low | Drop-in binary replacement; no config changes needed; systemd service compatible |
-
-### Integration Risks
-
-| Risk | Severity | Impact | Likelihood | Mitigation |
-|------|----------|--------|------------|------------|
-| D-Bus interface compatibility issues | Low | Medium | Low | Uses standard zbus crate; interface name unchanged; tested with dbus-test.py |
-| systemd socket activation failures | Low | Medium | Very Low | Standard systemd integration; compatible service units; signal handling validated |
-| Helper script execution differences | Low | Medium | Low | Same environment variables; same invocation timing; same exit code handling |
-
-**Overall Risk Level:** **LOW**
-
-The project has achieved production-ready status with comprehensive testing and validation. Remaining risks are primarily operational and can be addressed through standard production hardening practices.
+- ✅ **Snyk CLI installation and authentication** — `snyk whoami` exit 0; `snyk --version` returned `1.1304.3`. `SNYK_TOKEN` consumed from environment; never written to disk.
+- ✅ **Snyk Code (SAST)** — `snyk code test` exit 0, wall-clock 19s, valid SARIF v2.1.0 emitted (0 results, 0 rules).
+- ⚠ **Snyk Code Rust SAST coverage** — SARIF coverage block lists only `.html` as a supported language for the active org. Rule pack not engaged; empty SARIF accepted as authoritative per AAP §0.7.3. Not a deliverable blocker; flagged as a partial-coverage gap in Section 1.4.
+- ✅ **Snyk Open Source (deps) — literal directive** — `snyk test --all-projects --severity-threshold=high` exit 3, wall-clock 4s, expected `SNYK-CLI-0008` ("Could not detect supported target files"). Documented behavior for Rust-only projects; fallback path triggered per AAP §0.3.1.
+- ✅ **CycloneDX SBOM generation** — `cargo cyclonedx --format json --spec-version 1.5 --all --target all` exit 0, produced `sbom.cdx.json` (282 KB, 240 components, every component identified by `pkg:cargo/...` purl).
+- ✅ **Snyk Open Source (deps) — SBOM fallback** — `snyk sbom test --file=sbom.cdx.json --severity-threshold=high --json` exit 1 (vulns found), wall-clock 10s, valid Snyk OSS JSON envelope with 4-entry `vulnerabilities` array.
+- ⚠ **Snyk "Forbidden" telemetry stderr** — Non-fatal telemetry post observed on stderr during SBOM scan. Preserved in `.blitzy-run/snyk-deps-stderr.log` for audit. Did not affect scan output; documented as expected per Decision 11 in `decisions-config-h.md`.
+- ✅ **Stage 4 normalizer** — `scripts/normalize-findings-config-h.sh` exit 0, byte-reproducible output; POSIX `sh -n` syntax check passes; idempotent on re-execution.
+- ✅ **Primary deliverable** — `findings-config-h.json` 451 bytes, single line, 4 entries, all 5 fields populated, max description 46 chars, UTF-8.
+- ✅ **`decisions-config-h.md`** — 17 KB, 121 lines, 11 decisions with full rationale columns, well-formed Markdown.
+- ✅ **`executive-summary-config-h.html`** — 27 KB, 761 lines, 16 slides (target met for the 12–18 range), four slide types in use, all CDN versions pinned per AAP (reveal.js 5.1.0, Mermaid 11.4.0, Lucide 0.460.0).
+- ✅ **Reveal.js deck visual verification** — Six screenshots saved to `blitzy/screenshots/`:
+  - `slide_01_title.png` — Hero gradient title slide with brand wordmark, shield-check Lucide icon, metadata callout. Slide counter 1/16. ✅
+  - `slide_02_headline_kpis.png` — Four KPI tiles (4 findings, 3 unique advisories, 0 SAST issues, 240 components scanned) plus operational callout. Slide counter 2/16. ✅
+  - `slide_04_pipeline_mermaid.png` — Mermaid 11.4.0 flowchart of the 4-stage pipeline rendered cleanly after `slidechanged`. Slide counter 4/16. ✅
+  - `slide_08_severity_bars.png` — Horizontal severity bars (CRITICAL 0, HIGH 4 filled, MEDIUM 0, LOW 0) with inline Fira Code spans. Slide counter 8/16. ✅
+  - `slide_14_residual_risks_icons.png` — 4-bullet residual-risks list with Lucide icon row. Slide counter 14/16. ✅
+  - `slide_16_closing.png` — Hero gradient closing slide with `findings-config-h.json` and `decisions-config-h.md` Fira Code chips. Slide counter 16/16. ✅
+- ✅ **Console hygiene** — Zero console errors observed during headless Chrome verification at 1920×1080.
 
 ---
 
-## Complete Development Guide
-
-### System Prerequisites
-
-**Required Software:**
-- **Rust Toolchain:** 1.91.0 or later
-  - Install: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-  - Verify: `rustc --version` (should show 1.91.0+)
-- **Cargo:** 1.91.0 or later (included with Rust)
-- **Git:** For cloning repository
-
-**Operating System:**
-- Primary: Linux (Ubuntu 20.04+, Debian 11+, RHEL 8+, etc.)
-- Supported: FreeBSD, OpenBSD, NetBSD, macOS 11+
-
-**Hardware Requirements:**
-- CPU: x86_64 or aarch64
-- RAM: 2GB minimum for build, 512MB for runtime
-- Disk: 2GB for build artifacts, <10MB for binary
-
-**Build Dependencies (Linux):**
-```bash
-# Ubuntu/Debian
-sudo apt-get update
-sudo apt-get install -y build-essential pkg-config libdbus-1-dev
-
-# RHEL/CentOS/Fedora
-sudo dnf install -y gcc make pkgconfig dbus-devel
-
-# Alpine Linux
-sudo apk add build-base pkgconfig dbus-dev
-```
-
-### Environment Setup
-
-**1. Clone Repository:**
-```bash
-git clone https://github.com/dnsmasq/dnsmasq.git
-cd dnsmasq
-git checkout blitzy-40f6e639-d48b-4db8-9f86-f23abdd54866
-```
-
-**2. Verify Rust Toolchain:**
-```bash
-rustc --version
-# Expected: rustc 1.91.0 or later
-
-cargo --version
-# Expected: cargo 1.91.0 or later
-
-rustup show
-# Expected: active toolchain 1.91.0+
-```
-
-**3. Set Environment Variables (Optional):**
-```bash
-# Enable all features for build
-export RUST_FEATURES="--all-features"
-
-# Set release profile for optimized build
-export CARGO_PROFILE="--release"
-
-# Enable backtraces for debugging (if needed)
-export RUST_BACKTRACE=1
-```
-
-### Dependency Installation
-
-**1. Download and Verify Dependencies:**
-```bash
-cd /path/to/dnsmasq-rust
-
-# Download all dependencies (first time)
-cargo fetch
-
-# Verify dependency resolution
-cargo tree --all-features | head -20
-```
-
-**Expected output:**
-```
-dnsmasq v2.92.0 (/path/to/dnsmasq-rust)
-├── ahash v0.8.x
-├── anyhow v1.0.x
-├── async-recursion v1.1.x
-├── async-trait v0.1.x
-├── bitflags v2.6.x
-... (200+ dependencies)
-```
-
-**2. Verify All Dependencies Resolved:**
-```bash
-# Check for dependency conflicts
-cargo check --all-features
-
-# Expected: "Finished dev [unoptimized + debuginfo] target(s)"
-```
-
-### Build Instructions
-
-**1. Debug Build (For Development):**
-```bash
-# Build with debug symbols
-cargo build --all-features
-
-# Verify build success
-ls -lh target/debug/dnsmasq
-# Expected: Executable binary ~15-20MB
-
-# Run tests to verify
-cargo test --all-features
-# Expected: All 592 tests passing
-```
-
-**2. Release Build (For Production):**
-```bash
-# Build optimized release binary
-cargo build --release --all-features
-
-# Verify build success
-ls -lh target/release/dnsmasq
-# Expected: Optimized binary ~6.1MB
-
-# Verify binary is stripped
-file target/release/dnsmasq
-# Expected: ELF 64-bit LSB executable, stripped
-```
-
-**3. Build Specific Feature Sets:**
-```bash
-# Minimal build (no optional features)
-cargo build --release --no-default-features
-
-# Build with specific features
-cargo build --release --features "dnssec,dbus,tftp"
-
-# List available features
-cargo metadata --no-deps --format-version=1 | jq -r '.packages[0].features | keys[]'
-```
-
-**Build Time Expectations:**
-- Debug build (first time): ~5-8 minutes
-- Release build (first time): ~8-12 minutes
-- Incremental rebuilds: ~30-60 seconds
-
-### Testing
-
-**1. Run Unit Tests:**
-```bash
-# Run all unit tests (in library and binary)
-cargo test --lib --bins --all-features
-
-# Expected output:
-#   running 485 tests
-#   test result: ok. 485 passed; 0 failed; 2 ignored
-#   Duration: ~98 seconds
-```
-
-**2. Run Integration Tests:**
-```bash
-# Run all integration tests
-cargo test --test '*' --all-features
-
-# Run specific test suite
-cargo test --test config_tests --all-features          # 46 tests
-cargo test --test dhcp_integration_tests --all-features # 18 tests
-cargo test --test dns_integration_tests --all-features  # 20 tests
-cargo test --test dnssec_tests --all-features          # 23 tests
-
-# Expected: All 107 integration tests passing
-```
-
-**3. Run All Tests:**
-```bash
-# Comprehensive test run
-cargo test --all-features
-
-# Expected output:
-#   running 592 tests
-#   test result: ok. 590 passed; 0 failed; 2 ignored
-```
-
-**4. Run Benchmarks:**
-```bash
-# Compile benchmarks
-cargo bench --no-run --all-features
-
-# Run benchmarks (takes ~5-10 minutes)
-cargo bench --all-features
-
-# Benchmarks available:
-# - DNS query performance
-# - Cache operations (insert, lookup, eviction)
-# - DHCP lease allocation
-```
-
-### Application Startup
-
-**1. Command-Line Usage:**
-```bash
-# Show version and features
-./target/release/dnsmasq --version
-
-# Expected output:
-#   dnsmasq version 2.92  Copyright (c) 2000-2025 Simon Kelley
-#   Compile time options: DHCP DHCPv6 IPv6 DNSSEC DBus IDN Lua TFTP conntrack ipset nftset
-
-# Show help
-./target/release/dnsmasq --help
-
-# Test configuration file syntax
-./target/release/dnsmasq --test --conf-file=/etc/dnsmasq.conf
-
-# Expected: "dnsmasq: syntax check OK"
-```
-
-**2. Run in Foreground (Development):**
-```bash
-# Run with minimal configuration
-sudo ./target/release/dnsmasq \
-  --no-daemon \
-  --port=5353 \
-  --listen-address=127.0.0.1 \
-  --no-resolv \
-  --server=8.8.8.8 \
-  --log-queries
-
-# This will:
-# - Run in foreground (--no-daemon)
-# - Listen on port 5353 (non-privileged)
-# - Bind to localhost only
-# - Forward to Google DNS (8.8.8.8)
-# - Log all queries to console
-```
-
-**3. Run with Configuration File:**
-```bash
-# Create minimal test configuration
-cat > /tmp/test-dnsmasq.conf << 'EOF'
-# Minimal dnsmasq configuration for testing
-port=5353
-interface=lo
-bind-interfaces
-no-resolv
-server=8.8.8.8
-log-queries
-EOF
-
-# Validate configuration
-./target/release/dnsmasq --test --conf-file=/tmp/test-dnsmasq.conf
-
-# Run with configuration
-sudo ./target/release/dnsmasq --no-daemon --conf-file=/tmp/test-dnsmasq.conf
-```
-
-**4. Run as systemd Service (Production):**
-```bash
-# Install binary
-sudo cp target/release/dnsmasq /usr/local/bin/dnsmasq
-sudo chmod +x /usr/local/bin/dnsmasq
-
-# Copy configuration
-sudo cp /etc/dnsmasq.conf /etc/dnsmasq.conf.backup
-# Edit /etc/dnsmasq.conf as needed
-
-# Test configuration
-sudo /usr/local/bin/dnsmasq --test
-
-# Start with systemd (assumes dnsmasq.service exists)
-sudo systemctl daemon-reload
-sudo systemctl start dnsmasq
-sudo systemctl status dnsmasq
-
-# Enable on boot
-sudo systemctl enable dnsmasq
-```
-
-### Verification Steps
-
-**1. Verify DNS Functionality:**
-```bash
-# Start dnsmasq on port 5353 (in another terminal)
-sudo ./target/release/dnsmasq --no-daemon --port=5353 --listen-address=127.0.0.1 --server=8.8.8.8
-
-# Test DNS query with dig
-dig @127.0.0.1 -p 5353 example.com
-
-# Expected output:
-#   ;; ANSWER SECTION:
-#   example.com.  XXX  IN  A  93.184.216.34
-#   ;; Query time: <50 msec
-#   ;; SERVER: 127.0.0.1#5353(127.0.0.1)
-
-# Test caching (second query should be faster)
-dig @127.0.0.1 -p 5353 example.com
-# Expected: Query time: <5 msec (cached)
-```
-
-**2. Verify DHCP Functionality (Requires Privileges):**
-```bash
-# Note: DHCP testing requires network interface setup
-# This is a conceptual example
-
-# Start with DHCP range
-sudo ./target/release/dnsmasq \
-  --no-daemon \
-  --interface=eth0 \
-  --dhcp-range=192.168.1.100,192.168.1.200,12h \
-  --log-dhcp
-
-# Monitor for DHCP requests
-# Expected: DHCP DISCOVER/OFFER/REQUEST/ACK logged
-```
-
-**3. Verify Configuration Reload:**
-```bash
-# Start dnsmasq in background
-sudo ./target/release/dnsmasq --conf-file=/etc/dnsmasq.conf &
-DNSMASQ_PID=$!
-
-# Modify configuration file
-# (edit /etc/dnsmasq.conf)
-
-# Send SIGHUP to reload
-sudo kill -HUP $DNSMASQ_PID
-
-# Check logs for reload confirmation
-# Expected: "exiting on receipt of SIGHUP" or "reading /etc/dnsmasq.conf"
-
-# Cleanup
-sudo kill $DNSMASQ_PID
-```
-
-**4. Verify Features Enabled:**
-```bash
-# Check compile-time features
-./target/release/dnsmasq --version | grep "Compile time options"
-
-# Expected features:
-#   DHCP DHCPv6 IPv6 DNSSEC DBus IDN Lua TFTP conntrack ipset nftset
-
-# Each feature indicates:
-# - DHCP: DHCPv4 server enabled
-# - DHCPv6: DHCPv6 server enabled
-# - IPv6: IPv6 support enabled
-# - DNSSEC: DNSSEC validation enabled
-# - DBus: D-Bus interface available
-# - IDN: International domain name support
-# - Lua: Lua scripting support
-# - TFTP: TFTP server enabled
-# - conntrack: Linux connection tracking
-# - ipset: ipset firewall integration
-# - nftset: nftables integration
-```
-
-### Example Usage Scenarios
-
-**Scenario 1: Simple DNS Forwarder**
-```bash
-# Run as simple DNS forwarder with caching
-sudo ./target/release/dnsmasq \
-  --no-daemon \
-  --port=53 \
-  --listen-address=0.0.0.0 \
-  --server=8.8.8.8 \
-  --server=1.1.1.1 \
-  --cache-size=10000 \
-  --log-queries \
-  --log-facility=-
-
-# Test from another machine
-dig @<server-ip> example.com
-```
-
-**Scenario 2: DHCP Server for Local Network**
-```bash
-# Configuration file
-cat > /etc/dnsmasq.conf << 'EOF'
-# Network interface
-interface=eth0
-bind-interfaces
-
-# DHCP range
-dhcp-range=192.168.1.100,192.168.1.200,24h
-
-# DNS servers for clients
-dhcp-option=option:dns-server,192.168.1.1
-
-# Domain name
-dhcp-option=option:domain-name,local.lan
-
-# Gateway
-dhcp-option=option:router,192.168.1.1
-
-# Enable DHCP logging
-log-dhcp
-log-queries
-EOF
-
-# Start DHCP server
-sudo ./target/release/dnsmasq --no-daemon --conf-file=/etc/dnsmasq.conf
-```
-
-**Scenario 3: DNS with DNSSEC Validation**
-```bash
-# Enable DNSSEC validation
-sudo ./target/release/dnsmasq \
-  --no-daemon \
-  --port=53 \
-  --conf-file=/dev/null \
-  --server=8.8.8.8 \
-  --dnssec \
-  --trust-anchor=.,20326,8,2,E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D \
-  --log-queries
-
-# Test DNSSEC validation
-dig @127.0.0.1 +dnssec example.com
-
-# Expected: AD flag set in response (authenticated data)
-```
-
-### Common Issues and Troubleshooting
-
-**Issue: "Permission denied" when binding to port 53**
-```bash
-# Solution 1: Run with sudo
-sudo ./target/release/dnsmasq ...
-
-# Solution 2: Use non-privileged port
-./target/release/dnsmasq --port=5353 ...
-
-# Solution 3: Set capabilities (Linux)
-sudo setcap CAP_NET_BIND_SERVICE=+eip target/release/dnsmasq
-./target/release/dnsmasq --port=53 ...
-```
-
-**Issue: "Address already in use"**
-```bash
-# Check what's using port 53
-sudo lsof -i :53
-sudo netstat -tulpn | grep :53
-
-# Stop conflicting service
-sudo systemctl stop systemd-resolved  # Ubuntu
-sudo systemctl stop dnsmasq          # If C version running
-
-# Or use different port
-./target/release/dnsmasq --port=5353 ...
-```
-
-**Issue: Configuration file errors**
-```bash
-# Validate configuration
-./target/release/dnsmasq --test --conf-file=/etc/dnsmasq.conf
-
-# Check for syntax errors
-# Expected: "dnsmasq: syntax check OK"
-
-# If errors, check configuration file format
-# - Remove any unsupported directives
-# - Check for typos in option names
-# - Verify include files exist
-```
-
-**Issue: Tests failing**
-```bash
-# Ensure all dependencies installed
-cargo build --all-features
-
-# Run tests with verbose output
-cargo test --all-features -- --nocapture
-
-# Run specific failing test
-cargo test --test config_tests <test_name> -- --nocapture
-
-# Check Rust version
-rustc --version  # Should be 1.91.0+
-```
-
-### Performance Tuning
-
-**Cache Size:**
-```bash
-# Increase cache size for high-traffic environments
-./target/release/dnsmasq --cache-size=10000  # Default: 150
-```
-
-**Upstream DNS Servers:**
-```bash
-# Use multiple upstream servers for redundancy
-./target/release/dnsmasq \
-  --server=8.8.8.8 \
-  --server=8.8.4.4 \
-  --server=1.1.1.1 \
-  --server=1.0.0.1
-```
-
-**Monitoring:**
-```bash
-# Enable detailed logging for troubleshooting
-./target/release/dnsmasq --log-queries --log-dhcp --log-facility=/var/log/dnsmasq.log
-
-# Send SIGUSR1 to dump cache stats
-sudo kill -USR1 <pid>
-# Check logs for cache statistics
-
-# Send SIGUSR2 to dump extended statistics
-sudo kill -USR2 <pid>
-```
+## 5. Compliance & Quality Review
+
+Cross-mapping of AAP deliverables to Blitzy's quality and compliance benchmarks:
+
+| Area | Compliance Item | Status | Evidence |
+|---|---|---|---|
+| AAP Directive 1 | Snyk CLI install + auth + version verification | ✅ PASS | `snyk whoami` exit 0; `snyk --version` = 1.1304.3 (captured in `decisions-config-h.md` run inventory) |
+| AAP Directive 2 | `snyk code test --sarif-file-output=...` invoked, valid SARIF emitted | ✅ PASS | `results-snyk-code.sarif` (463 B), SARIF v2.1.0 schema URL, exit 0, wall-clock 19s |
+| AAP Directive 3 | `snyk test --json > results-snyk-deps.json` invoked (literal); fallback path documented when literal fails | ✅ PASS | Literal exit 3 (SNYK-CLI-0008) captured; fallback `snyk sbom test` exit 1 captured; both documented in `decisions-config-h.md` |
+| AAP Directive 4 | Single-line minified UTF-8 JSON array; all five fields populated; descriptions ≤ 200 chars; `wc -l = 1` | ✅ PASS | `findings-config-h.json` 451 B, 4 entries, max desc 46 chars, `wc -l = 1`, valid JSON |
+| AAP §0.5.1 (In scope) | Six artifact files at workspace root | ✅ PASS | All present: `findings-config-h.json`, `decisions-config-h.md`, `executive-summary-config-h.html`, `results-snyk-code.sarif`, `results-snyk-deps.json`, `sbom.cdx.json` |
+| AAP §0.5.2 (Out of scope) | No modification of Rust codebase, no CI/CD config, no `.snyk` files, no remediation, no aggregation | ✅ PASS | `git diff origin/main...HEAD -- src/ tests/ benches/ examples/ build.rs Cargo.toml Cargo.lock ...` returns zero rows |
+| AAP §0.6.3 — severity mapping (closed union) | SARIF none→low, absent→low; Snyk severity pass-through | ✅ PASS | All four findings carry `severity: "high"`; mapping rules documented in Decisions 5–6 of `decisions-config-h.md` |
+| AAP §0.6.3 — CWE/CVE precedence | CVE preferred; CWE fallback; empty string if neither | ✅ PASS | All four findings carry CWE (`CWE-119`, `CWE-835`, `CWE-407`); none have CVE in this dataset. Decision 6 documents the precedence and notes the field's CVE-or-CWE acceptance per user directive. |
+| AAP §0.6.3 — UTF-8 truncation | `jq` scalar-based slicing, never byte slicing | ✅ PASS | `.[0:200]` used in normalizer; max desc 46 chars in this dataset so truncation didn't activate, but the mechanism is in place. Decision 8 documents the choice. |
+| AAP §0.6.3 — description prefix | `[snyk-code] ` or `[snyk-deps] ` prepended before truncation | ✅ PASS | All four findings begin with `[snyk-deps] `. Decision 7 documents prefix-before-truncation. |
+| AAP §0.6.3 — ordering | SAST first, deps second; scan-tool natural order preserved within each block | ✅ PASS | Empty SAST → 0 rows; deps in natural `vulnerabilities[]` order. Decision 9 documents no-sort policy. |
+| AAP §0.7.3 — Empty SAST handling | If Rust SAST gated by Early Access, synthesise empty SARIF and proceed | ✅ PASS | Live empty SARIF (0 results, 0 rules) accepted as authoritative; interpretation documented in `decisions-config-h.md` "Empty SAST result interpretation" section. |
+| AAP §0.8.1 — No emoji anywhere | Zero emoji in any deliverable artifact | ✅ PASS | Python Unicode scan of `executive-summary-config-h.html` returns 0 emoji; no emoji in `decisions-config-h.md` or `findings-config-h.json` content. |
+| AAP §0.8.1 — No in-slide code fences | Reveal.js slides use inline Fira Code spans only | ✅ PASS | Triple-backtick count in `executive-summary-config-h.html` = 0. |
+| Rule 1 (Explainability) | Markdown decision log with Decision/Alternatives/Chosen/Rationale/Risks columns | ✅ PASS | `decisions-config-h.md` carries 11 decisions in the exact 5-column format. |
+| Rule 2 (Executive Presentation) — slide count | 12–18 slides, target 16 | ✅ PASS | Exactly 16 `<section>` elements. |
+| Rule 2 — slide types | 4 types in use (title, divider, content, closing) | ✅ PASS | 1 `slide-title` + 4 `slide-divider` + 10 default content + 1 `slide-closing`. |
+| Rule 2 — CDN pinning | reveal.js 5.1.0, Mermaid 11.4.0, Lucide 0.460.0 | ✅ PASS | All three version strings present in HTML; verified via `grep`. |
+| Rule 2 — Mermaid lifecycle | `startOnLoad:false`, re-render on `slidechanged` | ✅ PASS | `startOnLoad: false` and `Reveal.on('slidechanged', …)` both present. |
+| Rule 2 — Lucide lifecycle | `createIcons()` on every `slidechanged` event | ✅ PASS | `lucide.createIcons()` present inside the `slidechanged` handler. |
+| Rule 2 — Reveal config | `hash:true, transition:'slide', controlsTutorial:false, width:1920, height:1080` | ✅ PASS | All five present in initialisation block. |
+| Rule 3 (Prose) | Vonnegut/Asimov voice; clarity / directness / reader respect | ✅ PASS | Prose in `decisions-config-h.md` and `executive-summary-config-h.html` reads as direct, plain, claim-grounded. |
+| 14-gate Verification | All 14 gates green | ✅ PASS | Re-executed live during this project guide assembly. |
+
+**No outstanding compliance gaps for the Config H deliverable.** All AAP-scoped quality benchmarks are met.
 
 ---
 
-## Architecture Highlights
+## 6. Risk Assessment
 
-### Memory Safety Transformation
+Risks are categorized per AAP §PA3. Items marked "out of Config H scope" are tracked here for awareness but do not factor into Config H's completion percentage.
 
-**C Implementation Vulnerabilities:**
-- Manual memory management with malloc/free
-- Pointer arithmetic for packet parsing
-- Buffer overflow risks in fixed-size arrays
-- Use-after-free potential in complex logic
-- Data race conditions in signal handlers
-
-**Rust Implementation Safety:**
-- **Ownership System:** Compile-time guarantee of no use-after-free
-- **Borrow Checker:** Prevents data races at compile time
-- **Bounds Checking:** All array/slice access verified
-- **Type Safety:** Strong typing eliminates entire classes of bugs
-- **RAII:** Automatic resource cleanup with Drop trait
-
-**Example Transformation:**
-```rust
-// C (unsafe):
-char *buf = malloc(512);
-memcpy(buf, data, len);  // Potential buffer overflow
-// ... use buf ...
-free(buf);  // Easy to forget or double-free
-
-// Rust (safe):
-let mut buf = vec![0u8; 512];  // Automatic allocation
-buf.copy_from_slice(&data[..len.min(512)]);  // Bounds checked
-// ... use buf ...
-// Automatic Drop when buf goes out of scope
-```
-
-### Async I/O Architecture
-
-**C Implementation:**
-- poll()-based event loop
-- Manual state machines for async operations
-- Complex callback chains
-- Difficult error propagation
-
-**Rust Implementation:**
-- **tokio Runtime:** Modern async executor
-- **async/await Syntax:** Linear code for async operations
-- **Type-safe Futures:** Compiler-verified async correctness
-- **select! Macro:** Clean multiplexing of I/O sources
-
-**Example Transformation:**
-```rust
-// C (complex state machine):
-poll(fds, nfds, timeout);
-if (fds[DNS_FD].revents & POLLIN) {
-    // Handle DNS - complex state tracking
-}
-if (fds[DHCP_FD].revents & POLLIN) {
-    // Handle DHCP - complex state tracking
-}
-
-// Rust (clean async):
-tokio::select! {
-    result = dns_socket.recv_from(&mut buf) => {
-        handle_dns_query(result?).await?;
-    }
-    result = dhcp_socket.recv_from(&mut buf) => {
-        handle_dhcp_packet(result?).await?;
-    }
-}
-```
-
-### Error Handling Transformation
-
-**C Implementation:**
-- Return codes (-1, 0, 1)
-- NULL pointer returns
-- Global errno variable
-- Easy to ignore errors
-
-**Rust Implementation:**
-- **Result<T, E> Type:** Explicit error handling
-- **Option<T> Type:** Null safety
-- **? Operator:** Ergonomic error propagation
-- **Compile-time Verification:** Can't ignore errors
-
-**Example Transformation:**
-```rust
-// C (error-prone):
-int result = forward_query(query);
-if (result < 0) {  // Easy to forget check
-    return -1;
-}
-
-// Rust (compiler-enforced):
-let response = forward_query(query).await?;  // Must handle Result
-// Compiler error if ? or explicit error handling not used
-```
-
-### Module Organization
-
-**Comprehensive Structure:**
-```
-src/
-├── main.rs                 # Binary entry point
-├── lib.rs                  # Library root
-├── types.rs                # Core types
-├── error.rs                # Error definitions
-├── constants.rs            # Global constants
-├── config/                 # Configuration (6 files)
-├── dns/                    # DNS subsystem (19 files)
-│   ├── protocol/          # Wire format (6 files)
-│   └── dnssec/            # DNSSEC validation (5 files)
-├── dhcp/                   # DHCP subsystem (18 files)
-│   ├── v4/                # DHCPv4 (6 files)
-│   ├── v6/                # DHCPv6 (6 files)
-│   └── lease/             # Lease management (4 files)
-├── network/                # Networking (16 files)
-│   ├── platform/          # OS-specific (5 files)
-│   └── firewall/          # Firewall integration (4 files)
-├── radv/                   # Router Advertisement (3 files)
-├── tftp/                   # TFTP server (3 files)
-├── platform/               # System integration (7 files)
-├── runtime/                # Async runtime (4 files)
-└── util/                   # Utilities (7 files)
-```
-
-### Cross-Platform Support
-
-**Platform Abstraction:**
-- Trait-based abstractions for OS differences
-- Feature flags for platform-specific code
-- nix crate for POSIX APIs
-- Platform-specific modules in network/platform/
-
-**Supported Platforms:**
-- Linux (primary) - full feature support
-- FreeBSD - validated
-- OpenBSD - validated
-- NetBSD - validated
-- macOS - validated
+| Risk | Category | Severity | Probability | Mitigation | Status |
+|---|---|---|---|---|---|
+| SNYK-RUST-RAND-16073005: Out-of-Bounds (CWE-119) in `rand 0.8.5` (and `rand 0.9.2` via second path) | Security | High | High | Downstream Rust workstream: upgrade `rand` crate; the deliverable surfaces both dependency paths so the remediation can address each independently | Open — out of Config H scope per AAP §0.5.2 |
+| SNYK-RUST-HICKORYPROTO-16346342: Infinite loop (CWE-835) in `hickory-proto 0.25.2` | Security | High | High | Downstream Rust workstream: upgrade `hickory-proto` to a release that addresses the advisory | Open — out of Config H scope per AAP §0.5.2 |
+| SNYK-RUST-HICKORYPROTO-16346057: Inefficient Algorithmic Complexity (CWE-407) in `hickory-proto 0.25.2` | Security | High | Medium | Downstream Rust workstream: upgrade `hickory-proto`; same root package as the infinite-loop advisory | Open — out of Config H scope per AAP §0.5.2 |
+| Snyk Code Rust SAST coverage gap — rule pack gated by Early Access entitlement on active org | Operational | Medium | High | AAP §0.7.3 fallback (accept empty SARIF as authoritative) keeps the pipeline functional; organisational decision required to procure Early Access | Open path-to-production — 2h decision (Section 2.2) |
+| Snyk advisory database mutability — re-runs may surface new findings against the same `Cargo.lock` without code changes | Operational | Low | Medium | Treat `findings-config-h.json` as point-in-time; establish re-scan cadence; pipeline is byte-reproducible against the same advisory snapshot | Mitigated by reproducibility design (Section 9) |
+| Snyk "Forbidden" telemetry stderr post during SBOM scan | Operational | Low | Low | Treated as non-fatal per Decision 11 of `decisions-config-h.md`; preserved in `.blitzy-run/` for audit; intended exit code (1 = vulns found) is honoured | Mitigated |
+| `SNYK_TOKEN` exposure via `/proc/.../environ` while a Snyk command is running | Security | Low | Low | Token consumed from env only; never written to disk by Config H; standard Snyk CLI threat model | Mitigated |
+| Multi-byte UTF-8 truncation safety on long descriptions | Technical | Low | Low | `jq` scalar-based slicing (`.[0:200]`) instead of byte slicing; verified for current dataset (max 46 chars; truncation didn't activate) | Mitigated by design |
+| `cargo-cyclonedx` may default to CycloneDX 1.6 in a future release, breaking the pinned 1.5 schema assumption | Integration | Low | Low | Script pins `--spec-version 1.5` explicitly per Decision 3 of `decisions-config-h.md`; future release would surface as a `snyk sbom test` schema-version error | Mitigated by explicit pin |
+| Multi-config aggregation downstream (this is one of multiple configs in a comparison) | Integration | Low | High | Out of Config H scope per AAP §0.5.2; the deliverable bundle is self-describing and ready for downstream consumption | Out of Config H scope |
 
 ---
 
-## Deployment Readiness
+## 7. Visual Project Status
 
-### Binary Artifacts
+```mermaid
+%%{init: {'pie': {'textPosition': 0.5}, 'themeVariables': {'pie1': '#5B39F3', 'pie2': '#FFFFFF', 'pieOuterStrokeColor': '#0F0B23', 'pieStrokeWidth': '2', 'pieSectionTextColor': '#0F0B23', 'pieLegendTextColor': '#0F0B23'}}}%%
+pie showData
+    title Config H — Hours Breakdown
+    "Completed Work" : 32
+    "Remaining Work" : 3
+```
 
-**Release Binary:**
-- **Location:** `target/release/dnsmasq`
-- **Size:** 6.1MB (stripped, optimized)
-- **Format:** ELF 64-bit LSB executable
-- **Features:** All optional features compiled in
-- **Performance:** Optimized with LTO and single codegen unit
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#5B39F3', 'primaryTextColor': '#FFFFFF', 'primaryBorderColor': '#4101DB', 'lineColor': '#0F0B23', 'tertiaryColor': '#F2EFFE'}}}%%
+pie showData
+    title Remaining Work — Hours by Priority
+    "High (deliverable acceptance)" : 1
+    "Medium (Rust SAST entitlement decision)" : 2
+```
 
-**Installation:**
+**Color legend** (Blitzy brand palette applied throughout):
+- Completed / AI Work: **Dark Blue `#5B39F3`** (violet-600)
+- Remaining / Not Completed: **White `#FFFFFF`**
+- Headings / Accents: Violet-Black `#B23AF2`
+- Highlight / Soft Accent: Mint `#A8FDD9`
+
+**Cross-section integrity verification:**
+- Section 1.2 Remaining Hours = **3**
+- Section 2.2 Hours column sum = 1.0 + 2.0 = **3** ✅
+- Section 7 pie chart "Remaining Work" = **3** ✅
+- Section 2.1 Completed + Section 2.2 Remaining = 32 + 3 = **35** = Section 1.2 Total Project Hours ✅
+
+---
+
+## 8. Summary & Recommendations
+
+### 8.1 Achievements
+
+Config H executed the four user-issued CRITICAL directives end-to-end against the `blitzy-tgr-dnsmasq-rust` Rust codebase, surfacing four high-severity dependency advisories (three unique) and confirming zero SAST findings under the rule pack that the active Snyk organisation has enabled. The deliverable is byte-reproducible from the raw scanner outputs through a single POSIX `sh` + `jq` normalizer pipeline, satisfies all 14 verification gates defined in the AAP, and is accompanied by two rule-mandated companions (a Markdown decision log with 11 decisions and a 16-slide reveal.js deck with full Blitzy brand styling). The Rust codebase under audit is byte-identical to its pre-scan state — `git diff` against `origin/main` for every protected path returns zero rows.
+
+### 8.2 Remaining Gaps
+
+Three hours of human-only follow-on:
+
+1. **Acceptance review (1h, High).** A human reviewer should confirm the four-row `findings-config-h.json` matches expectations and is consumable by the downstream multi-config aggregator.
+2. **Rust SAST Early Access decision (2h, Medium).** The active Snyk organisation does not have the Rust SAST rule pack enabled. Decide whether to procure Early Access or accept the empty-SAST baseline for this iteration.
+
+Items explicitly **outside** Config H scope but flagged for downstream tracking:
+- Three unique high-severity advisories to remediate in the audit target's dependency tree (`rand` CWE-119, `hickory-proto` CWE-835, `hickory-proto` CWE-407). These are surfaced by Config H but fixed by a separate Rust workstream per AAP §0.5.2.
+- Multi-config aggregation (Configs A–G + Config H) into a comparison report.
+- CI/CD integration of recurring scans.
+
+### 8.3 Critical Path to Production
+
+The Config H deliverable is **production-ready for handoff**. The remaining three hours are organizational and consumption-side activities that cannot be performed autonomously:
+
+1. Hand the deliverable bundle (`findings-config-h.json` + `decisions-config-h.md` + `executive-summary-config-h.html`) to the comparison aggregator (Owner: comparison harness operator).
+2. Open downstream tickets for the three surfaced advisories (Owner: Rust workstream lead).
+3. Convene a brief decision meeting on Snyk Code Rust Early Access entitlement (Owner: security org).
+
+### 8.4 Success Metrics
+
+| Metric | Target | Actual | Status |
+|---|---|---|---|
+| Verification gates green | 14 / 14 | 14 / 14 | ✅ |
+| Schema fidelity | Five fields per row, every row | Four rows, all five fields populated | ✅ |
+| Description length bound | ≤ 200 Unicode scalars | Max 46 | ✅ |
+| Single-line minified | `wc -l = 1` | `wc -l = 1` | ✅ |
+| Byte-reproducibility | Re-run yields identical output | Confirmed | ✅ |
+| Audit target immutability | Zero in-scope modifications | Confirmed via `git diff` | ✅ |
+| Slide count | 12–18 (target 16) | 16 | ✅ |
+| CDN versions pinned | reveal.js 5.1.0, Mermaid 11.4.0, Lucide 0.460.0 | All three pinned | ✅ |
+| Emoji count | 0 | 0 | ✅ |
+| In-slide code fences | 0 | 0 | ✅ |
+
+### 8.5 Production Readiness Assessment
+
+**Config H is 91.4% AAP-scoped complete and ready for downstream consumption.** The remaining 8.6% represents human-only work (acceptance review + organisational entitlement decision) that the autonomous pipeline cannot perform. The deliverable bundle is self-describing, audit-friendly, and byte-reproducible; the decision log records every non-trivial implementation choice with alternatives and rationale; and the executive summary deck is rendering correctly in headless Chrome with brand-compliant visuals.
+
+---
+
+## 9. Development Guide
+
+This section documents how to reproduce the Config H deliverable from scratch and how to inspect the artifacts. Every command was tested during validation. The audit target is read-only — none of these commands write to `src/`, `tests/`, `Cargo.toml`, `Cargo.lock`, `build.rs`, or any other protected path.
+
+### 9.1 System Prerequisites
+
+| Software | Version | Purpose |
+|---|---|---|
+| Node.js | ≥ 20.x (used: v22.22.2) | Snyk CLI runtime |
+| npm | ≥ 10.x (used: 11.1.0) | Snyk CLI installer |
+| Rust toolchain | 1.91.0 (pinned by `rust-toolchain.toml`) | Required for `cargo install cargo-cyclonedx` and `cargo cyclonedx` invocation |
+| jq | ≥ 1.6 (used: 1.8.1) | JSON transformation engine for Stage 4 normalizer |
+| Python 3 | ≥ 3.10 | Verification gates (`python3 -m json.tool`, field checks) |
+| Git | any modern version (used: 2.51.0) | Source control |
+| Network access | outbound HTTPS to `api.snyk.io` and `crates.io` | Snyk has no offline mode (AAP Directive 1); fallback path additionally reaches `crates.io` |
+
+### 9.2 Environment Setup
+
 ```bash
-# System-wide installation
-sudo cp target/release/dnsmasq /usr/local/bin/dnsmasq
-sudo chmod 755 /usr/local/bin/dnsmasq
+# Export the Snyk API token (required by every Snyk command).
+# Replace <your-token> with a valid token from https://app.snyk.io/account.
+export SNYK_TOKEN=<your-token>
 
-# Verify installation
-which dnsmasq
-dnsmasq --version
+# Optional: set CI=true so npm doesn't prompt during install.
+export CI=true
 ```
 
-### Configuration Compatibility
+### 9.3 Dependency Installation
 
-**100% Backward Compatible:**
-- All ~350 dnsmasq.conf directives supported
-- Identical command-line interface
-- Same environment variable handling
-- Include file processing unchanged
-- Comment syntax preserved
-
-**Configuration Migration:**
 ```bash
-# Existing configurations work without changes
-sudo /usr/local/bin/dnsmasq --test --conf-file=/etc/dnsmasq.conf
-# Expected: "dnsmasq: syntax check OK"
+# Install Snyk CLI globally (npm). Idempotent: re-running upgrades to the latest stable.
+CI=true npm install -g snyk --yes
 
-# No migration scripts needed
-# Drop-in replacement for C version
+# Verify the install and auth.
+snyk --version            # Expected: 1.1304.x or later
+snyk whoami               # Expected: prints account identifier, exit 0
+
+# Install cargo-cyclonedx for the SBOM fallback path (one-time).
+cargo install cargo-cyclonedx
 ```
 
-### System Integration
+### 9.4 Reproducing the Scan Pipeline
 
-**systemd Service:**
-```ini
-# /etc/systemd/system/dnsmasq.service
-# Compatible with existing service units
-
-[Unit]
-Description=dnsmasq - Lightweight DNS forwarder and DHCP server
-Requires=network-online.target
-After=network-online.target
-
-[Service]
-Type=forking
-PIDFile=/run/dnsmasq/dnsmasq.pid
-ExecStart=/usr/local/bin/dnsmasq
-ExecReload=/bin/kill -HUP $MAINPID
-ExecStop=/bin/kill -TERM $MAINPID
-Restart=on-failure
-PrivateTmp=true
-ProtectSystem=strict
-ReadWritePaths=/var/lib/misc /run/dnsmasq
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**D-Bus Interface:**
-- Service name: `uk.org.thekelleys.dnsmasq` (unchanged)
-- All methods and signals compatible
-- Existing D-Bus configurations work without modification
-
-**Signal Handling:**
-- SIGHUP: Configuration reload
-- SIGTERM/SIGINT: Graceful shutdown
-- SIGUSR1: Dump cache statistics
-- SIGUSR2: Extended statistics
-- All signals handled identically to C version
-
-### Docker Deployment
-
-**Dockerfile:**
-```dockerfile
-FROM rust:1.91.0 AS builder
-WORKDIR /build
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
-RUN cargo build --release --all-features
-
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates libdbus-1-3 && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /build/target/release/dnsmasq /usr/local/bin/dnsmasq
-EXPOSE 53/udp 53/tcp 67/udp 69/udp
-ENTRYPOINT ["/usr/local/bin/dnsmasq"]
-CMD ["--no-daemon", "--keep-in-foreground"]
-```
-
-**Run Container:**
 ```bash
-# Build image
-docker build -t dnsmasq:rust .
+# Move to the repository root.
+cd /path/to/blitzy-tgr-dnsmasq-rust
 
-# Run container
-docker run -d \
-  --name dnsmasq \
-  --cap-add=NET_ADMIN \
-  -p 53:53/udp \
-  -p 53:53/tcp \
-  -v /etc/dnsmasq.conf:/etc/dnsmasq.conf:ro \
-  dnsmasq:rust --conf-file=/etc/dnsmasq.conf
+# Stage 2 — SAST scan (Directive 2). Captures exit code and wall clock.
+START=$(date +%s)
+snyk code test --sarif-file-output=results-snyk-code.sarif .
+SAST_EXIT=$?
+SAST_DUR=$(( $(date +%s) - START ))
+echo "Snyk Code exit=${SAST_EXIT} duration=${SAST_DUR}s"
+# Expected: exit 0, ~19s, valid SARIF with 0 results (Rust SAST currently Early Access-gated).
+
+# Stage 3a — Literal Directive 3 attempt.
+START=$(date +%s)
+snyk test --all-projects --severity-threshold=high > /tmp/literal-deps.json 2>/tmp/literal-deps.err
+LITERAL_EXIT=$?
+LITERAL_DUR=$(( $(date +%s) - START ))
+echo "Snyk literal deps exit=${LITERAL_EXIT} duration=${LITERAL_DUR}s"
+# Expected: exit 3, SNYK-CLI-0008 (no Cargo manifest support). Triggers fallback.
+
+# Stage 3b — SBOM fallback (Directive 3 alternate path per AAP §0.3.1).
+cargo cyclonedx --format json --spec-version 1.5 --all --target all --override-filename sbom.cdx
+# Output: sbom.cdx.json, CycloneDX 1.5, 240 components.
+
+START=$(date +%s)
+snyk sbom test --file=sbom.cdx.json --severity-threshold=high --json > results-snyk-deps.json
+DEPS_EXIT=$?
+DEPS_DUR=$(( $(date +%s) - START ))
+echo "Snyk sbom test exit=${DEPS_EXIT} duration=${DEPS_DUR}s"
+# Expected: exit 1 (vulnerabilities found), ~10s, valid Snyk OSS JSON envelope with vulnerabilities array.
+
+# Stage 4 — Normalize and merge.
+./scripts/normalize-findings-config-h.sh results-snyk-code.sarif results-snyk-deps.json > findings-config-h.json
+echo "Normalizer exit=$?"
+# Expected: exit 0, single-line minified UTF-8 JSON array.
 ```
 
----
+### 9.5 Verification Steps
 
-## Success Criteria Met
+```bash
+# Gate 1: single line.
+test "$(wc -l < findings-config-h.json)" = "1" && echo "GATE 1 PASS" || echo "GATE 1 FAIL"
 
-### All Validation Gates Passed ✅
+# Gate 2: valid JSON.
+python3 -m json.tool findings-config-h.json > /dev/null && echo "GATE 2 PASS" || echo "GATE 2 FAIL"
 
-1. **✅ Test Pass Rate: 100%** (592/592 tests)
-2. **✅ Application Runtime: Verified** (binary functional)
-3. **✅ Zero Unresolved Errors** (clean build, no warnings)
-4. **✅ In-Scope Files Validated** (all 88 source files)
-5. **✅ Code Quality Standards Met** (formatting, linting, memory safety)
+# Gate 3: all five fields populated on every row.
+jq -e 'all(.[]; has("file") and has("line") and has("severity") and has("cwe") and has("description"))' findings-config-h.json \
+  && echo "GATE 3 PASS" || echo "GATE 3 FAIL"
 
-### Production Readiness Checklist ✅
+# Gate 4: severity union closed.
+jq -e 'all(.[]; .severity | IN("critical","high","medium","low"))' findings-config-h.json \
+  && echo "GATE 4 PASS" || echo "GATE 4 FAIL"
 
-- [x] All compilation successful (zero errors, zero warnings)
-- [x] All tests passing (100% pass rate)
-- [x] Binary executes successfully
-- [x] Configuration compatibility validated
-- [x] Runtime functionality verified
-- [x] Memory safety guaranteed by Rust compiler
-- [x] Cross-platform support implemented
-- [x] Documentation comprehensive
-- [x] Git repository clean (no uncommitted changes)
-- [x] Performance characteristics acceptable
+# Gate 5: description bound.
+jq -e 'all(.[]; (.description | length) <= 200)' findings-config-h.json \
+  && echo "GATE 5 PASS" || echo "GATE 5 FAIL"
 
----
+# Gate 6: UTF-8 encoding.
+file -bi findings-config-h.json
+# Expected: application/json; charset=us-ascii (subset of UTF-8) or charset=utf-8
 
-## Next Steps
+# Gate 7: intermediate artifacts.
+python3 -m json.tool results-snyk-code.sarif > /dev/null && echo "SARIF valid"
+jq -e '.vulnerabilities | type == "array"' results-snyk-deps.json && echo "vulnerabilities array present"
 
-### Immediate Actions (High Priority)
+# Gate 8: audit target immutability.
+git diff origin/main...HEAD -- src/ tests/ benches/ examples/ build.rs Cargo.toml Cargo.lock \
+  rust-toolchain.toml rustfmt.toml clippy.toml .cargo/ docs/ README.md
+# Expected: zero output (no changes).
+```
 
-1. **Performance Validation:**
-   - Run criterion benchmarks against C dnsmasq
-   - Compare DNS query latency and throughput
-   - Validate memory footprint under load
-   - Document performance characteristics
+### 9.6 Inspecting the Deliverable
 
-2. **Security Review:**
-   - Run cargo-audit for dependency vulnerabilities
-   - Review all unsafe code blocks
-   - Conduct DNSSEC security assessment
-   - Document security considerations
+```bash
+# Pretty-print the four findings.
+jq . findings-config-h.json
 
-3. **Integration Testing:**
-   - Deploy in test environment with real clients
-   - Test with production configurations
-   - Validate D-Bus interface with real consumers
-   - Test systemd integration end-to-end
+# Severity distribution.
+jq -r '.[] | .severity' findings-config-h.json | sort | uniq -c
 
-### Medium-Term Actions
+# Unique advisories.
+jq -r '.[] | .cwe' findings-config-h.json | sort | uniq
 
-4. **Load Testing:**
-   - Set up high-traffic test environment
-   - Generate realistic DNS/DHCP load
-   - Monitor for memory leaks or performance degradation
-   - Document load test results
+# Inspect the executive summary deck (start a static file server, then open in a browser).
+python3 -m http.server 8000 &
+# Open http://localhost:8000/executive-summary-config-h.html
+# Use arrow keys or click chevrons to advance slides.
+```
 
-5. **Documentation:**
-   - Generate cargo doc HTML documentation
-   - Write operational runbook
-   - Create troubleshooting guide
-   - Document monitoring setup
+### 9.7 Common Errors and Resolutions
 
-### Long-Term Actions
-
-6. **Production Deployment:**
-   - Package for distribution (deb, rpm, etc.)
-   - Deploy to staging environment
-   - Gradual rollout to production
-   - Monitor and collect feedback
-
-7. **Ongoing Maintenance:**
-   - Regular dependency updates
-   - Security vulnerability monitoring
-   - Performance optimization
-   - Bug fixes and enhancements
+| Symptom | Likely Cause | Resolution |
+|---|---|---|
+| `snyk: command not found` | Snyk CLI not installed or PATH missing npm global bin | `CI=true npm install -g snyk --yes`; verify `npm root -g` is on PATH |
+| `Authentication error (SNYK-0005)` | `SNYK_TOKEN` unset or invalid | Re-export `SNYK_TOKEN`; verify with `snyk whoami` |
+| `Could not detect supported target files (SNYK-CLI-0008)` on `snyk test` | Expected — Snyk OSS does not parse Cargo manifests | Follow Stage 3b SBOM fallback (`cargo cyclonedx` + `snyk sbom test`) |
+| `Empty SARIF, 0 results, 0 rules` from `snyk code test` | Active Snyk organisation does not have Rust SAST Early Access enabled | Per AAP §0.7.3, accept the empty SARIF as authoritative; document in decision log. Procure Early Access to remove the gap. |
+| `snyk sbom test` reports `Forbidden` on stderr but still exits with 1 | Non-fatal telemetry post; documented in Decision 11 of `decisions-config-h.md` | Ignore; the scan output on stdout is authoritative |
+| `findings-config-h.json` has `wc -l = 0` | Missing trailing newline | The normalizer appends `\n` after the closing `]`; if you regenerate by hand, ensure `printf '%s\n'` (not `printf '%s'`) |
+| `findings-config-h.json` has multi-byte chars truncated mid-character | Byte slicing instead of scalar slicing | Use `jq`'s `.[0:200]` (scalar-based), not `awk substr` or `cut -c` |
+| Normalizer exits 2 | `jq` not installed | `apt-get install -y jq` (Ubuntu/Debian) or equivalent for your distro |
 
 ---
 
-## Conclusion
+## 10. Appendices
 
-The dnsmasq C-to-Rust refactoring has successfully achieved **90.0% completion** (950 hours completed out of 1,056 total hours) with **production-ready status**. The Rust implementation delivers:
+### A. Command Reference
 
-### Core Achievements
+| Command | Purpose | Expected Outcome |
+|---|---|---|
+| `CI=true npm install -g snyk --yes` | Install Snyk CLI globally | `snyk` on PATH, version ≥ 1.1304 |
+| `snyk whoami` | Confirm `SNYK_TOKEN` is valid | Exit 0, prints account identifier |
+| `snyk --version` | Report installed CLI version | Prints version (e.g., `1.1304.3`) |
+| `snyk code test --sarif-file-output=results-snyk-code.sarif .` | Directive 2 SAST scan | Exit 0; SARIF v2.1.0 file produced |
+| `snyk test --all-projects --severity-threshold=high` | Directive 3 literal (expected to fail on Rust-only) | Exit 3 (SNYK-CLI-0008) |
+| `cargo install cargo-cyclonedx` | Install SBOM tool for fallback path | `cargo-cyclonedx` on PATH |
+| `cargo cyclonedx --format json --spec-version 1.5 --all --target all --override-filename sbom.cdx` | Generate CycloneDX 1.5 SBOM | `sbom.cdx.json` produced, 240 components |
+| `snyk sbom test --file=sbom.cdx.json --severity-threshold=high --json > results-snyk-deps.json` | Fallback dependency scan | Exit 1 (vulns found); JSON envelope written |
+| `./scripts/normalize-findings-config-h.sh results-snyk-code.sarif results-snyk-deps.json > findings-config-h.json` | Stage 4 normalize + merge | Exit 0; single-line minified UTF-8 JSON |
+| `wc -l < findings-config-h.json` | Verification gate 1 | `1` |
+| `python3 -m json.tool findings-config-h.json` | Verification gate 2 | Parses without error |
+| `jq -e 'all(.[]; has("file") and has("line") and has("severity") and has("cwe") and has("description"))' findings-config-h.json` | Verification gate 3 | `true` |
+| `jq -e 'all(.[]; .severity | IN("critical","high","medium","low"))' findings-config-h.json` | Verification gate (severity union) | `true` |
+| `jq -e 'all(.[]; (.description \| length) <= 200)' findings-config-h.json` | Verification gate (description bound) | `true` |
+| `file -bi findings-config-h.json` | Verification gate (encoding) | `application/json; charset=us-ascii` or `... charset=utf-8` |
+| `git diff origin/main...HEAD -- src/ tests/ benches/ examples/ build.rs Cargo.toml Cargo.lock ...` | Audit target immutability | Empty output |
 
-✅ **Complete Functional Parity:** All DNS, DHCP, DNSSEC, TFTP, and RA features implemented  
-✅ **Memory Safety:** Entire vulnerability classes eliminated through Rust's ownership system  
-✅ **100% Test Success:** All 592 tests passing with comprehensive coverage  
-✅ **Backward Compatibility:** Drop-in replacement for C version  
-✅ **Production Quality:** Zero errors, zero warnings, optimized binary  
-✅ **Cross-Platform:** Linux, BSD, and macOS support implemented  
+### B. Port Reference
 
-### Business Value
+Not applicable. Config H is a one-shot scan harness; it neither listens on nor connects to any local port. The Snyk CLI makes outbound HTTPS calls (port 443) to `api.snyk.io` and the `cargo install` step makes outbound HTTPS calls to `crates.io`. No persistent service is started.
 
-- **Security:** Eliminates ~70% of security vulnerabilities (memory-safety related)
-- **Maintainability:** Modern codebase with type safety and error handling
-- **Reliability:** Compiler-verified correctness, comprehensive testing
-- **Performance:** Efficient async I/O with tokio runtime
-- **Future-Proof:** Built on stable, well-supported Rust ecosystem
+### C. Key File Locations
 
-### Remaining Work (10%)
+| Path | Purpose | Size | First introduced (commit) |
+|---|---|---|---|
+| `findings-config-h.json` | Primary deliverable — single-line minified UTF-8 JSON array of 4 findings | 451 B | `6096df5` initial add → `441a3d0` live findings |
+| `decisions-config-h.md` | Explainability rule artifact — 11 decisions + run inventory + pass/fail report | 17,275 B | iteratively refined across multiple commits |
+| `executive-summary-config-h.html` | Executive Presentation rule artifact — 16-slide reveal.js deck | 27,461 B | `86c9e3c` initial add → `545a0d5` Mermaid 11.4.0 pin → `01e584d` Mermaid 11.15.0 fix → final |
+| `results-snyk-code.sarif` | Intermediate — Directive 2 SARIF output | 463 B | `bef108f` |
+| `results-snyk-deps.json` | Intermediate — Directive 3 fallback output | 16,784 B | `bf2931e` |
+| `sbom.cdx.json` | Intermediate — CycloneDX 1.5 SBOM for fallback path | 282,697 B | `bd12fea` |
+| `scripts/normalize-findings-config-h.sh` | POSIX `sh` + `jq` normalizer | 9,142 B | iteratively built; final fix in `441a3d0` |
+| `.blitzy-run/` (audit logs, untracked) | Exit codes, wall-clock durations, stderr captures | small files | not committed (audit-only) |
+| `blitzy/screenshots/` (visual verification, untracked) | Six PNGs of the reveal.js deck | ~3.5 MB total | not committed (verification-only) |
 
-The remaining 106 hours focus on production hardening:
-- Performance validation and optimization
-- Extended integration and load testing  
-- Security audit and penetration testing
-- Production deployment documentation
-- Operational monitoring setup
+### D. Technology Versions
 
-**Recommendation:** The project is ready for production deployment with standard operational validation. The Rust implementation successfully achieves the goal of memory safety while maintaining complete functional equivalence with the C version.
+| Component | Version | Notes |
+|---|---|---|
+| Snyk CLI | 1.1304.3 | Latest at install time; verified via `snyk --version` |
+| Node.js | v22.22.2 | Pre-existing on host |
+| npm | 11.1.0 | Pre-existing on host |
+| Rust toolchain | 1.91.0 | Pinned by `rust-toolchain.toml`; not modified by Config H |
+| `cargo-cyclonedx` | 0.5.9 | Installed for fallback path; not in `Cargo.toml` |
+| CycloneDX spec | 1.5 | Pinned via `--spec-version 1.5` per Decision 3 |
+| jq | 1.8.1 | System install; `jq` ≥ 1.6 is sufficient |
+| Python | 3.13.7 | Used by verification gates only |
+| reveal.js | 5.1.0 | CDN-pinned in `executive-summary-config-h.html` |
+| Mermaid | 11.4.0 | CDN-pinned in `executive-summary-config-h.html` |
+| Lucide | 0.460.0 | CDN-pinned in `executive-summary-config-h.html` |
+| SARIF spec | 2.1.0 | OASIS standard; produced by `snyk code test` |
+
+### E. Environment Variable Reference
+
+| Variable | Required by | Notes |
+|---|---|---|
+| `SNYK_TOKEN` | Every Snyk CLI command | Read from environment; never written to disk by Config H. Threat: anyone with `/proc/<pid>/environ` access on the host could read the token while a Snyk command is running — this is the standard Snyk CLI threat model, not a Config-H-specific risk. |
+| `CI` | npm install (optional) | Set to `true` to avoid interactive prompts. |
+| `PATH` | All commands | Must include npm global bin and `~/.cargo/bin`. |
+| `LANG` / `LC_ALL` | Not strictly required | `jq` and the normalizer produce UTF-8 by default; setting a non-UTF-8 locale could affect intermediate utilities, though current verification did not surface any issue. |
+
+### F. Developer Tools Guide
+
+**Inspecting the deliverable:**
+- `jq .` for pretty-printing.
+- `jq -r '.[] | "\(.cwe) \(.severity) \(.file): \(.description)"'` for a flat one-line-per-row summary.
+
+**Inspecting the executive summary deck:**
+- Serve via `python3 -m http.server 8000` from the repo root.
+- Open `http://localhost:8000/executive-summary-config-h.html`.
+- Use arrow keys, space, or the on-screen chevrons to advance.
+- Press `?` to see reveal.js keyboard shortcuts; `f` for fullscreen.
+
+**Headless visual verification (reproduces what the validation pipeline did):**
+- Use Chrome DevTools MCP or Puppeteer to navigate to the served URL.
+- Resize viewport to 1920×1080.
+- Iterate `next-slide` and capture screenshots; verify zero console errors.
+
+**Inspecting the SBOM:**
+- `jq '.metadata, .components[0:5]' sbom.cdx.json` for top-level metadata and a sample of components.
+- `jq '.components | length' sbom.cdx.json` should return `240`.
+
+**Re-running the normalizer:**
+- Idempotent: `./scripts/normalize-findings-config-h.sh results-snyk-code.sarif results-snyk-deps.json | diff - findings-config-h.json` should return empty.
+
+### G. Glossary
+
+| Term | Definition |
+|---|---|
+| **AAP** | Agent Action Plan — the primary directive document defining the project scope. |
+| **CWE** | Common Weakness Enumeration — a community-developed list of common software weakness types (e.g., `CWE-119`, `CWE-407`, `CWE-835`). |
+| **CVE** | Common Vulnerabilities and Exposures — identifiers for publicly known cybersecurity vulnerabilities (e.g., `CVE-2024-12345`). |
+| **CycloneDX** | An OWASP-maintained SBOM specification; Config H uses CycloneDX 1.5 JSON via `cargo-cyclonedx`. |
+| **Directive (1–4)** | One of the four user-issued CRITICAL directives at the top of the AAP. |
+| **Early Access (Snyk)** | A Snyk feature tier that gates certain language rule packs (including Rust SAST as of the run date) behind an organisational entitlement. |
+| **`findings-config-h.json`** | The primary Config H deliverable: a single-line minified UTF-8 JSON array conforming to the five-field schema. |
+| **OSS** | Open Source Software — in Snyk context, `snyk test` and `snyk sbom test` collectively report on OSS dependencies. |
+| **Path-to-production** | Standard activities required to deploy or hand off a deliverable, distinct from in-scope AAP requirements. |
+| **purl** | Package URL — a standardised cross-language package identifier (e.g., `pkg:cargo/rand@0.8.5`). |
+| **RustSec** | The Rust security advisory database; Snyk's Rust scanner mirrors RustSec. |
+| **SARIF** | Static Analysis Results Interchange Format — an OASIS standard for representing static-analysis findings; Config H uses SARIF v2.1.0. |
+| **SAST** | Static Application Security Testing — code-level vulnerability scanning. In Config H, satisfied by `snyk code test`. |
+| **SBOM** | Software Bill of Materials — a machine-readable inventory of all components in a software artifact. Config H produces a CycloneDX 1.5 SBOM as the input to the SBOM-based fallback dependency scan. |
+| **`SNYK_TOKEN`** | The environment variable carrying a valid Snyk API token at scan time. |
+| **`SNYK-CLI-0008`** | The Snyk CLI error code returned when `snyk test` cannot detect a supported manifest in the target directory — the expected outcome for Rust-only projects. |
+| **Stage 1–4** | The four-stage Config H pipeline defined in AAP §0.3.1: Install + Auth, SAST, Deps, Normalize + Merge. |
 
 ---
 
-**Project Completion:** 90.0%  
-**Status:** Production Ready  
-**Branch:** blitzy-40f6e639-d48b-4db8-9f86-f23abdd54866  
-**Total Engineering Hours:** 950 completed / 1,056 total  
-**Date:** November 23, 2025
+*End of Blitzy Project Guide.*
