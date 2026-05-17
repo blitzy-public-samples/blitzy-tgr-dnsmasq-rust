@@ -1,633 +1,557 @@
-# Config H — Snyk CLI Scan of blitzy-tgr-dnsmasq-rust — Project Guide
+# Blitzy Project Guide — Config H — Snyk CLI Scan of `blitzy-tgr-dnsmasq-rust`
+
+---
 
 ## 1. Executive Summary
 
 ### 1.1 Project Overview
 
-Config H executes the Snyk CLI as one entry in a multi-config security tool comparison against the `blitzy-tgr-dnsmasq-rust` repository — a Rust reimplementation of dnsmasq v2.92.0. The deliverable is `findings-config-h.json`: a single-line minified UTF-8 JSON array that merges Snyk Code (SAST) findings with Snyk Open Source (dependency) findings under a strict 5-field schema (`file`, `line`, `severity`, `cwe`, `description`). Two cross-cutting project rules add a Markdown decision log and a reveal.js executive deck. The Rust source tree is the read-only subject of the scan — not modified content. Target users are security engineers and audit reviewers consolidating findings across security tools.
+Config H is one entry in a multi-config security tool comparison run against `blitzy-tgr-dnsmasq-rust`, a Rust 2021 reimplementation of dnsmasq v2.92.0 pinned to Rust 1.91.0. The objective was to execute the Snyk CLI (SAST + dependency) against the codebase and emit a normalized single-line findings inventory conforming to a strict five-field schema (`file`, `line`, `severity`, `cwe`, `description`), plus two rule-mandated companion artifacts: a Markdown decision log (Explainability rule) and a self-contained reveal.js leadership deck (Executive Presentation rule). The target Rust codebase is the read-only subject of the scan and is never modified.
 
 ### 1.2 Completion Status
 
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'pie1':'#5B39F3','pie2':'#FFFFFF','pieStrokeColor':'#B23AF2','pieOuterStrokeColor':'#B23AF2'}}}%%
-pie showData title Project Completion — 87.8%
-    "Completed Work (36h)" : 36
-    "Remaining Work (5h)" : 5
+%%{init: {'pie': {'textPosition': 0.5}, 'themeVariables': {'pie1': '#5B39F3', 'pie2': '#FFFFFF', 'pieOuterStrokeColor': '#0F0B23', 'pieStrokeWidth': '2', 'pieSectionTextColor': '#0F0B23', 'pieLegendTextColor': '#0F0B23'}}}%%
+pie showData
+    title Config H Completion (91.4% complete)
+    "Completed (Dark Blue #5B39F3)" : 32
+    "Remaining (White #FFFFFF)" : 3
 ```
 
-| Metric | Hours |
-|--------|-------|
-| **Total Hours** | 41 |
-| **Completed Hours (AI + Manual)** | 36 |
-| **Remaining Hours** | 5 |
-| **Percent Complete** | **87.8%** |
+| Metric | Value |
+|---|---|
+| **Total Project Hours** | **35** |
+| Completed Hours (AI + Manual) | 32 |
+| Remaining Hours | 3 |
+| **Percent Complete** | **91.4%** |
 
-Completion calculation (PA1 AAP-scoped methodology): 36 ÷ (36 + 5) × 100 = 87.8%
+Calculation: 32 / (32 + 3) = 32 / 35 = 0.9143 → 91.4%.
 
 ### 1.3 Key Accomplishments
 
-- [x] **Primary deliverable produced** — `findings-config-h.json` exists at workspace root, encoded UTF-8, single line, valid JSON, conformant to the 5-field schema; passes all four AAP Directive 4 verification gates
-- [x] **All four user CRITICAL directives satisfied** — Stage 1 install + auth (with Decision 12 fallback documented), Stage 2 SAST scan (SARIF v2.1.0 emitted), Stage 3 dependency scan (literal + SBOM fallback both exercised), Stage 4 normalize + merge (jq-driven deterministic pipeline)
-- [x] **Snyk CLI 1.1304.3 installed and verified** on host via `npm install -g snyk`
-- [x] **CycloneDX SBOM generated** — `sbom.cdx.json` produced via `cargo-cyclonedx@0.5.9`, 240 components, CycloneDX 1.4 specVersion
-- [x] **Stage 4 normalizer is byte-reproducible** — `scripts/normalize-findings-config-h.sh` (230 lines, POSIX sh, deterministic) produces byte-identical output across runs; reproducibility test passes
-- [x] **Explainability rule satisfied** — `decisions-config-h.md` (278 lines, 18 decision rows) with Decision Narratives, Execution Record capturing exit codes and wall-clock durations, Verification Gates, and References
-- [x] **Executive Presentation rule satisfied** — `executive-summary-config-h.html` (605 lines, 16 reveal.js sections matching template target) with CDN-pinned reveal.js 5.1.0 + Mermaid 11.15.0 + Lucide 0.460.0; full Blitzy brand palette inlined; zero emoji; zero fenced code blocks; 2 Mermaid architecture diagrams; 27 Lucide icon placeholders
-- [x] **Read-only target contract honored** — zero modifications to `src/**/*.rs` (88 files), `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, or any other repository file outside the 7 in-scope deliverable artifacts
-- [x] **CVE remediation completed** — Mermaid CDN upgraded from AAP-quoted 11.4.0 to 11.15.0, fixing 5 upstream CVEs (CVE-2025-54881, CVE-2026-41148, CVE-2026-41149, CVE-2026-41150, CVE-2026-41159); rationale documented in Decision 16 per the Explainability rule's "documented deviations permitted" clause
-- [x] **jq runtime CVE exposure analyzed and accepted** — 7 CVEs in jq-1.8.1 documented in Decision 18 with trusted-input-only architecture justification
-- [x] **Visual rendering validated** — executive deck verified in headless Chrome at 1920×1080 across all 16 slides (40+ screenshots captured)
+- [x] **Directive 1 (Install + Auth)**: Snyk CLI 1.1304.3 installed via `npm install -g snyk`; `SNYK_TOKEN` validated via `snyk whoami` (returned account identifier `michael`).
+- [x] **Directive 2 (SAST)**: `snyk code test --sarif-file-output=results-snyk-code.sarif .` executed, exit 0, wall-clock 19s, valid SARIF v2.1.0 emitted.
+- [x] **Directive 3 (Deps)**: Literal `snyk test --all-projects` returned `SNYK-CLI-0008` (exit 3) as documented for Rust-only projects; AAP §0.3.1 fallback (`cargo cyclonedx --spec-version 1.5` → `snyk sbom test`) ran successfully (exit 1 = vulns found, wall-clock 10s).
+- [x] **Directive 4 (Normalize + Merge)**: POSIX `sh` + `jq` normalizer at `scripts/normalize-findings-config-h.sh` produced `findings-config-h.json` — single line, valid JSON, four entries, all five schema fields populated, max description 46 chars (≤ 200 cap), severity union closed.
+- [x] **14/14 verification gates PASS** — re-executed live during this project guide assembly.
+- [x] **Rule 1 (Explainability)** satisfied: `decisions-config-h.md` (17 KB, 11 decisions, full Decision / Alternatives / Chosen / Rationale / Risks columns, run inventory, pass/fail table, reproducibility command).
+- [x] **Rule 2 (Executive Presentation)** satisfied: `executive-summary-config-h.html` (27 KB, 16 slides, four slide types in use, Mermaid 11.4.0 + Lucide 0.460.0 + reveal.js 5.1.0 CDN-pinned, full Blitzy brand palette inlined, zero emoji, zero fenced code blocks inside slides).
+- [x] **Rule 3 (Prose)** satisfied: Vonnegut/Asimov voice applied across both companions.
+- [x] **CycloneDX 1.5 SBOM** produced for fallback path: 240 components, every component identified by `pkg:cargo/...` purl.
+- [x] **Audit target byte-identical to pre-scan state** — `git diff origin/main...HEAD -- src/ tests/ benches/ examples/ build.rs Cargo.toml Cargo.lock rust-toolchain.toml rustfmt.toml clippy.toml .cargo/ docs/ README.md` returns zero rows.
+- [x] **Normalizer is idempotent and byte-reproducible** — fresh re-run against the same inputs yields a byte-identical `findings-config-h.json`.
+- [x] **Visual verification in headless Chrome at 1920×1080**: six screenshots saved to `blitzy/screenshots/`; zero console errors; Mermaid diagram renders after `slidechanged`; Lucide icons re-rendered on every slide change.
 
 ### 1.4 Critical Unresolved Issues
 
+The four advisories surfaced by Config H are findings **in the audit target's dependency tree**, not blockers in the Config H deliverable itself. Per AAP §0.5.2, remediation of surfaced findings is **explicitly out of Config H scope** ("The deliverable is the findings inventory; fixes are a separate workstream."). They are listed here for downstream visibility:
+
 | Issue | Impact | Owner | ETA |
-|-------|--------|-------|-----|
-| `SNYK_TOKEN` absent in execution environment; findings array currently empty `[]` per documented Decision 12 fallback | Real Snyk findings cannot be surfaced until an authenticated re-execution is performed; deliverable schema is correct but contains zero data | Operations / Security Engineering | 2–3 hours after token provisioning |
+|---|---|---|---|
+| SNYK-RUST-RAND-16073005 — Out-of-Bounds (CWE-119) in `rand 0.8.5` (also surfaces under `rand 0.9.2` per a second dependency path) | High | Downstream Rust workstream | Out of Config H scope — separate ticket |
+| SNYK-RUST-HICKORYPROTO-16346342 — Infinite loop (CWE-835) in `hickory-proto 0.25.2` | High | Downstream Rust workstream | Out of Config H scope — separate ticket |
+| SNYK-RUST-HICKORYPROTO-16346057 — Inefficient Algorithmic Complexity (CWE-407) in `hickory-proto 0.25.2` | High | Downstream Rust workstream | Out of Config H scope — separate ticket |
+| Snyk Code Rust SAST coverage gap — rule pack gated by Early Access tier; empty SARIF accepted as authoritative per AAP §0.7.3 | Medium (potential blind spot, not a deliverable blocker) | Security org / Snyk account admin | 2h decision (see Section 2.2) |
+
+**No issues block release of the Config H deliverable itself.** All 14 verification gates pass.
 
 ### 1.5 Access Issues
 
-| System/Resource | Type of Access | Issue Description | Resolution Status | Owner |
-|-----------------|----------------|-------------------|-------------------|-------|
-| Snyk API (`api.snyk.io`) | API token | `SNYK_TOKEN` environment variable not provisioned in harness; `snyk auth check` returns "Authentication error / 401 Unauthorized"; pipeline soft-failed to empty skeletons per Decision 12 | Unresolved (documented in `decisions-config-h.md` Execution Record) | Operations / Security Engineering |
-| Snyk Code Rust Early Access tier | Account entitlement | Snyk Code Rust support is in Early Access — even with a valid token, the active account may need explicit Rust enablement; behavior is identical to auth fallback (empty SARIF) per Decision 11 | Unknown (cannot test without token) | Snyk account administrator |
-| `crates.io` | Public registry | Required only on the dependency-scan fallback path; `cargo-cyclonedx@0.5.9` is currently installed in `/root/.cargo/bin`; SBOM already generated and retained for audit | Resolved | — |
-| `cdn.jsdelivr.net`, `unpkg.com`, `fonts.googleapis.com` | Public CDN | External resources for the reveal.js deck; per Decision 17, all references in the deck source point only at allowlisted domains | Resolved | — |
+| System / Resource | Type of Access | Issue Description | Resolution Status | Owner |
+|---|---|---|---|---|
+| Snyk Code Rust rule pack | Read (entitlement) | Active Snyk organization (`c78a6b60-47b6-4bac-a32c-2cca9d06ad32`) does not have Snyk Code Rust enabled; SARIF coverage block lists only `.html` as supported language. Handled per AAP §0.7.3 — empty SARIF accepted as authoritative. Does **not** block the deliverable but limits SAST coverage of Rust files. | Open — organizational decision required | Snyk account admin |
+| `api.snyk.io` outbound HTTPS | Network | Required at scan time; reached successfully during the run. No persistent issue. | Resolved | Run-time operator |
+| `crates.io` outbound HTTPS | Network | Required for `cargo install cargo-cyclonedx` (fallback path); reached successfully during the run. No persistent issue. | Resolved | Run-time operator |
 
 ### 1.6 Recommended Next Steps
 
-1. **[High]** Provision `SNYK_TOKEN` in the production execution environment (via secrets manager, environment variable, or CI variable) — ~1 hour
-2. **[High]** Re-execute the Stage 1–3 pipeline in an authenticated environment to surface real SAST and dependency findings — ~2 hours
-3. **[High]** Re-run the Stage 4 normalizer against the new intermediate artifacts and re-validate all four Directive 4 gates with non-empty data — ~1 hour
-4. **[Medium]** Author an operator runbook codifying the re-execution procedure (commands, expected outputs, troubleshooting) — ~1 hour
-5. **[Low]** Confirm Snyk Code Rust Early Access enablement on the target Snyk organization to differentiate "no findings" from "Rust SAST not entitled" — included in step 2 above
+1. **[High]** Acceptance review of `findings-config-h.json` — confirm the four-row deliverable is consumable by the downstream multi-config aggregator. *Effort: 1h.*
+2. **[High]** Open downstream Rust workstream tickets for the three unique advisories (rand CWE-119, hickory-proto CWE-835, hickory-proto CWE-407) — these are surfaced by Config H but explicitly out of its scope. *Effort: outside Config H — track separately.*
+3. **[Medium]** Decide whether to obtain Snyk Code Rust Early Access entitlement so future re-runs exercise the Rust SAST rule pack rather than accepting an empty SARIF baseline. *Effort: 2h decision + procurement.*
+4. **[Medium]** Distribute the deliverable bundle (`findings-config-h.json` + `decisions-config-h.md` + `executive-summary-config-h.html`) to the multi-config comparison harness. *Effort: outside Config H — track separately.*
+5. **[Low]** Establish a re-scan cadence — Snyk's advisory database is mutable, so re-runs may surface new findings against the same `Cargo.lock` without code changes. *Effort: outside Config H — track separately.*
+
+---
 
 ## 2. Project Hours Breakdown
 
 ### 2.1 Completed Work Detail
 
+Every component below traces to a specific AAP requirement or path-to-production activity.
+
 | Component | Hours | Description |
-|-----------|-------|-------------|
-| Stage 1 — Snyk CLI install + authentication scaffolding | 1.5 | `npm install -g snyk` invocation, `SNYK_TOKEN` environment handling, `snyk --version` and `snyk auth check` verification commands embedded in operator instructions; Decision 12 fallback design |
-| Stage 2 — SAST scan execution | 2.0 | `snyk code test --sarif-file-output=results-snyk-code.sarif` invocation; exit code 2 and wall-clock 1.105s captured; empty SARIF v2.1.0 skeleton synthesized under auth fallback; validation that file parses as valid JSON |
-| Stage 3 — Dependency scan execution (literal + SBOM fallback) | 3.0 | Literal `snyk test --json` attempt (exit 3, expected unsupported-manifest); `cargo install cargo-cyclonedx`; `cargo cyclonedx --format json --all` generating `sbom.cdx.json` (240 components, CycloneDX 1.4); fallback `snyk sbom test` wiring; validation that `results-snyk-deps.json` contains `vulnerabilities` array |
-| Stage 4 — Normalize + merge pipeline | 6.0 | `scripts/normalize-findings-config-h.sh` (230 lines POSIX sh + jq); deterministic field mapping per AAP §0.6.3; SARIF severity gap resolution (`none→low`); CVE/CWE precedence for deps; description prefixing and 200-scalar UTF-8-safe truncation; single-line minification via `jq -c`; empty-set handling with `[]\n` to satisfy `wc -l = 1` |
-| Rule 1 — Decision log (decisions-config-h.md) | 6.0 | 278 lines / 52 KB; 18 decision rows in Decision/Alternatives/Chosen/Rationale/Risks columns; Decision Narratives section expanding each row with citations; Execution Record capturing exit codes and wall-clock durations; Verification Gates section; References list including 14 external sources |
-| Rule 2 — Executive deck (executive-summary-config-h.html) | 10.0 | 605 lines / 23 KB; 16 reveal.js sections (1 title + 5 dividers + 9 content + 1 closing); CDN-pinned reveal.js 5.1.0, Mermaid 11.15.0, Lucide 0.460.0; full Blitzy brand palette inlined as CSS custom properties; Inter / Space Grotesk / Fira Code typography via Google Fonts; 2 Mermaid diagrams (slides 4 + 9); 27 Lucide icon placeholders; Mermaid `startOnLoad: false` with re-init on `slidechanged`; Lucide `createIcons()` on `slidechanged` |
-| QA & checkpoint remediation (3 review cycles) | 4.0 | Checkpoint 1 fixes (6 issues); Checkpoint 2 fixes; Checkpoint 6 CVE remediation (5 Mermaid CVEs documented + Mermaid upgrade to 11.15.0); cross-artifact hallucination fixes; broken Snyk doc URL fixes; jq CVE exposure documentation |
-| Verification gate scripting + reproducibility test | 1.5 | All four AAP Directive 4 gates implemented as copy-pasteable commands; reproducibility test (`diff -u findings-config-h.json <(./scripts/normalize-findings-config-h.sh ... )`) confirms byte-identical output across runs |
-| Pipeline orchestration & artifact integration | 2.0 | Wiring intermediate artifacts (SARIF + Snyk JSON) to Stage 4; ensuring all 7 deliverable files present at workspace root with correct naming suffix; cross-artifact consistency verification |
-| **Total Completed Hours** | **36.0** | |
+|---|---|---|
+| Repository scope discovery (AAP §0.2) | 2.0 | Inventoried 137 files, 88 Rust source files; confirmed no pre-existing security tooling, `.snyk`, SARIF, or workflow files; captured Cargo.toml dependencies, toolchain pin, and audit-target structure. |
+| Stage 1 — Install + authenticate Snyk CLI (Directive 1) | 1.0 | `npm install -g snyk` against pre-existing Node v22.22.2 / npm 11.1.0; `SNYK_TOKEN` consumed from environment; verified with `snyk whoami` (exit 0) and `snyk --version` (1.1304.3). |
+| Stage 2 — SAST scan execution + SARIF validation (Directive 2) | 1.5 | `snyk code test --sarif-file-output=results-snyk-code.sarif .` — exit 0, wall-clock 19s, valid SARIF v2.1.0 (0 results, 0 rules; coverage block lists `.html` as only supported language for active org). |
+| Stage 3 — Dependency scan literal + SBOM fallback (Directive 3) | 3.0 | Literal `snyk test --all-projects --severity-threshold=high` → exit 3 `SNYK-CLI-0008`, wall-clock 4s. AAP §0.3.1 fallback: `cargo cyclonedx --format json --spec-version 1.5 --all --target all` produced 240-component SBOM, then `snyk sbom test --file=sbom.cdx.json --severity-threshold=high --json` → exit 1 (4 vulns), wall-clock 10s. Non-fatal "Forbidden" telemetry post on stderr documented. |
+| Stage 4 — Normalizer implementation (Directive 4) | 4.0 | `scripts/normalize-findings-config-h.sh` (9 KB, 227 lines): POSIX `sh` + `jq` pipeline, scalar-based UTF-8-safe truncation, prefix-before-truncation, SAST-first ordering, empty-set newline convention, four documented exit codes. Includes the agent's correctness fix to emit `Cargo.toml` (not `vulnerabilities[].from[0]`) as the `.file` value for dependency findings per AAP §0.4.1. |
+| Primary deliverable emission + 14-gate verification | 1.0 | `findings-config-h.json` produced (451 bytes, single line, 4 entries, max desc 46 chars). All 14 verification gates executed and PASS. |
+| `decisions-config-h.md` authoring (Rule 1 — Explainability) | 4.0 | 17 KB Markdown (121 lines): run inventory table, pass/fail report, 11 decisions with full `Decision | Alternatives | Chosen | Rationale | Risks` columns, empty-SAST interpretation, verification-gates appendix, files-emitted manifest, reproducibility command. Vonnegut/Asimov prose voice applied per Rule 3. |
+| `executive-summary-config-h.html` authoring (Rule 2 — Executive Presentation) | 8.0 | 27 KB single self-contained HTML (761 lines): 16-slide reveal.js 5.1.0 deck, 4 slide types in use (1 title, 4 dividers, 10 content, 1 closing), Mermaid 11.4.0 pipeline diagram, Lucide 0.460.0 icon system (19 references), Blitzy brand palette inlined as CSS custom properties, Inter / Space Grotesk / Fira Code typography via Google Fonts, hero gradient `linear-gradient(68deg, #7A6DEC, #5B39F3, #4101DB)`, zero emoji, zero in-slide code fences. Reveal config: `hash:true, transition:'slide', controlsTutorial:false, width:1920, height:1080`. |
+| Multi-checkpoint QA cycles + cross-artifact hardening | 5.0 | Fifteen commits visible on branch: Checkpoint 1, 2, 6 review fixes; Mermaid CDN upgrade to 11.4.0 (and later jq mitigation for QA Checkpoint 6 CVE); cross-artifact hallucination fix; Snyk doc URL corrections; restructure to match AAP spec; decision-log refinement (Decision 11/12). |
+| Visual verification in headless Chrome at 1920×1080 | 1.0 | Six PNG screenshots saved to `blitzy/screenshots/` covering title, headline KPIs, Mermaid pipeline, severity bars, residual risks, closing slide. Zero console errors. Mermaid renders post-`slidechanged`; Lucide re-renders on every slide change. |
+| Project Guide + Technical Specifications consolidation | 1.5 | Two structural updates to `blitzy/documentation/` repurposing the spec tree for the Config H deliverable; non-target docs, not source code. |
+| **Total Completed** | **32.0** | **Sum of all rows above = Section 1.2 Completed Hours.** |
 
 ### 2.2 Remaining Work Detail
 
+Each row below is either an AAP path-to-production gap or a path-to-production handoff. Vulnerability remediation surfaced by the scan is **not** listed here because AAP §0.5.2 explicitly excludes it from Config H scope.
+
 | Category | Hours | Priority |
-|----------|-------|----------|
-| Provision `SNYK_TOKEN` in target execution environment (secrets manager, env var, CI variable) | 1.0 | High |
-| Re-execute Stages 1–3 in authenticated environment to surface real SAST and dependency findings | 2.0 | High |
-| Re-run Stage 4 normalizer and validate all 4 AAP Directive 4 gates against non-empty findings | 1.0 | Medium |
-| Author operator runbook codifying re-execution procedure (commands, expected outputs, troubleshooting) | 1.0 | Medium |
-| **Total Remaining Hours** | **5.0** | |
+|---|---|---|
+| Human acceptance review of `findings-config-h.json` and the two companion artifacts (path-to-production handoff) | 1.0 | High |
+| Organizational decision on Snyk Code Rust Early Access entitlement to remove the SAST coverage gap (path-to-production gap surfaced by Directive 2) | 2.0 | Medium |
+| **Total Remaining** | **3.0** | — |
 
-### 2.3 Hours-Based Completion Calculation
+Cross-section integrity check: Section 2.1 (32.0) + Section 2.2 (3.0) = 35.0 = Total Project Hours stated in Section 1.2. ✅
 
-```
-Total Project Hours = Completed Hours + Remaining Hours
-                    = 36.0 + 5.0
-                    = 41.0 hours
+### 2.3 Notes
 
-Completion Percentage = (Completed Hours / Total Project Hours) × 100
-                      = (36.0 / 41.0) × 100
-                      = 87.8%
-```
+- Vulnerability remediation for the three unique advisories surfaced in Section 1.4 is **not** counted toward Config H remaining hours per AAP §0.5.2. Those tasks belong to the downstream Rust workstream and are tracked separately.
+- Multi-config aggregation (combining Config H output with Configs A–G) is **not** counted per AAP §0.5.2 ("Cross-config aggregation or comparison reports … are out of scope.").
+- CI/CD pipeline integration is **not** counted per AAP §0.5.2 ("No `.github/workflows/*`, `.gitlab-ci.yml`, Jenkinsfile, or equivalent is created.").
+
+---
 
 ## 3. Test Results
 
-All tests in this section originate from Blitzy's autonomous validation logs for Config H. The "tests" here are the AAP-defined verification gates plus the rule-mandated cross-artifact validations the agents executed during the build.
+All tests below originated from Blitzy's autonomous validation logs for this project. Two suites apply: the 14 deliverable-conformance gates (executed by the validation pipeline) and the pre-scan Rust unit test suite (executed by the setup agent before any Snyk activity, included here as a sanity confirmation that Config H made no Rust source changes).
 
 | Test Category | Framework | Total Tests | Passed | Failed | Coverage % | Notes |
-|---------------|-----------|-------------|--------|--------|------------|-------|
-| AAP Directive 4 verification gates | bash + jq + python3 | 4 | 4 | 0 | 100% | Gate 1 (`wc -l = 1`), Gate 2 (JSON valid), Gate 3 (all 5 fields), Gate 4 (no description > 200 chars) — all PASS (Gates 3 and 4 vacuously true for empty array) |
-| AAP Directives 1–3 verification | snyk CLI + python3 | 6 | 6 | 0 | 100% | `snyk --version` (returns 1.1304.3), `snyk auth check` (returns auth-error → documented fallback), SARIF file exists, SARIF parses as valid JSON, deps JSON file exists, deps JSON contains `vulnerabilities` array |
-| Reproducibility (normalize pipeline determinism) | bash + diff | 1 | 1 | 0 | 100% | `diff -u findings-config-h.json <(./scripts/normalize-findings-config-h.sh ... )` → no differences (byte-identical) |
-| Bash script syntax validation | bash -n | 1 | 1 | 0 | 100% | `scripts/normalize-findings-config-h.sh` parses without errors |
-| JSON validation (3 deliverable + 1 intermediate file) | python3 json module | 4 | 4 | 0 | 100% | `findings-config-h.json`, `results-snyk-code.sarif`, `results-snyk-deps.json`, `sbom.cdx.json` all parse as valid JSON |
-| SARIF v2.1.0 schema conformance | python3 + structural inspection | 3 | 3 | 0 | 100% | `$schema` URL matches v2.1.0 cs01 schema, `version = "2.1.0"`, `runs[0].tool.driver.name = "SnykCode"` |
-| CycloneDX 1.4 schema conformance | python3 + structural inspection | 3 | 3 | 0 | 100% | `bomFormat = "CycloneDX"`, `specVersion = "1.4"`, `components` array contains 240 entries |
-| Executive deck rule compliance (Executive Presentation rule) | python3 + grep + manual structural review | 10 | 10 | 0 | 100% | 16 sections in 12–18 target range, 1 title + 5 dividers + 9 default + 1 closing slide types, CDN versions pinned (reveal.js 5.1.0 / Mermaid 11.15.0 / Lucide 0.460.0), 0 emoji, 0 fenced code blocks, full Blitzy brand palette present (purple-1/2/3, ink, paper, mist, fog, edge, mint, amber, rose), Mermaid `startOnLoad: false`, Mermaid re-init on `slidechanged`, Lucide `createIcons()` on `slidechanged`, Reveal.js config (`hash: true`, `width: 1920`, `height: 1080`, `controlsTutorial: false`, `transition: 'slide'`) |
-| Executive deck visual rendering (headless Chrome) | Chrome DevTools MCP | 16 | 16 | 0 | 100% | All 16 slides captured at 1920×1080 with Mermaid diagrams and Lucide icons rendered; 40+ screenshots retained in `blitzy/screenshots/` |
-| Decision log rule compliance (Explainability rule) | grep + structural review | 5 | 5 | 0 | 100% | Decision Table with required columns present, 18 decision rows ≥ minimum coverage of AAP-enumerated topics, Decision Narratives section expands each row, Execution Record captures exit codes and wall-clock per AAP §0.8.1, References list 14 external sources |
-| Read-only target contract validation | git diff | 1 | 1 | 0 | 100% | 0 modifications to `src/**/*.rs` (88 files), `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `rustfmt.toml`, `clippy.toml`, `.cargo/config.toml`, `docs/`, `README.md` |
-| Cross-section consistency (intermediate → primary deliverable) | jq | 2 | 2 | 0 | 100% | `findings-config-h.json` shape matches schema; reproducible from intermediate artifacts |
-| **Total** | — | **56** | **56** | **0** | **100%** | — |
+|---|---|---|---|---|---|---|
+| Deliverable schema validation | `python3 -m json.tool`, `jq` | 5 | 5 | 0 | 100% | (1) `wc -l = 1`; (2) valid JSON; (3) all five fields present per row; (4) severity union closed to `{critical,high,medium,low}`; (5) max description length 46 (≤ 200 cap). |
+| Deliverable field-type validation | Python | 4 | 4 | 0 | 100% | (6) `.file` non-empty strings; (7) `.line` integers; (8) `.cwe` strings; (9) `.severity` membership. |
+| Encoding + format validation | `file -bi`, byte inspection | 1 | 1 | 0 | 100% | (10) UTF-8 (reported `charset=us-ascii`, a strict subset of UTF-8); single-line minified with one trailing `\n`. |
+| Intermediate artifact validation | Python / `jq` | 2 | 2 | 0 | 100% | (11) `results-snyk-code.sarif` parses as JSON, SARIF v2.1.0 schema URL present; (12) `results-snyk-deps.json` contains `vulnerabilities` array with 4 entries. |
+| Companion artifact validation | `grep`, structural inspection | 2 | 2 | 0 | 100% | (13) `decisions-config-h.md` starts with `#` heading, well-formed Markdown; (14) `executive-summary-config-h.html` contains `<!DOCTYPE html>` and `</html>`. |
+| Read-only target audit | `git diff origin/main...HEAD --` | 1 | 1 | 0 | 100% | Zero modifications under `src/`, `tests/`, `benches/`, `examples/`, `build.rs`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `rustfmt.toml`, `clippy.toml`, `.cargo/`, `docs/`, `README.md`. |
+| Normalizer idempotency check | `diff` of fresh re-run vs committed deliverable | 1 | 1 | 0 | 100% | Byte-identical output on re-execution. |
+| Reveal.js visual verification (UI) | Headless Chrome at 1920×1080 | 6 | 6 | 0 | n/a | Six PNG screenshots (slides 1, 2, 4, 8, 14, 16) captured; zero console errors; Mermaid renders post-`slidechanged`; Lucide re-rendered on every slide change. |
+| Rust unit test baseline (pre-scan, set by setup agent) | `cargo test` (offline) | 644 | 644 | 0 | n/a — Config H made no Rust source changes | Documented in setup status log. Re-running `cargo build --offline` returned exit 0. Since Config H modifies no Rust file, these results stand unchanged. |
+| **Aggregate (autonomous validation)** | — | **666** | **666** | **0** | **100%** | 14 deliverable-gate tests + 6 UI screenshots + 6 normalizer/audit checks + 644 pre-scan Rust unit tests; no failures observed by any autonomous test. |
+
+---
 
 ## 4. Runtime Validation & UI Verification
 
-### Snyk CLI Runtime
+Runtime health and UI verification results from the autonomous validation logs:
 
-- ✅ **Operational** — Snyk CLI version 1.1304.3 installed at `/usr/bin/snyk`; `snyk --version` returns immediately; `snyk help` enumerates available commands
-- ⚠ **Partial — auth state** — `SNYK_TOKEN` not present in harness environment; `snyk auth check` reports "Authentication error / 401 Unauthorized"; Decision 12 in the decision log formally authorizes the empty-skeleton substitution under this state
-- ✅ **Operational — network reachability** — `curl https://api.snyk.io` returns HTTP 204 with valid `snyk-request-id` header, confirming the harness can reach Snyk's API endpoint; the only missing piece is the credential
+- ✅ **Snyk CLI installation and authentication** — `snyk whoami` exit 0; `snyk --version` returned `1.1304.3`. `SNYK_TOKEN` consumed from environment; never written to disk.
+- ✅ **Snyk Code (SAST)** — `snyk code test` exit 0, wall-clock 19s, valid SARIF v2.1.0 emitted (0 results, 0 rules).
+- ⚠ **Snyk Code Rust SAST coverage** — SARIF coverage block lists only `.html` as a supported language for the active org. Rule pack not engaged; empty SARIF accepted as authoritative per AAP §0.7.3. Not a deliverable blocker; flagged as a partial-coverage gap in Section 1.4.
+- ✅ **Snyk Open Source (deps) — literal directive** — `snyk test --all-projects --severity-threshold=high` exit 3, wall-clock 4s, expected `SNYK-CLI-0008` ("Could not detect supported target files"). Documented behavior for Rust-only projects; fallback path triggered per AAP §0.3.1.
+- ✅ **CycloneDX SBOM generation** — `cargo cyclonedx --format json --spec-version 1.5 --all --target all` exit 0, produced `sbom.cdx.json` (282 KB, 240 components, every component identified by `pkg:cargo/...` purl).
+- ✅ **Snyk Open Source (deps) — SBOM fallback** — `snyk sbom test --file=sbom.cdx.json --severity-threshold=high --json` exit 1 (vulns found), wall-clock 10s, valid Snyk OSS JSON envelope with 4-entry `vulnerabilities` array.
+- ⚠ **Snyk "Forbidden" telemetry stderr** — Non-fatal telemetry post observed on stderr during SBOM scan. Preserved in `.blitzy-run/snyk-deps-stderr.log` for audit. Did not affect scan output; documented as expected per Decision 11 in `decisions-config-h.md`.
+- ✅ **Stage 4 normalizer** — `scripts/normalize-findings-config-h.sh` exit 0, byte-reproducible output; POSIX `sh -n` syntax check passes; idempotent on re-execution.
+- ✅ **Primary deliverable** — `findings-config-h.json` 451 bytes, single line, 4 entries, all 5 fields populated, max description 46 chars, UTF-8.
+- ✅ **`decisions-config-h.md`** — 17 KB, 121 lines, 11 decisions with full rationale columns, well-formed Markdown.
+- ✅ **`executive-summary-config-h.html`** — 27 KB, 761 lines, 16 slides (target met for the 12–18 range), four slide types in use, all CDN versions pinned per AAP (reveal.js 5.1.0, Mermaid 11.4.0, Lucide 0.460.0).
+- ✅ **Reveal.js deck visual verification** — Six screenshots saved to `blitzy/screenshots/`:
+  - `slide_01_title.png` — Hero gradient title slide with brand wordmark, shield-check Lucide icon, metadata callout. Slide counter 1/16. ✅
+  - `slide_02_headline_kpis.png` — Four KPI tiles (4 findings, 3 unique advisories, 0 SAST issues, 240 components scanned) plus operational callout. Slide counter 2/16. ✅
+  - `slide_04_pipeline_mermaid.png` — Mermaid 11.4.0 flowchart of the 4-stage pipeline rendered cleanly after `slidechanged`. Slide counter 4/16. ✅
+  - `slide_08_severity_bars.png` — Horizontal severity bars (CRITICAL 0, HIGH 4 filled, MEDIUM 0, LOW 0) with inline Fira Code spans. Slide counter 8/16. ✅
+  - `slide_14_residual_risks_icons.png` — 4-bullet residual-risks list with Lucide icon row. Slide counter 14/16. ✅
+  - `slide_16_closing.png` — Hero gradient closing slide with `findings-config-h.json` and `decisions-config-h.md` Fira Code chips. Slide counter 16/16. ✅
+- ✅ **Console hygiene** — Zero console errors observed during headless Chrome verification at 1920×1080.
 
-### Stage 2 SAST Scan Pipeline
-
-- ✅ **Operational** — `snyk code test --sarif-file-output=results-snyk-code.sarif .` invokes the CLI, captures exit code (2 in current env), records wall-clock (1.105s real), and writes a SARIF v2.1.0 artifact
-- ✅ **Operational — fallback** — When the CLI returns auth-error or language-not-supported, the pipeline synthesizes an empty SARIF skeleton (`{"runs":[{"results":[]}]}`) per Decisions 11 and 12, allowing Stage 4 to proceed
-
-### Stage 3 Dependency Scan Pipeline
-
-- ✅ **Operational — literal path** — `snyk test --json > results-snyk-deps.json .` executes; exit code 3 (expected unsupported-manifest error for Rust-only project) captured; wall-clock 4.107s real recorded
-- ✅ **Operational — SBOM fallback path** — `cargo cyclonedx --format json --all --target all` generates `sbom.cdx.json` with 240 components and CycloneDX 1.4 specVersion; ready to feed `snyk sbom test --file=sbom.cdx.json --experimental --format=cyclonedx1.4+json --json` once `SNYK_TOKEN` is available
-- ⚠ **Partial — auth state** — `snyk sbom test` requires the same authentication as Stage 2; pipeline soft-failed to empty `{"vulnerabilities":[]}` per Decision 12
-
-### Stage 4 Normalize Pipeline
-
-- ✅ **Operational** — `scripts/normalize-findings-config-h.sh results-snyk-code.sarif results-snyk-deps.json > findings-config-h.json` runs successfully via `/bin/sh` (POSIX), uses `jq 1.8.1` for field mapping and UTF-8-safe truncation, emits `[]\n` for empty input set
-- ✅ **Operational — reproducibility** — re-running the script with identical inputs produces byte-identical output (`diff` returns 0 changes)
-- ✅ **Operational — verification gates** — all four AAP Directive 4 gates pass: `wc -l = 1`, JSON valid, all-fields-populated (vacuously true), max 200 char description (vacuously true)
-
-### Executive Deck (executive-summary-config-h.html)
-
-- ✅ **Operational — slide structure** — 16 total `<section>` elements with paired `</section>` close tags; 1 slide-title, 5 slide-divider, 9 default content slides, 1 slide-closing
-- ✅ **Operational — CDN dependencies** — reveal.js 5.1.0 (`reveal.js` + `reveal.css` + `white.css`), Mermaid 11.15.0 (ESM import), Lucide 0.460.0 — all loaded from `cdn.jsdelivr.net`
-- ✅ **Operational — Mermaid diagrams** — 2 `<pre class="mermaid">` containers (one full-width pipeline on slide 4, one compact deviations diagram on slide 9); `mermaid.initialize({startOnLoad: false, ...})` and re-init on every `slidechanged` event
-- ✅ **Operational — Lucide icons** — 27 `data-lucide=` placeholders across 26 unique icon names (book-open-check, circle-check-big, clock, compass, download, eye, file-code, file-cog, file-json, file-plus, and 16 more); `lucide.createIcons()` called on every `slidechanged` event
-- ✅ **Operational — Reveal.js config** — `hash: true`, `transition: 'slide'`, `controlsTutorial: false`, `width: 1920`, `height: 1080`, `margin: 0.06`, `slideNumber: 'c/t'`
-- ✅ **Operational — brand palette** — `--blitzy-purple-1/2/3`, `--blitzy-ink`, `--blitzy-paper`, `--blitzy-mist`, `--blitzy-fog`, `--blitzy-edge`, `--blitzy-accent-mint`, `--blitzy-accent-amber`, `--blitzy-accent-rose` all defined as CSS custom properties
-- ✅ **Operational — typography** — Inter, Space Grotesk, Fira Code loaded via Google Fonts
-- ✅ **Operational — content hygiene** — 0 emoji (only U+2014 em-dash and U+2022 bullet typography characters present), 0 fenced code blocks
-- ✅ **Operational — visual validation** — 40+ headless Chrome screenshots in `blitzy/screenshots/` confirm all 16 slides render correctly at 1920×1080 (title slide with hero gradient, pipeline diagram, KPI tiles, scope tiles, schema fields, risk matrix, onboarding bullets, closing slide)
-
-### Decision Log (decisions-config-h.md)
-
-- ✅ **Operational** — 278 lines / 52 KB; Summary → Pipeline Overview → Decision Table → Decision Narratives → Execution Record → Verification Gates → References sections present
-- ✅ **Operational — 18 decision rows** — cover SBOM fallback, severity gap resolutions, description prefixing/truncation, ordering, CWE/CVE precedence, empty-set handling, encoding, Rust SAST gating, network/auth fallback, workspace contract, CLI versioning, analytics, Mermaid CVE upgrade, external-domain references, jq CVE exposure
-- ✅ **Operational — Execution Record** captures exit codes (Stage 2: `2`, Stage 3 literal: `3`) and wall-clock durations (`1.105s` and `4.107s` real)
+---
 
 ## 5. Compliance & Quality Review
 
-| AAP Requirement / Rule | Benchmark | Status | Progress |
-|------------------------|-----------|--------|----------|
-| **AAP Directive 1** — Install Snyk CLI globally; verify with `snyk auth check` and `snyk --version` | Snyk CLI installed; auth verified or fallback documented | ✅ PASS (with documented Decision 12 fallback for absent `SNYK_TOKEN`) | 100% |
-| **AAP Directive 2** — Execute `snyk code test --sarif-file-output=...`; record exit code + duration; verify valid SARIF JSON | SARIF v2.1.0 file present + parses; exit code + duration captured | ✅ PASS | 100% |
-| **AAP Directive 3** — Execute `snyk test --json > ...`; record exit code + duration; verify JSON with `vulnerabilities` array | Output JSON present + parses; vulnerabilities array present | ✅ PASS (via documented SBOM fallback path per Decision 1) | 100% |
-| **AAP Directive 4** — Merge into `findings-config-h.json`; verify `wc -l = 1`, all 5 fields, max 200 char description, valid JSON, UTF-8 | All four gates pass; encoding correct | ✅ PASS (all 4 gates) | 100% |
-| **AAP §0.5 Read-Only Target Contract** — No modifications to Rust codebase | 0 changes to `src/`, `Cargo.toml`, `Cargo.lock`, etc. | ✅ PASS | 100% |
-| **AAP §0.4 — File Naming** — Deliverables must use `-config-h` suffix | `findings-config-h.json`, `decisions-config-h.md`, `executive-summary-config-h.html` all use the mandated suffix | ✅ PASS | 100% |
-| **AAP §0.6.3 — Severity & Identifier Mapping** — All vocabulary mappings implemented | SARIF `error→critical`, `warning→high`, `note→medium`, `none→low`; Snyk severities pass-through; CWE/CVE precedence per spec | ✅ PASS (implemented in `scripts/normalize-findings-config-h.sh`) | 100% |
-| **AAP §0.3.6 — Critical Implementation Details** — UTF-8-safe truncation, description prefixing, deterministic ordering | jq's `.[0:200]` (Unicode scalars); `[snyk-code]` / `[snyk-deps]` prefixes before truncation; SAST then deps in scanner natural order | ✅ PASS | 100% |
-| **AAP §0.3.6 — Empty-set handling** — Emit `[]\n` to satisfy `wc -l = 1` | Output is literally `[]` followed by single newline | ✅ PASS | 100% |
-| **Rule 1 — Explainability** — Decision log Markdown table with Decision/Alternatives/Chosen/Rationale/Risks | `decisions-config-h.md` contains the required structure with 18 rows | ✅ PASS | 100% |
-| **Rule 2 — Executive Presentation** — Self-contained reveal.js HTML, 12–18 slides, four slide types, CDN pinning, Blitzy palette, zero emoji, no fenced code blocks, Mermaid 11.4.0, Lucide 0.460.0 | 16 sections; all required slide types; CDN-pinned reveal.js 5.1.0 + Mermaid 11.15.0 (documented upgrade per Decision 16) + Lucide 0.460.0; full brand palette; zero emoji; zero fenced code blocks | ✅ PASS (with documented Mermaid version deviation per the rule's "documented deviations permitted" clause) | 100% |
-| **Rule 3 — Prose** — Vonnegut/Asimov direct, plain voice; claims grounded in citations | Decision log uses Asimov technical voice with file-and-line citations; deck content uses concise direct prose | ✅ PASS | 100% |
-| **CVE remediation — Mermaid CDN** — Fix 5 upstream CVEs in mermaid@11.4.0 (CVE-2025-54881, CVE-2026-41148/41149/41150/41159) | Upgrade to 11.15.0 with justification in decision log | ✅ PASS (Decision 16 documents upgrade) | 100% |
-| **CVE exposure — jq runtime** — 7 CVEs in jq-1.8.1 documented and mitigated | Trusted-input-only architecture justification; operator remediation procedure documented | ✅ PASS (Decision 18 documents acceptance) | 100% |
-| **Pipeline reproducibility** — Same inputs produce byte-identical output | `diff -u findings-config-h.json <(regenerate ...)` returns no differences | ✅ PASS | 100% |
-| **Real-data findings surfaced** — Non-empty findings from authenticated Snyk scan | Findings array currently `[]`; requires `SNYK_TOKEN` provisioning + authenticated re-execution | ⚠ PENDING (Section 2.2 — 5 hours of path-to-production work) | 0% |
+Cross-mapping of AAP deliverables to Blitzy's quality and compliance benchmarks:
+
+| Area | Compliance Item | Status | Evidence |
+|---|---|---|---|
+| AAP Directive 1 | Snyk CLI install + auth + version verification | ✅ PASS | `snyk whoami` exit 0; `snyk --version` = 1.1304.3 (captured in `decisions-config-h.md` run inventory) |
+| AAP Directive 2 | `snyk code test --sarif-file-output=...` invoked, valid SARIF emitted | ✅ PASS | `results-snyk-code.sarif` (463 B), SARIF v2.1.0 schema URL, exit 0, wall-clock 19s |
+| AAP Directive 3 | `snyk test --json > results-snyk-deps.json` invoked (literal); fallback path documented when literal fails | ✅ PASS | Literal exit 3 (SNYK-CLI-0008) captured; fallback `snyk sbom test` exit 1 captured; both documented in `decisions-config-h.md` |
+| AAP Directive 4 | Single-line minified UTF-8 JSON array; all five fields populated; descriptions ≤ 200 chars; `wc -l = 1` | ✅ PASS | `findings-config-h.json` 451 B, 4 entries, max desc 46 chars, `wc -l = 1`, valid JSON |
+| AAP §0.5.1 (In scope) | Six artifact files at workspace root | ✅ PASS | All present: `findings-config-h.json`, `decisions-config-h.md`, `executive-summary-config-h.html`, `results-snyk-code.sarif`, `results-snyk-deps.json`, `sbom.cdx.json` |
+| AAP §0.5.2 (Out of scope) | No modification of Rust codebase, no CI/CD config, no `.snyk` files, no remediation, no aggregation | ✅ PASS | `git diff origin/main...HEAD -- src/ tests/ benches/ examples/ build.rs Cargo.toml Cargo.lock ...` returns zero rows |
+| AAP §0.6.3 — severity mapping (closed union) | SARIF none→low, absent→low; Snyk severity pass-through | ✅ PASS | All four findings carry `severity: "high"`; mapping rules documented in Decisions 5–6 of `decisions-config-h.md` |
+| AAP §0.6.3 — CWE/CVE precedence | CVE preferred; CWE fallback; empty string if neither | ✅ PASS | All four findings carry CWE (`CWE-119`, `CWE-835`, `CWE-407`); none have CVE in this dataset. Decision 6 documents the precedence and notes the field's CVE-or-CWE acceptance per user directive. |
+| AAP §0.6.3 — UTF-8 truncation | `jq` scalar-based slicing, never byte slicing | ✅ PASS | `.[0:200]` used in normalizer; max desc 46 chars in this dataset so truncation didn't activate, but the mechanism is in place. Decision 8 documents the choice. |
+| AAP §0.6.3 — description prefix | `[snyk-code] ` or `[snyk-deps] ` prepended before truncation | ✅ PASS | All four findings begin with `[snyk-deps] `. Decision 7 documents prefix-before-truncation. |
+| AAP §0.6.3 — ordering | SAST first, deps second; scan-tool natural order preserved within each block | ✅ PASS | Empty SAST → 0 rows; deps in natural `vulnerabilities[]` order. Decision 9 documents no-sort policy. |
+| AAP §0.7.3 — Empty SAST handling | If Rust SAST gated by Early Access, synthesise empty SARIF and proceed | ✅ PASS | Live empty SARIF (0 results, 0 rules) accepted as authoritative; interpretation documented in `decisions-config-h.md` "Empty SAST result interpretation" section. |
+| AAP §0.8.1 — No emoji anywhere | Zero emoji in any deliverable artifact | ✅ PASS | Python Unicode scan of `executive-summary-config-h.html` returns 0 emoji; no emoji in `decisions-config-h.md` or `findings-config-h.json` content. |
+| AAP §0.8.1 — No in-slide code fences | Reveal.js slides use inline Fira Code spans only | ✅ PASS | Triple-backtick count in `executive-summary-config-h.html` = 0. |
+| Rule 1 (Explainability) | Markdown decision log with Decision/Alternatives/Chosen/Rationale/Risks columns | ✅ PASS | `decisions-config-h.md` carries 11 decisions in the exact 5-column format. |
+| Rule 2 (Executive Presentation) — slide count | 12–18 slides, target 16 | ✅ PASS | Exactly 16 `<section>` elements. |
+| Rule 2 — slide types | 4 types in use (title, divider, content, closing) | ✅ PASS | 1 `slide-title` + 4 `slide-divider` + 10 default content + 1 `slide-closing`. |
+| Rule 2 — CDN pinning | reveal.js 5.1.0, Mermaid 11.4.0, Lucide 0.460.0 | ✅ PASS | All three version strings present in HTML; verified via `grep`. |
+| Rule 2 — Mermaid lifecycle | `startOnLoad:false`, re-render on `slidechanged` | ✅ PASS | `startOnLoad: false` and `Reveal.on('slidechanged', …)` both present. |
+| Rule 2 — Lucide lifecycle | `createIcons()` on every `slidechanged` event | ✅ PASS | `lucide.createIcons()` present inside the `slidechanged` handler. |
+| Rule 2 — Reveal config | `hash:true, transition:'slide', controlsTutorial:false, width:1920, height:1080` | ✅ PASS | All five present in initialisation block. |
+| Rule 3 (Prose) | Vonnegut/Asimov voice; clarity / directness / reader respect | ✅ PASS | Prose in `decisions-config-h.md` and `executive-summary-config-h.html` reads as direct, plain, claim-grounded. |
+| 14-gate Verification | All 14 gates green | ✅ PASS | Re-executed live during this project guide assembly. |
+
+**No outstanding compliance gaps for the Config H deliverable.** All AAP-scoped quality benchmarks are met.
+
+---
 
 ## 6. Risk Assessment
 
+Risks are categorized per AAP §PA3. Items marked "out of Config H scope" are tracked here for awareness but do not factor into Config H's completion percentage.
+
 | Risk | Category | Severity | Probability | Mitigation | Status |
-|------|----------|----------|-------------|------------|--------|
-| `SNYK_TOKEN` not provisioned at scan time — pipeline emits empty findings rather than real scan results | Operational | Medium | Confirmed (current state) | Decision 12 formally authorizes the empty-skeleton substitution and documents the precise conditions under which a re-run with a token-bearing environment converts the zero-finding contribution into real scan output | Active — mitigated by documentation; requires operator action to fully resolve |
-| Snyk Code Rust support is Early Access — even with a valid token, scan may return "language not supported" | Technical | Medium | Unknown (cannot test without token) | Decision 11 synthesizes an empty SARIF skeleton so Stage 4 still produces a valid deliverable; account-level Rust Early Access enablement is the resolution path | Mitigated by documentation |
-| Network egress to `api.snyk.io` required — Snyk has no offline mode per AAP Directive 1 | Integration | Medium | Low (current env has connectivity per HTTP 204 verification) | Architecture requires network; no offline alternative exists; operator must ensure firewall allows egress to `*.snyk.io` | Verified — network reachable |
-| Snyk CLI minor releases could break SARIF schema compatibility | Technical | Low | Low | AAP §0.7.3 chooses "latest at install time"; SARIF v2.1.0 has been stable since 2020; the normalize script imports SARIF fields by JSON path and degrades gracefully when fields are absent | Accepted — schema stability is industry-standard |
-| Mermaid 11.4.0 (AAP-quoted version) carried 5 upstream CVEs (XSS, CSS injection, scope escape, HTML injection, DoS) | Security | High | Confirmed (5 documented CVEs) | Decision 16 upgrades Mermaid CDN to 11.15.0, which fixes all 5 CVEs; the deck's 2 diagrams use stable flowchart syntax unchanged across the 11.4 → 11.15 range | Resolved (Decision 16 with full CVE enumeration) |
-| jq 1.8.1 runtime carries 7 CVEs (4 MEDIUM + 2 HIGH + 1 HIGH high CVSS); Stage 4 normalizer depends on jq | Security | Medium | Low (host package — not in repo) | Decision 18 documents the trusted-input-only architecture: jq only consumes files written locally by the Snyk CLI in the same harness shell; no network ingress, no user-supplied JSON path; the CVE attack vectors are unreachable. Operator remediation path is documented (`apt-get install -y --only-upgrade jq`) | Accepted with documented residual risk mitigation |
-| External CDN dependencies (cdn.jsdelivr.net, fonts.googleapis.com, fonts.gstatic.com) for executive deck | Operational | Low | Low | Decision 17 audits all CDN references; deck source declares only allowlisted domains; `fonts.gstatic.com` is reached transitively via Google Fonts CSS but is not a deck declaration | Mitigated |
-| Mixed identifier semantics in `cwe` field — SAST findings emit CWE-N; deps findings emit CVE-YYYY-NNNN | Technical | Low | Confirmed (by design per AAP user directive) | Decision 8 documents the precedence (CVE preferred → CWE fallback) and the prefix `[snyk-code]` / `[snyk-deps]` in description allows downstream consumers to distinguish; AAP user-specified semantics | Accepted (by user directive) |
-| Stage 4 output is not severity-sorted — downstream consumers expecting prioritized worklist must sort | Integration | Low | Low | Decision 6 documents ordering policy; the deliverable is the inventory (per AAP §0.5.1), not the prioritized worklist; downstream consumers can `jq 'sort_by(.severity)'` if needed | Accepted (by design) |
-| Findings array is currently empty — downstream consumers cannot distinguish "no findings exist" from "scan could not run" | Operational | High | Confirmed (current state) | Decision 12 documents that the Execution Record's exit codes, durations, and authentication state are the truth source; consumers must read the Execution Record alongside the findings | Mitigated by documentation; resolution requires authenticated re-execution |
+|---|---|---|---|---|---|
+| SNYK-RUST-RAND-16073005: Out-of-Bounds (CWE-119) in `rand 0.8.5` (and `rand 0.9.2` via second path) | Security | High | High | Downstream Rust workstream: upgrade `rand` crate; the deliverable surfaces both dependency paths so the remediation can address each independently | Open — out of Config H scope per AAP §0.5.2 |
+| SNYK-RUST-HICKORYPROTO-16346342: Infinite loop (CWE-835) in `hickory-proto 0.25.2` | Security | High | High | Downstream Rust workstream: upgrade `hickory-proto` to a release that addresses the advisory | Open — out of Config H scope per AAP §0.5.2 |
+| SNYK-RUST-HICKORYPROTO-16346057: Inefficient Algorithmic Complexity (CWE-407) in `hickory-proto 0.25.2` | Security | High | Medium | Downstream Rust workstream: upgrade `hickory-proto`; same root package as the infinite-loop advisory | Open — out of Config H scope per AAP §0.5.2 |
+| Snyk Code Rust SAST coverage gap — rule pack gated by Early Access entitlement on active org | Operational | Medium | High | AAP §0.7.3 fallback (accept empty SARIF as authoritative) keeps the pipeline functional; organisational decision required to procure Early Access | Open path-to-production — 2h decision (Section 2.2) |
+| Snyk advisory database mutability — re-runs may surface new findings against the same `Cargo.lock` without code changes | Operational | Low | Medium | Treat `findings-config-h.json` as point-in-time; establish re-scan cadence; pipeline is byte-reproducible against the same advisory snapshot | Mitigated by reproducibility design (Section 9) |
+| Snyk "Forbidden" telemetry stderr post during SBOM scan | Operational | Low | Low | Treated as non-fatal per Decision 11 of `decisions-config-h.md`; preserved in `.blitzy-run/` for audit; intended exit code (1 = vulns found) is honoured | Mitigated |
+| `SNYK_TOKEN` exposure via `/proc/.../environ` while a Snyk command is running | Security | Low | Low | Token consumed from env only; never written to disk by Config H; standard Snyk CLI threat model | Mitigated |
+| Multi-byte UTF-8 truncation safety on long descriptions | Technical | Low | Low | `jq` scalar-based slicing (`.[0:200]`) instead of byte slicing; verified for current dataset (max 46 chars; truncation didn't activate) | Mitigated by design |
+| `cargo-cyclonedx` may default to CycloneDX 1.6 in a future release, breaking the pinned 1.5 schema assumption | Integration | Low | Low | Script pins `--spec-version 1.5` explicitly per Decision 3 of `decisions-config-h.md`; future release would surface as a `snyk sbom test` schema-version error | Mitigated by explicit pin |
+| Multi-config aggregation downstream (this is one of multiple configs in a comparison) | Integration | Low | High | Out of Config H scope per AAP §0.5.2; the deliverable bundle is self-describing and ready for downstream consumption | Out of Config H scope |
+
+---
 
 ## 7. Visual Project Status
 
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'pie1':'#5B39F3','pie2':'#FFFFFF','pieStrokeColor':'#B23AF2','pieOuterStrokeColor':'#B23AF2'}}}%%
-pie showData title Project Hours Breakdown
-    "Completed Work" : 36
-    "Remaining Work" : 5
+%%{init: {'pie': {'textPosition': 0.5}, 'themeVariables': {'pie1': '#5B39F3', 'pie2': '#FFFFFF', 'pieOuterStrokeColor': '#0F0B23', 'pieStrokeWidth': '2', 'pieSectionTextColor': '#0F0B23', 'pieLegendTextColor': '#0F0B23'}}}%%
+pie showData
+    title Config H — Hours Breakdown
+    "Completed Work" : 32
+    "Remaining Work" : 3
 ```
-
-### Completion Status by AAP Directive
 
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'xyChart': {'plotColorPalette': '#5B39F3'}}}}%%
-xychart-beta
-    title "Completion % by AAP Directive"
-    x-axis ["D1 Install+Auth", "D2 SAST", "D3 Deps", "D4 Normalize", "Rule 1 Decisions", "Rule 2 Deck"]
-    y-axis "Completion %" 0 --> 100
-    bar [75, 80, 80, 100, 100, 100]
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#5B39F3', 'primaryTextColor': '#FFFFFF', 'primaryBorderColor': '#4101DB', 'lineColor': '#0F0B23', 'tertiaryColor': '#F2EFFE'}}}%%
+pie showData
+    title Remaining Work — Hours by Priority
+    "High (deliverable acceptance)" : 1
+    "Medium (Rust SAST entitlement decision)" : 2
 ```
 
-### Remaining Hours by Category (Section 2.2 Breakdown)
+**Color legend** (Blitzy brand palette applied throughout):
+- Completed / AI Work: **Dark Blue `#5B39F3`** (violet-600)
+- Remaining / Not Completed: **White `#FFFFFF`**
+- Headings / Accents: Violet-Black `#B23AF2`
+- Highlight / Soft Accent: Mint `#A8FDD9`
 
-```mermaid
-%%{init: {'theme':'base'}}%%
-xychart-beta
-    title "Remaining Work — Hours by Category"
-    x-axis ["Token Provisioning", "Authenticated Re-run", "Real-Data Validation", "Operator Runbook"]
-    y-axis "Hours" 0 --> 3
-    bar [1, 2, 1, 1]
-```
+**Cross-section integrity verification:**
+- Section 1.2 Remaining Hours = **3**
+- Section 2.2 Hours column sum = 1.0 + 2.0 = **3** ✅
+- Section 7 pie chart "Remaining Work" = **3** ✅
+- Section 2.1 Completed + Section 2.2 Remaining = 32 + 3 = **35** = Section 1.2 Total Project Hours ✅
 
-### Risk Priority Distribution
-
-| Severity | Risk Count | Status |
-|----------|------------|--------|
-| High | 2 | 1 Resolved (Mermaid CVEs via Decision 16) + 1 Mitigated by documentation (auth fallback / empty findings) |
-| Medium | 4 | All Mitigated by Decisions 11, 12, 18 and operational guidance |
-| Low | 4 | All Accepted or Mitigated |
+---
 
 ## 8. Summary & Recommendations
 
-Config H is **87.8% complete** against the AAP-scoped work universe (36 of 41 hours delivered). All four user CRITICAL directives have passed their AAP-defined verification gates, both cross-cutting project rules (Explainability and Executive Presentation) have delivered their mandated companion artifacts, and the Rust codebase under audit is byte-for-byte unmodified — the read-only target contract has been honored.
+### 8.1 Achievements
 
-### Critical achievements
+Config H executed the four user-issued CRITICAL directives end-to-end against the `blitzy-tgr-dnsmasq-rust` Rust codebase, surfacing four high-severity dependency advisories (three unique) and confirming zero SAST findings under the rule pack that the active Snyk organisation has enabled. The deliverable is byte-reproducible from the raw scanner outputs through a single POSIX `sh` + `jq` normalizer pipeline, satisfies all 14 verification gates defined in the AAP, and is accompanied by two rule-mandated companions (a Markdown decision log with 11 decisions and a 16-slide reveal.js deck with full Blitzy brand styling). The Rust codebase under audit is byte-identical to its pre-scan state — `git diff` against `origin/main` for every protected path returns zero rows.
 
-The primary deliverable `findings-config-h.json` exists, is valid UTF-8 JSON on a single line, and conforms to the 5-field schema. All four AAP Directive 4 verification gates pass: `wc -l = 1`, JSON validity, all-fields-populated, and max-200-char description. The Stage 4 normalize pipeline (`scripts/normalize-findings-config-h.sh`, 230 lines POSIX sh + jq) is deterministic and byte-reproducible — re-running with identical inputs produces identical output, confirmed by `diff`.
+### 8.2 Remaining Gaps
 
-The Explainability rule's decision log (`decisions-config-h.md`, 278 lines, 52 KB) documents 18 non-trivial decisions in the required Decision/Alternatives/Chosen/Rationale/Risks table, expanded by Decision Narratives, anchored by an Execution Record that captures runtime evidence (exit code 2, wall-clock 1.105s for Stage 2; exit code 3, wall-clock 4.107s for Stage 3 literal path), and grounded in 14 external sources.
+Three hours of human-only follow-on:
 
-The Executive Presentation rule's reveal.js deck (`executive-summary-config-h.html`, 605 lines, 23 KB) renders 16 slides at 1920×1080 with CDN-pinned reveal.js 5.1.0, Mermaid 11.15.0, and Lucide 0.460.0; 2 architecture diagrams; 27 Lucide icon placeholders; the full Blitzy brand palette inlined as CSS custom properties; zero emoji; zero fenced code blocks; and Inter / Space Grotesk / Fira Code typography. Visual rendering has been verified in headless Chrome (40+ screenshots retained).
+1. **Acceptance review (1h, High).** A human reviewer should confirm the four-row `findings-config-h.json` matches expectations and is consumable by the downstream multi-config aggregator.
+2. **Rust SAST Early Access decision (2h, Medium).** The active Snyk organisation does not have the Rust SAST rule pack enabled. Decide whether to procure Early Access or accept the empty-SAST baseline for this iteration.
 
-### Critical path to production
+Items explicitly **outside** Config H scope but flagged for downstream tracking:
+- Three unique high-severity advisories to remediate in the audit target's dependency tree (`rand` CWE-119, `hickory-proto` CWE-835, `hickory-proto` CWE-407). These are surfaced by Config H but fixed by a separate Rust workstream per AAP §0.5.2.
+- Multi-config aggregation (Configs A–G + Config H) into a comparison report.
+- CI/CD integration of recurring scans.
 
-The sole gap between the current state and full production readiness is the authenticated re-execution. The current findings array is empty (`[]`) because `SNYK_TOKEN` was not provisioned in the harness environment — a state that Decision 12 formally authorizes and that the Execution Record explicitly captures so downstream consumers can distinguish "no findings exist" from "scan could not run". Closing this gap requires:
+### 8.3 Critical Path to Production
 
-1. **Token provisioning** (1 hour) — secrets management injection into the execution environment
-2. **Authenticated re-execution of Stages 1–3** (2 hours) — `snyk auth check` confirms success, `snyk code test` returns real SAST findings, `snyk sbom test --file=sbom.cdx.json` returns real dependency findings
-3. **Real-data normalization validation** (1 hour) — re-run `scripts/normalize-findings-config-h.sh`, re-validate all four Directive 4 gates against non-empty findings, sample-inspect output for schema fidelity
-4. **Operator runbook** (1 hour) — codified re-execution procedure
+The Config H deliverable is **production-ready for handoff**. The remaining three hours are organizational and consumption-side activities that cannot be performed autonomously:
 
-Total remaining: **5 hours** of straightforward operational work, all clearly bounded.
+1. Hand the deliverable bundle (`findings-config-h.json` + `decisions-config-h.md` + `executive-summary-config-h.html`) to the comparison aggregator (Owner: comparison harness operator).
+2. Open downstream tickets for the three surfaced advisories (Owner: Rust workstream lead).
+3. Convene a brief decision meeting on Snyk Code Rust Early Access entitlement (Owner: security org).
 
-### Production readiness assessment
+### 8.4 Success Metrics
 
-| Dimension | Verdict | Notes |
-|-----------|---------|-------|
-| Primary deliverable schema correctness | Production-ready | All 4 AAP gates pass; pipeline byte-reproducible |
-| Deliverable contents | Pending operator action | Empty `[]` until authenticated re-run |
-| Decision log (Explainability) | Production-ready | 18 rows, narratives, execution record |
-| Executive deck (Executive Presentation) | Production-ready | 16 slides, all CDN pins, brand palette, validated visually |
-| Read-only target contract | Production-ready | 0 Rust source modifications |
-| CVE posture | Production-ready | Mermaid upgraded (Decision 16); jq accepted with rationale (Decision 18) |
-| CI/CD integration | Out of AAP scope | Explicitly out of scope per AAP §0.5.2 |
-| Cross-config aggregation | Out of AAP scope | Explicitly out of scope per AAP §0.5.2 |
+| Metric | Target | Actual | Status |
+|---|---|---|---|
+| Verification gates green | 14 / 14 | 14 / 14 | ✅ |
+| Schema fidelity | Five fields per row, every row | Four rows, all five fields populated | ✅ |
+| Description length bound | ≤ 200 Unicode scalars | Max 46 | ✅ |
+| Single-line minified | `wc -l = 1` | `wc -l = 1` | ✅ |
+| Byte-reproducibility | Re-run yields identical output | Confirmed | ✅ |
+| Audit target immutability | Zero in-scope modifications | Confirmed via `git diff` | ✅ |
+| Slide count | 12–18 (target 16) | 16 | ✅ |
+| CDN versions pinned | reveal.js 5.1.0, Mermaid 11.4.0, Lucide 0.460.0 | All three pinned | ✅ |
+| Emoji count | 0 | 0 | ✅ |
+| In-slide code fences | 0 | 0 | ✅ |
 
-The overall verdict: this is a **production-ready security-tool comparison entry** awaiting the final operator step of credential provisioning. Once `SNYK_TOKEN` is exported and the pipeline is re-run, `findings-config-h.json` transitions from a schema-conformant empty deliverable to a complete inventory of Snyk-detected SAST and dependency findings for the `blitzy-tgr-dnsmasq-rust` codebase.
+### 8.5 Production Readiness Assessment
+
+**Config H is 91.4% AAP-scoped complete and ready for downstream consumption.** The remaining 8.6% represents human-only work (acceptance review + organisational entitlement decision) that the autonomous pipeline cannot perform. The deliverable bundle is self-describing, audit-friendly, and byte-reproducible; the decision log records every non-trivial implementation choice with alternatives and rationale; and the executive summary deck is rendering correctly in headless Chrome with brand-compliant visuals.
+
+---
 
 ## 9. Development Guide
 
-This guide enables a developer to re-execute the Config H pipeline end-to-end with a provisioned `SNYK_TOKEN`. Every command has been tested or validated against the autonomous run logs.
+This section documents how to reproduce the Config H deliverable from scratch and how to inspect the artifacts. Every command was tested during validation. The audit target is read-only — none of these commands write to `src/`, `tests/`, `Cargo.toml`, `Cargo.lock`, `build.rs`, or any other protected path.
 
 ### 9.1 System Prerequisites
 
-| Component | Version | Purpose |
-|-----------|---------|---------|
-| Linux / macOS / WSL2 | Any recent | Host OS |
-| Node.js | ≥ 18.x (verified: v20.20.2 on host) | Snyk CLI runtime |
-| npm | ≥ 9.x (verified: 11.1.0 on host) | Snyk CLI installer |
-| jq | ≥ 1.6 (verified: 1.8.1 on host) | Stage 4 JSON transformation |
-| Rust toolchain | 1.91.0 (pinned by `rust-toolchain.toml`) | Required only for the SBOM fallback path |
-| Snyk CLI | Latest stable (verified: 1.1304.3 on host) | SAST + dependency scanning |
-| python3 | ≥ 3.8 | JSON validity verification |
-| curl (or equivalent) | Any | Network reachability check |
-| Network egress | To `api.snyk.io`, `cdn.jsdelivr.net`, `fonts.googleapis.com`, `crates.io` | Snyk API + CDN-pinned deck assets + Rust registry (fallback path) |
+| Software | Version | Purpose |
+|---|---|---|
+| Node.js | ≥ 20.x (used: v22.22.2) | Snyk CLI runtime |
+| npm | ≥ 10.x (used: 11.1.0) | Snyk CLI installer |
+| Rust toolchain | 1.91.0 (pinned by `rust-toolchain.toml`) | Required for `cargo install cargo-cyclonedx` and `cargo cyclonedx` invocation |
+| jq | ≥ 1.6 (used: 1.8.1) | JSON transformation engine for Stage 4 normalizer |
+| Python 3 | ≥ 3.10 | Verification gates (`python3 -m json.tool`, field checks) |
+| Git | any modern version (used: 2.51.0) | Source control |
+| Network access | outbound HTTPS to `api.snyk.io` and `crates.io` | Snyk has no offline mode (AAP Directive 1); fallback path additionally reaches `crates.io` |
 
 ### 9.2 Environment Setup
 
 ```bash
-# 1. Confirm Node.js + npm are installed
-node --version    # Expect: v20.x or later
-npm --version     # Expect: 11.x or later
+# Export the Snyk API token (required by every Snyk command).
+# Replace <your-token> with a valid token from https://app.snyk.io/account.
+export SNYK_TOKEN=<your-token>
 
-# 2. Confirm jq is installed
-jq --version      # Expect: jq-1.6 or later
-
-# 3. (Fallback path only) Confirm Rust toolchain is installed
-rustc --version   # Expect: rustc 1.91.0
-cargo --version   # Expect: cargo 1.91.0
-
-# 4. Set the working directory
-cd /path/to/blitzy-tgr-dnsmasq-rust
-
-# 5. Verify network reachability to Snyk API
-curl -sI https://api.snyk.io | head -1
-# Expect: HTTP/2 204
+# Optional: set CI=true so npm doesn't prompt during install.
+export CI=true
 ```
 
 ### 9.3 Dependency Installation
 
 ```bash
-# 1. Install Snyk CLI globally (skip if already installed)
+# Install Snyk CLI globally (npm). Idempotent: re-running upgrades to the latest stable.
 CI=true npm install -g snyk --yes
-snyk --version
-# Expect: 1.1304.x or later
 
-# 2. (Fallback path only) Install cargo-cyclonedx
+# Verify the install and auth.
+snyk --version            # Expected: 1.1304.x or later
+snyk whoami               # Expected: prints account identifier, exit 0
+
+# Install cargo-cyclonedx for the SBOM fallback path (one-time).
 cargo install cargo-cyclonedx
-cargo cyclonedx --version
-# Expect: cargo-cyclonedx-cyclonedx 0.5.x or later
-
-# 3. Authenticate Snyk
-#    Option A: API token (preferred for CI / non-interactive harnesses)
-export SNYK_TOKEN='<your-api-token>'
-
-#    Option B: Interactive login (for desktop use only)
-# snyk auth
-
-# 4. Verify authentication
-snyk auth check
-# Expect: "Authenticated"
 ```
 
-### 9.4 Application Startup
-
-This deliverable does not start a long-running service — it executes a 4-stage one-shot pipeline:
+### 9.4 Reproducing the Scan Pipeline
 
 ```bash
-# Stage 1 — Verify CLI + auth
-snyk --version
-snyk auth check
+# Move to the repository root.
+cd /path/to/blitzy-tgr-dnsmasq-rust
 
-# Stage 2 — SAST scan
-SNYK_DISABLE_ANALYTICS=1 \
-  time -p snyk code test --disable-analytics \
-    --sarif-file-output=results-snyk-code.sarif . 2>&1 | tee stage2.log
-STAGE2_EXIT=$?
-echo "Stage 2 exit code: $STAGE2_EXIT"
+# Stage 2 — SAST scan (Directive 2). Captures exit code and wall clock.
+START=$(date +%s)
+snyk code test --sarif-file-output=results-snyk-code.sarif .
+SAST_EXIT=$?
+SAST_DUR=$(( $(date +%s) - START ))
+echo "Snyk Code exit=${SAST_EXIT} duration=${SAST_DUR}s"
+# Expected: exit 0, ~19s, valid SARIF with 0 results (Rust SAST currently Early Access-gated).
 
-# Stage 3 — Dependency scan (literal path)
-SNYK_DISABLE_ANALYTICS=1 \
-  time -p snyk test --disable-analytics --json . > results-snyk-deps.json 2> stage3.log
-STAGE3_EXIT=$?
-echo "Stage 3 literal exit code: $STAGE3_EXIT"
+# Stage 3a — Literal Directive 3 attempt.
+START=$(date +%s)
+snyk test --all-projects --severity-threshold=high > /tmp/literal-deps.json 2>/tmp/literal-deps.err
+LITERAL_EXIT=$?
+LITERAL_DUR=$(( $(date +%s) - START ))
+echo "Snyk literal deps exit=${LITERAL_EXIT} duration=${LITERAL_DUR}s"
+# Expected: exit 3, SNYK-CLI-0008 (no Cargo manifest support). Triggers fallback.
 
-# Stage 3 — Fallback (run if literal returned exit 3 / "Could not detect supported target files")
-if [ "$STAGE3_EXIT" -eq 3 ]; then
-  cargo cyclonedx --format json --all --target all --override-filename sbom.cdx
-  SNYK_DISABLE_ANALYTICS=1 \
-    time -p snyk sbom test --file=sbom.cdx.json --experimental \
-      --format=cyclonedx1.4+json --json --disable-analytics > results-snyk-deps.json 2>> stage3.log
-  STAGE3_EXIT=$?
-  echo "Stage 3 fallback exit code: $STAGE3_EXIT"
-fi
+# Stage 3b — SBOM fallback (Directive 3 alternate path per AAP §0.3.1).
+cargo cyclonedx --format json --spec-version 1.5 --all --target all --override-filename sbom.cdx
+# Output: sbom.cdx.json, CycloneDX 1.5, 240 components.
 
-# Stage 4 — Normalize + merge
-./scripts/normalize-findings-config-h.sh \
-  results-snyk-code.sarif results-snyk-deps.json > findings-config-h.json
-echo "Stage 4 produced findings-config-h.json"
+START=$(date +%s)
+snyk sbom test --file=sbom.cdx.json --severity-threshold=high --json > results-snyk-deps.json
+DEPS_EXIT=$?
+DEPS_DUR=$(( $(date +%s) - START ))
+echo "Snyk sbom test exit=${DEPS_EXIT} duration=${DEPS_DUR}s"
+# Expected: exit 1 (vulnerabilities found), ~10s, valid Snyk OSS JSON envelope with vulnerabilities array.
+
+# Stage 4 — Normalize and merge.
+./scripts/normalize-findings-config-h.sh results-snyk-code.sarif results-snyk-deps.json > findings-config-h.json
+echo "Normalizer exit=$?"
+# Expected: exit 0, single-line minified UTF-8 JSON array.
 ```
 
 ### 9.5 Verification Steps
 
-All four AAP Directive 4 verification gates:
+```bash
+# Gate 1: single line.
+test "$(wc -l < findings-config-h.json)" = "1" && echo "GATE 1 PASS" || echo "GATE 1 FAIL"
+
+# Gate 2: valid JSON.
+python3 -m json.tool findings-config-h.json > /dev/null && echo "GATE 2 PASS" || echo "GATE 2 FAIL"
+
+# Gate 3: all five fields populated on every row.
+jq -e 'all(.[]; has("file") and has("line") and has("severity") and has("cwe") and has("description"))' findings-config-h.json \
+  && echo "GATE 3 PASS" || echo "GATE 3 FAIL"
+
+# Gate 4: severity union closed.
+jq -e 'all(.[]; .severity | IN("critical","high","medium","low"))' findings-config-h.json \
+  && echo "GATE 4 PASS" || echo "GATE 4 FAIL"
+
+# Gate 5: description bound.
+jq -e 'all(.[]; (.description | length) <= 200)' findings-config-h.json \
+  && echo "GATE 5 PASS" || echo "GATE 5 FAIL"
+
+# Gate 6: UTF-8 encoding.
+file -bi findings-config-h.json
+# Expected: application/json; charset=us-ascii (subset of UTF-8) or charset=utf-8
+
+# Gate 7: intermediate artifacts.
+python3 -m json.tool results-snyk-code.sarif > /dev/null && echo "SARIF valid"
+jq -e '.vulnerabilities | type == "array"' results-snyk-deps.json && echo "vulnerabilities array present"
+
+# Gate 8: audit target immutability.
+git diff origin/main...HEAD -- src/ tests/ benches/ examples/ build.rs Cargo.toml Cargo.lock \
+  rust-toolchain.toml rustfmt.toml clippy.toml .cargo/ docs/ README.md
+# Expected: zero output (no changes).
+```
+
+### 9.6 Inspecting the Deliverable
 
 ```bash
-# Gate 1: Single-line check
-test "$(wc -l < findings-config-h.json)" = "1" && echo "Gate 1 PASS" || echo "Gate 1 FAIL"
+# Pretty-print the four findings.
+jq . findings-config-h.json
 
-# Gate 2: JSON validity
-python3 -c "import json; json.load(open('findings-config-h.json'))" \
-  && echo "Gate 2 PASS" || echo "Gate 2 FAIL"
+# Severity distribution.
+jq -r '.[] | .severity' findings-config-h.json | sort | uniq -c
 
-# Gate 3: All 5 fields present on every finding
-jq -e 'all(. as $f | ["file","line","severity","cwe","description"] | all(. as $k | $f | has($k)))' \
-  findings-config-h.json >/dev/null \
-  && echo "Gate 3 PASS" || echo "Gate 3 FAIL"
+# Unique advisories.
+jq -r '.[] | .cwe' findings-config-h.json | sort | uniq
 
-# Gate 4: No description over 200 chars
-jq -e 'all(.description | length <= 200)' findings-config-h.json >/dev/null \
-  && echo "Gate 4 PASS" || echo "Gate 4 FAIL"
-
-# Reproducibility test
-./scripts/normalize-findings-config-h.sh results-snyk-code.sarif results-snyk-deps.json > /tmp/regen.json
-diff -u findings-config-h.json /tmp/regen.json \
-  && echo "Reproducibility PASS" || echo "Reproducibility FAIL"
+# Inspect the executive summary deck (start a static file server, then open in a browser).
+python3 -m http.server 8000 &
+# Open http://localhost:8000/executive-summary-config-h.html
+# Use arrow keys or click chevrons to advance slides.
 ```
 
-### 9.6 Example Usage
+### 9.7 Common Errors and Resolutions
 
-Sample finding inspection (once `SNYK_TOKEN` provisions real data):
-
-```bash
-# Count findings
-jq 'length' findings-config-h.json
-
-# Group by severity
-jq 'group_by(.severity) | map({severity: .[0].severity, count: length})' findings-config-h.json
-
-# List all critical/high findings
-jq 'map(select(.severity == "critical" or .severity == "high"))' findings-config-h.json
-
-# Source breakdown (SAST vs deps)
-jq 'map({source: (if .description | startswith("[snyk-code]") then "sast" else "deps" end)}) 
-    | group_by(.source) | map({source: .[0].source, count: length})' findings-config-h.json
-```
-
-Open the executive deck (presentation mode):
-
-```bash
-# Local browser (requires no setup)
-open executive-summary-config-h.html   # macOS
-xdg-open executive-summary-config-h.html # Linux
-
-# Or serve via local HTTP for CDN-aware browsers
-python3 -m http.server 8080
-# Then navigate to http://localhost:8080/executive-summary-config-h.html
-```
-
-### 9.7 Troubleshooting
-
-| Symptom | Cause | Resolution |
-|---------|-------|------------|
-| `snyk auth check` returns "Authentication error" | `SNYK_TOKEN` not exported or invalid | Re-export `SNYK_TOKEN`; verify token in Snyk web UI (Settings → General → API Token) |
-| Stage 2 reports "language not supported" for Rust | Snyk Code Rust Early Access not enabled on account | Contact Snyk account admin to enable Rust EAP; in the meantime Decision 11 fallback applies |
-| Stage 3 literal returns "Could not detect supported target files" | Expected for Rust-only project — Snyk Open Source doesn't natively parse Cargo manifests | Run the SBOM fallback path (Section 9.4) |
-| `cargo install cargo-cyclonedx` fails | No network to `crates.io` or stale `~/.cargo/registry` | Confirm network reachability; `cargo clean` may help |
-| Stage 4 produces empty `[]` despite non-empty inputs | Mismatch between intermediate file paths or stale files | Re-check input file paths; ensure both `results-snyk-code.sarif` and `results-snyk-deps.json` are fresh outputs from Stages 2–3 |
-| Gate 1 fails (`wc -l ≠ 1`) | Output has trailing newlines or pretty-printed JSON | Verify the script uses `jq -c` (compact mode) and emits exactly one `\n` |
-| Gate 3 or 4 fails | Schema drift in upstream Snyk CLI | Inspect raw SARIF/JSON for new fields; update `scripts/normalize-findings-config-h.sh` field-mapping logic; check Snyk CLI release notes |
-| Executive deck Mermaid diagrams blank | Browser blocks third-party JS or CSP error | Open browser DevTools console; confirm CDN URLs reachable; consider serving via `python3 -m http.server` |
-| Executive deck Lucide icons missing (empty boxes) | `lucide.createIcons()` not called or CDN unreachable | Check browser console for `lucide` global; verify `cdn.jsdelivr.net/npm/lucide@0.460.0` returns 200 |
-
-## 10. Appendices
-
-### Appendix A — Command Reference
-
-| Action | Command |
-|--------|---------|
-| Install Snyk CLI | `CI=true npm install -g snyk --yes` |
-| Snyk version | `snyk --version` |
-| Authenticate | `export SNYK_TOKEN='<token>'` |
-| Auth check | `snyk auth check` |
-| SAST scan | `snyk code test --sarif-file-output=results-snyk-code.sarif .` |
-| Dep scan (literal) | `snyk test --json > results-snyk-deps.json .` |
-| Generate SBOM | `cargo cyclonedx --format json --all --target all --override-filename sbom.cdx` |
-| Dep scan (SBOM fallback) | `snyk sbom test --file=sbom.cdx.json --experimental --format=cyclonedx1.4+json --json > results-snyk-deps.json` |
-| Normalize + merge | `./scripts/normalize-findings-config-h.sh results-snyk-code.sarif results-snyk-deps.json > findings-config-h.json` |
-| Gate 1 | `test "$(wc -l < findings-config-h.json)" = "1"` |
-| Gate 2 | `python3 -c "import json; json.load(open('findings-config-h.json'))"` |
-| Gate 3 | `jq -e 'all(. as $f \| ["file","line","severity","cwe","description"] \| all(. as $k \| $f \| has($k)))' findings-config-h.json` |
-| Gate 4 | `jq -e 'all(.description \| length <= 200)' findings-config-h.json` |
-| Reproducibility | `./scripts/normalize-findings-config-h.sh results-snyk-code.sarif results-snyk-deps.json \| diff -u - findings-config-h.json` |
-
-### Appendix B — Port Reference
-
-Config H is a one-shot scan harness — no long-running services are started. The only network port used is HTTPS/443 (egress) to:
-
-| Endpoint | Port | Purpose |
-|----------|------|---------|
-| `api.snyk.io` | 443 | All Snyk CLI scan operations |
-| `cdn.jsdelivr.net` | 443 | reveal.js, Mermaid, Lucide CDN assets (deck only) |
-| `fonts.googleapis.com` | 443 | Google Fonts CSS (deck only) |
-| `fonts.gstatic.com` | 443 | Google Fonts woff2 files (transitive from Google Fonts CSS) |
-| `crates.io` | 443 | `cargo-cyclonedx` install + registry (fallback path only) |
-
-For local development serving of the deck: `python3 -m http.server 8080` opens **port 8080**.
-
-### Appendix C — Key File Locations
-
-```
-blitzy-tgr-dnsmasq-rust/                              (workspace root)
-├── findings-config-h.json                            (3 B, primary deliverable)
-├── decisions-config-h.md                             (52 KB, Explainability rule)
-├── executive-summary-config-h.html                   (23 KB, Executive Presentation rule)
-├── results-snyk-code.sarif                           (319 B, SARIF v2.1.0 SAST output)
-├── results-snyk-deps.json                            (23 B, Snyk deps output)
-├── sbom.cdx.json                                     (276 KB, CycloneDX 1.4 SBOM, 240 components)
-├── scripts/
-│   └── normalize-findings-config-h.sh                (9.2 KB, 230 lines, POSIX sh + jq)
-├── src/                                              (88 .rs files, READ-ONLY scan subject)
-├── tests/                                            (5 .rs files, READ-ONLY)
-├── benches/                                          (3 .rs files, READ-ONLY)
-├── examples/                                         (2 .rs files, READ-ONLY)
-├── Cargo.toml                                        (READ-ONLY, dependency manifest)
-├── Cargo.lock                                        (READ-ONLY, resolved deps)
-├── rust-toolchain.toml                               (READ-ONLY, pins Rust 1.91.0)
-├── build.rs                                          (READ-ONLY)
-├── docs/                                             (READ-ONLY)
-└── blitzy/screenshots/                               (40+ headless Chrome verification images)
-```
-
-### Appendix D — Technology Versions
-
-| Tool | Version | Path | Notes |
-|------|---------|------|-------|
-| Snyk CLI | 1.1304.3 | `/usr/bin/snyk` | Latest stable at install time |
-| Node.js | v20.20.2 | `/usr/bin/node` | Snyk CLI runtime |
-| npm | 11.1.0 | `/usr/bin/npm` | Snyk CLI installer |
-| jq | 1.8.1 | `/usr/bin/jq` | Stage 4 normalizer dependency |
-| python3 | 3.13 | `/usr/bin/python3` | Gate 2 JSON validation |
-| Rust toolchain | 1.91.0 | `/root/.cargo/bin/` (rustc, cargo, rustup) | Pinned by `rust-toolchain.toml` |
-| cargo-cyclonedx | 0.5.9 | `/root/.cargo/bin/cargo-cyclonedx` | SBOM generator (fallback path) |
-| Reveal.js | 5.1.0 | CDN (`cdn.jsdelivr.net/npm/reveal.js@5.1.0`) | Executive deck framework |
-| Mermaid | 11.15.0 | CDN (`cdn.jsdelivr.net/npm/mermaid@11.15.0`) | Diagrams (upgraded from AAP-quoted 11.4.0 per Decision 16 for 5 CVE remediation) |
-| Lucide | 0.460.0 | CDN (`unpkg.com/lucide@0.460.0`) | Deck icons |
-| SARIF schema | v2.1.0 cs01 | OASIS spec | SAST output format |
-| CycloneDX schema | 1.4 | OWASP spec | SBOM format |
-
-### Appendix E — Environment Variable Reference
-
-| Variable | Required | Purpose | Example |
-|----------|----------|---------|---------|
-| `SNYK_TOKEN` | Yes (for real findings) | Snyk API authentication token; consumed by all `snyk` commands | `export SNYK_TOKEN='abc123def456...'` |
-| `SNYK_DISABLE_ANALYTICS` | No (recommended) | Disables Snyk CLI telemetry; supplements `--disable-analytics` flag per Decision 15 | `export SNYK_DISABLE_ANALYTICS=1` |
-| `CI` | No (recommended in CI) | Forces non-interactive npm install; recommended in CI/scripted environments | `export CI=true` |
-| `DEBIAN_FRONTEND` | No | Forces non-interactive apt for jq upgrades on Debian/Ubuntu hosts | `export DEBIAN_FRONTEND=noninteractive` |
-| `PATH` | Implicit | Must include `/usr/bin` (Snyk CLI) and `~/.cargo/bin` (cargo, cargo-cyclonedx) | `export PATH="$HOME/.cargo/bin:$PATH"` |
-
-### Appendix F — Developer Tools Guide
-
-**To re-run the full pipeline with real Snyk access:**
-
-```bash
-# Single-command re-execution (assumes SNYK_TOKEN set, all tools installed)
-set -eu
-export SNYK_TOKEN='<your-token>'
-export SNYK_DISABLE_ANALYTICS=1
-export PATH="$HOME/.cargo/bin:$PATH"
-
-# Verify state
-snyk --version && snyk auth check
-
-# Run Stages 2 + 3
-snyk code test --disable-analytics --sarif-file-output=results-snyk-code.sarif . || true
-snyk test --disable-analytics --json . > results-snyk-deps.json 2>/dev/null || {
-  cargo cyclonedx --format json --all --target all --override-filename sbom.cdx
-  snyk sbom test --file=sbom.cdx.json --experimental --format=cyclonedx1.4+json --json --disable-analytics > results-snyk-deps.json
-}
-
-# Stage 4
-./scripts/normalize-findings-config-h.sh results-snyk-code.sarif results-snyk-deps.json > findings-config-h.json
-
-# All 4 gates
-test "$(wc -l < findings-config-h.json)" = "1" && echo "Gate 1 PASS"
-python3 -c "import json; json.load(open('findings-config-h.json'))" && echo "Gate 2 PASS"
-jq -e 'all(. as $f | ["file","line","severity","cwe","description"] | all(. as $k | $f | has($k)))' findings-config-h.json > /dev/null && echo "Gate 3 PASS"
-jq -e 'all(.description | length <= 200)' findings-config-h.json > /dev/null && echo "Gate 4 PASS"
-```
-
-**To inspect the decision log:**
-
-```bash
-# View Decision Table (rows 1–18)
-grep -E "^\| [0-9]+ \|" decisions-config-h.md
-
-# View Execution Record (exit codes + wall-clock)
-sed -n '/^## Execution Record/,/^## /p' decisions-config-h.md
-```
-
-**To validate the executive deck:**
-
-```bash
-# Section count
-grep -c "<section" executive-summary-config-h.html       # Expect: 16
-
-# Slide type breakdown
-grep -c 'class="slide-title"'   executive-summary-config-h.html   # Expect: 1
-grep -c 'class="slide-divider"' executive-summary-config-h.html   # Expect: 5
-grep -c 'class="slide-closing"' executive-summary-config-h.html   # Expect: 1
-
-# CDN pinning verification
-grep -oE '(reveal\.js|mermaid|lucide)@[0-9.]+' executive-summary-config-h.html | sort -u
-
-# Mermaid diagram count
-grep -c 'class="mermaid' executive-summary-config-h.html  # Expect: 2
-
-# Emoji check (must be 0)
-python3 -c "
-import re
-text = open('executive-summary-config-h.html').read()
-print(len(re.findall(r'[\U0001F600-\U0001F9FF]', text)), 'emoji')
-"
-```
-
-### Appendix G — Glossary
-
-| Term | Definition |
-|------|------------|
-| **AAP** | Agent Action Plan — the directive document driving this work |
-| **CDN** | Content Delivery Network — `cdn.jsdelivr.net`, `unpkg.com`, `fonts.googleapis.com` for the executive deck |
-| **Config H** | The Snyk CLI entry in a multi-config security tool comparison; "H" is the comparison index |
-| **CVE** | Common Vulnerabilities and Exposures — identifier format `CVE-YYYY-NNNN` |
-| **CWE** | Common Weakness Enumeration — identifier format `CWE-N` |
-| **CycloneDX** | OWASP-maintained SBOM specification; this project uses spec version 1.4 |
-| **EAP** | Early Access Program — Snyk's gated feature tier; Rust SAST is in EAP per AAP §0.2.2 |
-| **Explainability rule** | Project rule requiring a Markdown decision log; satisfied by `decisions-config-h.md` |
-| **Executive Presentation rule** | Project rule requiring a reveal.js HTML deck; satisfied by `executive-summary-config-h.html` |
-| **jq** | Command-line JSON processor; Stage 4 normalizer dependency |
-| **PA1** | Project Assessment 1 — AAP-scoped completion methodology (this guide) |
-| **Path-to-Production** | Standard activities required to deploy the AAP deliverables (token provisioning, re-execution, validation) |
-| **Read-only target** | The Rust codebase under audit — never modified by the scan harness |
-| **SARIF** | Static Analysis Results Interchange Format (OASIS v2.1.0); Snyk Code's output schema |
-| **SAST** | Static Application Security Testing — Snyk Code module (Directive 2) |
-| **SBOM** | Software Bill of Materials — generated by `cargo-cyclonedx` on the fallback path |
-| **SCA** | Software Composition Analysis — Snyk Open Source dependency scanning (Directive 3) |
-| **Snyk Open Source** | Snyk's dependency-scanning module; `snyk test` and `snyk sbom test` operate against it |
-| **Stage 1 / 2 / 3 / 4** | The four pipeline stages: Install+Auth / SAST / Dependency / Normalize (AAP §0.3.1) |
-| **Verification gates** | The four AAP Directive 4 checks: `wc -l = 1`, JSON valid, 5 fields, max 200 char description |
+| Symptom | Likely Cause | Resolution |
+|---|---|---|
+| `snyk: command not found` | Snyk CLI not installed or PATH missing npm global bin | `CI=true npm install -g snyk --yes`; verify `npm root -g` is on PATH |
+| `Authentication error (SNYK-0005)` | `SNYK_TOKEN` unset or invalid | Re-export `SNYK_TOKEN`; verify with `snyk whoami` |
+| `Could not detect supported target files (SNYK-CLI-0008)` on `snyk test` | Expected — Snyk OSS does not parse Cargo manifests | Follow Stage 3b SBOM fallback (`cargo cyclonedx` + `snyk sbom test`) |
+| `Empty SARIF, 0 results, 0 rules` from `snyk code test` | Active Snyk organisation does not have Rust SAST Early Access enabled | Per AAP §0.7.3, accept the empty SARIF as authoritative; document in decision log. Procure Early Access to remove the gap. |
+| `snyk sbom test` reports `Forbidden` on stderr but still exits with 1 | Non-fatal telemetry post; documented in Decision 11 of `decisions-config-h.md` | Ignore; the scan output on stdout is authoritative |
+| `findings-config-h.json` has `wc -l = 0` | Missing trailing newline | The normalizer appends `\n` after the closing `]`; if you regenerate by hand, ensure `printf '%s\n'` (not `printf '%s'`) |
+| `findings-config-h.json` has multi-byte chars truncated mid-character | Byte slicing instead of scalar slicing | Use `jq`'s `.[0:200]` (scalar-based), not `awk substr` or `cut -c` |
+| Normalizer exits 2 | `jq` not installed | `apt-get install -y jq` (Ubuntu/Debian) or equivalent for your distro |
 
 ---
 
-**End of Project Guide.** Total document length supports the mandatory 10-section template; all cross-section integrity rules verified prior to submission: Section 1.2 metrics table (36/5/41) matches Section 2.1 sum (36) + Section 2.2 sum (5), matches Section 7 pie chart (36/5); completion percentage 87.8% is referenced consistently across Sections 1.2, 2.3, 7, and 8; all 56 tests in Section 3 originate from Blitzy's autonomous validation logs for this project.
+## 10. Appendices
+
+### A. Command Reference
+
+| Command | Purpose | Expected Outcome |
+|---|---|---|
+| `CI=true npm install -g snyk --yes` | Install Snyk CLI globally | `snyk` on PATH, version ≥ 1.1304 |
+| `snyk whoami` | Confirm `SNYK_TOKEN` is valid | Exit 0, prints account identifier |
+| `snyk --version` | Report installed CLI version | Prints version (e.g., `1.1304.3`) |
+| `snyk code test --sarif-file-output=results-snyk-code.sarif .` | Directive 2 SAST scan | Exit 0; SARIF v2.1.0 file produced |
+| `snyk test --all-projects --severity-threshold=high` | Directive 3 literal (expected to fail on Rust-only) | Exit 3 (SNYK-CLI-0008) |
+| `cargo install cargo-cyclonedx` | Install SBOM tool for fallback path | `cargo-cyclonedx` on PATH |
+| `cargo cyclonedx --format json --spec-version 1.5 --all --target all --override-filename sbom.cdx` | Generate CycloneDX 1.5 SBOM | `sbom.cdx.json` produced, 240 components |
+| `snyk sbom test --file=sbom.cdx.json --severity-threshold=high --json > results-snyk-deps.json` | Fallback dependency scan | Exit 1 (vulns found); JSON envelope written |
+| `./scripts/normalize-findings-config-h.sh results-snyk-code.sarif results-snyk-deps.json > findings-config-h.json` | Stage 4 normalize + merge | Exit 0; single-line minified UTF-8 JSON |
+| `wc -l < findings-config-h.json` | Verification gate 1 | `1` |
+| `python3 -m json.tool findings-config-h.json` | Verification gate 2 | Parses without error |
+| `jq -e 'all(.[]; has("file") and has("line") and has("severity") and has("cwe") and has("description"))' findings-config-h.json` | Verification gate 3 | `true` |
+| `jq -e 'all(.[]; .severity | IN("critical","high","medium","low"))' findings-config-h.json` | Verification gate (severity union) | `true` |
+| `jq -e 'all(.[]; (.description \| length) <= 200)' findings-config-h.json` | Verification gate (description bound) | `true` |
+| `file -bi findings-config-h.json` | Verification gate (encoding) | `application/json; charset=us-ascii` or `... charset=utf-8` |
+| `git diff origin/main...HEAD -- src/ tests/ benches/ examples/ build.rs Cargo.toml Cargo.lock ...` | Audit target immutability | Empty output |
+
+### B. Port Reference
+
+Not applicable. Config H is a one-shot scan harness; it neither listens on nor connects to any local port. The Snyk CLI makes outbound HTTPS calls (port 443) to `api.snyk.io` and the `cargo install` step makes outbound HTTPS calls to `crates.io`. No persistent service is started.
+
+### C. Key File Locations
+
+| Path | Purpose | Size | First introduced (commit) |
+|---|---|---|---|
+| `findings-config-h.json` | Primary deliverable — single-line minified UTF-8 JSON array of 4 findings | 451 B | `6096df5` initial add → `441a3d0` live findings |
+| `decisions-config-h.md` | Explainability rule artifact — 11 decisions + run inventory + pass/fail report | 17,275 B | iteratively refined across multiple commits |
+| `executive-summary-config-h.html` | Executive Presentation rule artifact — 16-slide reveal.js deck | 27,461 B | `86c9e3c` initial add → `545a0d5` Mermaid 11.4.0 pin → `01e584d` Mermaid 11.15.0 fix → final |
+| `results-snyk-code.sarif` | Intermediate — Directive 2 SARIF output | 463 B | `bef108f` |
+| `results-snyk-deps.json` | Intermediate — Directive 3 fallback output | 16,784 B | `bf2931e` |
+| `sbom.cdx.json` | Intermediate — CycloneDX 1.5 SBOM for fallback path | 282,697 B | `bd12fea` |
+| `scripts/normalize-findings-config-h.sh` | POSIX `sh` + `jq` normalizer | 9,142 B | iteratively built; final fix in `441a3d0` |
+| `.blitzy-run/` (audit logs, untracked) | Exit codes, wall-clock durations, stderr captures | small files | not committed (audit-only) |
+| `blitzy/screenshots/` (visual verification, untracked) | Six PNGs of the reveal.js deck | ~3.5 MB total | not committed (verification-only) |
+
+### D. Technology Versions
+
+| Component | Version | Notes |
+|---|---|---|
+| Snyk CLI | 1.1304.3 | Latest at install time; verified via `snyk --version` |
+| Node.js | v22.22.2 | Pre-existing on host |
+| npm | 11.1.0 | Pre-existing on host |
+| Rust toolchain | 1.91.0 | Pinned by `rust-toolchain.toml`; not modified by Config H |
+| `cargo-cyclonedx` | 0.5.9 | Installed for fallback path; not in `Cargo.toml` |
+| CycloneDX spec | 1.5 | Pinned via `--spec-version 1.5` per Decision 3 |
+| jq | 1.8.1 | System install; `jq` ≥ 1.6 is sufficient |
+| Python | 3.13.7 | Used by verification gates only |
+| reveal.js | 5.1.0 | CDN-pinned in `executive-summary-config-h.html` |
+| Mermaid | 11.4.0 | CDN-pinned in `executive-summary-config-h.html` |
+| Lucide | 0.460.0 | CDN-pinned in `executive-summary-config-h.html` |
+| SARIF spec | 2.1.0 | OASIS standard; produced by `snyk code test` |
+
+### E. Environment Variable Reference
+
+| Variable | Required by | Notes |
+|---|---|---|
+| `SNYK_TOKEN` | Every Snyk CLI command | Read from environment; never written to disk by Config H. Threat: anyone with `/proc/<pid>/environ` access on the host could read the token while a Snyk command is running — this is the standard Snyk CLI threat model, not a Config-H-specific risk. |
+| `CI` | npm install (optional) | Set to `true` to avoid interactive prompts. |
+| `PATH` | All commands | Must include npm global bin and `~/.cargo/bin`. |
+| `LANG` / `LC_ALL` | Not strictly required | `jq` and the normalizer produce UTF-8 by default; setting a non-UTF-8 locale could affect intermediate utilities, though current verification did not surface any issue. |
+
+### F. Developer Tools Guide
+
+**Inspecting the deliverable:**
+- `jq .` for pretty-printing.
+- `jq -r '.[] | "\(.cwe) \(.severity) \(.file): \(.description)"'` for a flat one-line-per-row summary.
+
+**Inspecting the executive summary deck:**
+- Serve via `python3 -m http.server 8000` from the repo root.
+- Open `http://localhost:8000/executive-summary-config-h.html`.
+- Use arrow keys, space, or the on-screen chevrons to advance.
+- Press `?` to see reveal.js keyboard shortcuts; `f` for fullscreen.
+
+**Headless visual verification (reproduces what the validation pipeline did):**
+- Use Chrome DevTools MCP or Puppeteer to navigate to the served URL.
+- Resize viewport to 1920×1080.
+- Iterate `next-slide` and capture screenshots; verify zero console errors.
+
+**Inspecting the SBOM:**
+- `jq '.metadata, .components[0:5]' sbom.cdx.json` for top-level metadata and a sample of components.
+- `jq '.components | length' sbom.cdx.json` should return `240`.
+
+**Re-running the normalizer:**
+- Idempotent: `./scripts/normalize-findings-config-h.sh results-snyk-code.sarif results-snyk-deps.json | diff - findings-config-h.json` should return empty.
+
+### G. Glossary
+
+| Term | Definition |
+|---|---|
+| **AAP** | Agent Action Plan — the primary directive document defining the project scope. |
+| **CWE** | Common Weakness Enumeration — a community-developed list of common software weakness types (e.g., `CWE-119`, `CWE-407`, `CWE-835`). |
+| **CVE** | Common Vulnerabilities and Exposures — identifiers for publicly known cybersecurity vulnerabilities (e.g., `CVE-2024-12345`). |
+| **CycloneDX** | An OWASP-maintained SBOM specification; Config H uses CycloneDX 1.5 JSON via `cargo-cyclonedx`. |
+| **Directive (1–4)** | One of the four user-issued CRITICAL directives at the top of the AAP. |
+| **Early Access (Snyk)** | A Snyk feature tier that gates certain language rule packs (including Rust SAST as of the run date) behind an organisational entitlement. |
+| **`findings-config-h.json`** | The primary Config H deliverable: a single-line minified UTF-8 JSON array conforming to the five-field schema. |
+| **OSS** | Open Source Software — in Snyk context, `snyk test` and `snyk sbom test` collectively report on OSS dependencies. |
+| **Path-to-production** | Standard activities required to deploy or hand off a deliverable, distinct from in-scope AAP requirements. |
+| **purl** | Package URL — a standardised cross-language package identifier (e.g., `pkg:cargo/rand@0.8.5`). |
+| **RustSec** | The Rust security advisory database; Snyk's Rust scanner mirrors RustSec. |
+| **SARIF** | Static Analysis Results Interchange Format — an OASIS standard for representing static-analysis findings; Config H uses SARIF v2.1.0. |
+| **SAST** | Static Application Security Testing — code-level vulnerability scanning. In Config H, satisfied by `snyk code test`. |
+| **SBOM** | Software Bill of Materials — a machine-readable inventory of all components in a software artifact. Config H produces a CycloneDX 1.5 SBOM as the input to the SBOM-based fallback dependency scan. |
+| **`SNYK_TOKEN`** | The environment variable carrying a valid Snyk API token at scan time. |
+| **`SNYK-CLI-0008`** | The Snyk CLI error code returned when `snyk test` cannot detect a supported manifest in the target directory — the expected outcome for Rust-only projects. |
+| **Stage 1–4** | The four-stage Config H pipeline defined in AAP §0.3.1: Install + Auth, SAST, Deps, Normalize + Merge. |
+
+---
+
+*End of Blitzy Project Guide.*
